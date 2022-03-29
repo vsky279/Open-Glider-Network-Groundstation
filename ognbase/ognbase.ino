@@ -90,7 +90,7 @@
 
 #include <TimeLib.h>
 
-#define TBEAM
+//#define TBEAM
 //#define TTGO
 
 #if defined(ENABLE_AHRS)

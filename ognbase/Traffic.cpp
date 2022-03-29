@@ -265,7 +265,7 @@ void ParseData()
           fo.no_track = true;
           Traffic_Relay(&fo,rx_size);
         } else {
-          calc_distance(&fo)
+          calc_distance(&fo);
         }
 
         /* put it in an empty slot if available */

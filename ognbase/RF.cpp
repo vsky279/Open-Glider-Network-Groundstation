@@ -194,7 +194,7 @@ extern int status_LED;  // LEDHelper
 #define FOR_TX 1
 
 #define TIME_TO_TRYSYNC 2700
-#define TIME_TO_RE_SYNC 65000
+#define TIME_TO_ACKSYNC 15000
 #define TIME_TO_RE_SYNC 65000
 #define ADJ_FOR_TRANSMISSION_DELAY 30
 
