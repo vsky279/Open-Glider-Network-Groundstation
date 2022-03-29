@@ -21,17 +21,29 @@
 
 #include <TinyGPS++.h>
 
-enum
+typedef enum
 {
-    GNSS_MODULE_NONE,
-    GNSS_MODULE_NMEA, /* generic NMEA */
-    GNSS_MODULE_U6,   /* Ublox 6 */
-    GNSS_MODULE_U7,   /* Ublox 7 */
-    GNSS_MODULE_U8,   /* Ublox 8 */
-    GNSS_MODULE_U9,   /* reserved for Ublox 9 */
-    GNSS_MODULE_MAV,  /* MAVLink */
-    GNSS_MODULE_S7XG  /* S7XG */
-};
+  GNSS_MODULE_NONE,
+  GNSS_MODULE_NMEA, /* generic NMEA */
+  GNSS_MODULE_U6,   /* Ublox 6 */
+  GNSS_MODULE_U7,   /* Ublox 7 */
+  GNSS_MODULE_U8,   /* Ublox 8 */
+  GNSS_MODULE_U9,   /* reserved for Ublox 9 */
+  GNSS_MODULE_MAV,  /* MAVLink */
+  GNSS_MODULE_S7XG, /* S7XG */
+  GNSS_MODULE_AT65, /* AT6558 */
+  GNSS_MODULE_MT33, /* L80 */
+  GNSS_MODULE_GOKE  /* Air530 */
+} gnss_id_t;
+
+typedef struct gnss_chip_ops_struct {
+  gnss_id_t (*probe)();
+  bool      (*setup)();
+  void      (*loop)();
+  void      (*fini)();
+  uint16_t  gga_ms;
+  uint16_t  rmc_ms;
+} gnss_chip_ops_t;
 
 /*
  * Both GGA and RMC NMEA sentences are required.
@@ -45,6 +57,7 @@ enum
                            (gnss.location.age() <= NMEA_EXP_TIME) && \
                            (gnss.altitude.age() <= NMEA_EXP_TIME) && \
                            (gnss.date.age() <= NMEA_EXP_TIME))
+#define isValidGNSStime()  (gnss.date.isValid() && (gnss.date.age() <= NMEA_EXP_TIME))
 
 byte GNSS_setup(void);
 

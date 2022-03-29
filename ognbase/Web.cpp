@@ -40,7 +40,7 @@
 
 File fsUploadFile;
 
-#define countof(a) (sizeof(a) / sizeof(a[0]))
+#define countelems(a) (sizeof(a) / sizeof(a[0]))
 
 // Create AsyncWebServer object on port 80
 AsyncWebServer wserver(80);
@@ -339,6 +339,8 @@ void Web_setup(ufo_t* this_aircraft)
 
         if (request->hasParam("ogn_proto"))
             ogn_protocol_1 = request->getParam("ogn_proto")->value().toInt();
+
+        ogn_protocol_1 = RF_PROTOCOL_LEGACY;    /* override, since only LEGACY supported for now */
 
         if (request->hasParam("ogn_proto2"))
             ogn_protocol_2 = request->getParam("ogn_proto2")->value().toInt();

@@ -26,6 +26,7 @@
 #include <protocol.h>
 
 #include "SoftRF.h"
+#include "global.h"
 #include "RF.h"
 #include "Protocol_Legacy.h"
 #include "EEPROM.h"
@@ -128,6 +129,19 @@ bool legacy_decode(void* legacy_pkt, ufo_t* this_aircraft, ufo_t* fop)
 
     legacy_packet_t* pkt = (legacy_packet_t *) legacy_pkt;
 
+    fop->addr = pkt->addr;     /* first 32 bits are not encrypted */
+
+    if (ognrelay_enable) {     /* do not decode further */
+        return true;          /* will be relayed in Traffic.cpp */
+    }
+
+    if (ognrelay_base) {
+      if (pkt->_unk0 != 0xE)   /* marks relayed packets */
+        return false;         /* ignore normal packets */
+        /* fall through and decode relayed packets */
+    }
+
+
     float    ref_lat   = this_aircraft->latitude;
     float    ref_lon   = this_aircraft->longitude;
     float    geo_separ = this_aircraft->geoid_separation;
@@ -184,9 +198,8 @@ bool legacy_decode(void* legacy_pkt, ufo_t* this_aircraft, ufo_t* fop)
 
     fop->protocol = RF_PROTOCOL_LEGACY;
 
-    fop->addr          = pkt->addr;
     fop->addr_type     = pkt->addr_type;
-    fop->timestamp     = timestamp;
+    fop->timestamp     = timestamp;         /* position may be older if relayed */
     fop->latitude      = (float)lat / 1e7;
     fop->longitude     = (float)lon / 1e7;
     fop->altitude      = (float) alt - geo_separ;

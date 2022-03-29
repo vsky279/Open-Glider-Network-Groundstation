@@ -80,6 +80,23 @@ typedef struct rfchip_ops_struct
   void (* shutdown)();
 } rfchip_ops_t;
 
+typedef struct Slot_descr_struct {
+  uint16_t begin;
+  uint16_t duration;
+  unsigned long tmarker;
+} Slot_descr_t;
+
+typedef struct Slots_descr_struct {
+  uint16_t      interval_min;
+  uint16_t      interval_max;
+  uint16_t      interval_mid;
+  uint16_t      adj;
+  uint16_t      air_time;
+  Slot_descr_t  s0;
+  Slot_descr_t  s1;
+  uint8_t       current;
+} Slots_descr_t;
+
 String Bin2Hex(byte *, size_t);
 
 uint8_t parity(uint32_t);
@@ -115,5 +132,10 @@ extern size_t              (* protocol_encode)(void *, ufo_t *);
 extern bool                (* protocol_decode)(void *, ufo_t *, ufo_t *);
 
 extern int8_t RF_last_rssi;
+
+extern bool time_synched;
+
+void set_our_clock(uint8_t*);
+bool sync_alive_pkt(uint8_t*);
 
 #endif /* RFHELPER_H */

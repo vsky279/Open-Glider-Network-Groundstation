@@ -22,6 +22,7 @@
 #include <esp_wifi.h>
 #include <esp_bt.h>
 #include <soc/rtc_cntl_reg.h>
+#include <soc/adc_channel.h>   /* >>> added */
 #include <soc/efuse_reg.h>
 #include <rom/rtc.h>
 #include <rom/spi_flash.h>

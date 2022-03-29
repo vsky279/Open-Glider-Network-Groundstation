@@ -49,6 +49,9 @@ unsigned long GGA_Start_Time_Marker = 0;
 unsigned long GGA_Stop_Time_Marker  = 0;
 #endif
 
+const gnss_chip_ops_t *gnss_chip = NULL;
+extern const gnss_chip_ops_t goke_ops; /* forward declaration */
+
 boolean     gnss_set_sucess = false;
 TinyGPSPlus gnss;  // Create an Instance of the TinyGPS++ object called gnss
 

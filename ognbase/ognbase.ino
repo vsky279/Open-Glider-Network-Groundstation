@@ -263,7 +263,9 @@ void setup()
   delay(2000);
 
   Web_setup(&ThisAircraft);
+#if !defined(EXCLUDE_NTP)
   Time_setup();
+#endif
   SoC->WDT_setup();
 
   if(private_network || remotelogs_enable){
@@ -366,20 +368,10 @@ void ground()
     delay(1000);
     if(300 < seconds()){
       SoC->reset();
-      }
     }
-
-  
-  success = RF_Receive();
-  if (success && isValidFix() || success && position_is_set){
-    Logger_send_udp(&msg);    
-    
-    ParseData();
-    
-    ExportTimeSleep = seconds();
   }
 
-  if (ogn_lat != 0 && ogn_lon != 0 && !position_is_set) {
+  if (!position_is_set && ogn_lat != 0 && ogn_lon != 0) {
     ThisAircraft.latitude = ogn_lat;
     ThisAircraft.longitude = ogn_lon;
     ThisAircraft.altitude = ogn_alt;
@@ -388,9 +380,10 @@ void ground()
     ThisAircraft.hdop = 0;
     ThisAircraft.geoid_separation = ogn_geoid_separation;
 
-#if defined(TBEAM)
-    GNSS_sleep();
-#endif
+// #if defined(TBEAM)
+//    if (ogn_band != RF_BAND_US && ogn_band != RF_BAND_AUTO)
+//      GNSS_sleep();
+// #endif
 
     msg = "found position data LAT: ";
     msg += ogn_lat;
@@ -400,10 +393,14 @@ void ground()
     msg += ogn_alt;
     Logger_send_udp(&msg);
 
-   position_is_set = true;
+    position_is_set = true;
   }
 
-  if (isValidFix() && ogn_lat == 0 && ogn_lon == 0 && !position_is_set) {
+#if defined(TBEAM)
+  GNSS_loop();
+#endif
+
+  if (!position_is_set && isValidFix()) {
     
     ThisAircraft.latitude = gnss.location.lat();
     ThisAircraft.longitude = gnss.location.lng();
@@ -437,11 +434,22 @@ void ground()
     delay(1000);
   }
 
+  ThisAircraft.timestamp = now();
+
+  success = RF_Receive();
+
 #if defined(TBEAM)
-  GNSS_loop();
+  if (success && position_is_set && isValidGNSStime()) {
+#else
+  if (success && position_is_set) {
 #endif
 
-  ThisAircraft.timestamp = now();
+      Logger_send_udp(&msg);    
+    
+      ParseData();
+    
+      ExportTimeSleep = seconds();
+  }
 
   //only as basestation
 
@@ -553,7 +561,8 @@ void ground()
       GNSS_sleep();
 #endif 
     }
-    
+
+    time_synced = false;
     ground_registred = 0;
     if(!ognrelay_enable)
       SoC->WiFi_disconnect_TCP();

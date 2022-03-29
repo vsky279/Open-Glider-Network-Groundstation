@@ -29,10 +29,12 @@
 #define VERTICAL_SEPARATION         300 /* metres */
 #define VERTICAL_VISIBILITY_RANGE   500 /* value from FLARM data port specs */
 
-#define TRAFFIC_VECTOR_UPDATE_INTERVAL 2 /* seconds */
+#define TRAFFIC_VECTOR_UPDATE_INTERVAL 27 /* seconds */
 #define TRAFFIC_UPDATE_INTERVAL_MS (TRAFFIC_VECTOR_UPDATE_INTERVAL * 1000)
 #define isTimeToUpdateTraffic() (millis() - UpdateTrafficTimeMarker > \
                                  TRAFFIC_UPDATE_INTERVAL_MS)
+
+#define MIN_RELAY_INTERVAL 4  /* seconds */
 
 enum
 {

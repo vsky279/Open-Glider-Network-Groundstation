@@ -33,12 +33,12 @@
 
 #include "version.h"
 
-#define SOFTRF_FIRMWARE_VERSION  _VERSION
+#define SOFTRF_FIRMWARE_VERSION "MB01"   // _VERSION
 #define SOFTRF_IDENT            "OGNB-"
 
-#define ENTRY_EXPIRATION_TIME   10 /* seconds */
+#define ENTRY_EXPIRATION_TIME   24 /* seconds */
 #define LED_EXPIRATION_TIME     5  /* seconds */
-#define EXPORT_EXPIRATION_TIME  5  /* seconds */
+#define EXPORT_EXPIRATION_TIME  10  /* seconds */
 
 /*
  * If you need for SoftRF to operate in wireless
@@ -192,6 +192,8 @@ enum
     SOFTRF_MODEL_UNI,
     SOFTRF_MODEL_MINI
 };
+
+extern bool time_synced;
 
 extern ufo_t           ThisAircraft;
 extern hardware_info_t hw_info;

@@ -120,37 +120,79 @@ static int8_t Alarm_Legacy(ufo_t* this_aircraft, ufo_t* fop)
     return rval;
 }
 
-void Traffic_Update(int ndx)
+static uint8_t numtracked = 0;
+
+uint8_t relay_interval(void)
 {
-    Container[ndx].distance = gnss.distanceBetween(ThisAircraft.latitude,
-                                                   ThisAircraft.longitude,
-                                                   Container[ndx].latitude,
-                                                   Container[ndx].longitude);
+    if (numtracked < 2*MIN_RELAY_INTERVAL)  return MIN_RELAY_INTERVAL;
+    return ((numtracked + 1) / 2);
+}
 
-    Container[ndx].bearing = gnss.courseTo(ThisAircraft.latitude,
-                                           ThisAircraft.longitude,
-                                           Container[ndx].latitude,
-                                           Container[ndx].longitude);
+void calc_distance(ufo_t* fop)
+{
+    fop->distance = gnss.distanceBetween(ThisAircraft.latitude,
+                                         ThisAircraft.longitude,
+                                         fop->latitude,
+                                         fop->longitude);
+}
 
-    if (Alarm_Level)
-        Container[ndx].alarm_level = (*Alarm_Level)(&ThisAircraft, &Container[ndx]);
+/* >>> this assumes "Legacy" protocol, should be encapsulated into Legacy.cpp */
+void Traffic_Relay(ufo_t* fop, size_t rx_size)
+{
+    if (ognrelay_enable) {
+
+        legacy_packet_t* pkt = (legacy_packet_t *) fop->raw;
+        if (pkt->_unk0 == 0xE) /* received a relayed packet - do not relay it */
+          return;
+        pkt->_unk0 = 0xE;      /* marks relayed packets */
+
+        memcpy(TxBuffer, fop->raw, rx_size);
+
+        if (RF_Transmit(rx_size, true)) {   /* success transmitting */
+            /* use the "no_track" bit to mark whether relayed */
+            fop->no_track = false;
+            /* set time stamp for next update of same aircraft */
+            fop->timestamp = now();
+        }
+
+    }
 }
 
 void ParseData()
 {
     size_t rx_size = RF_Payload_Size(ogn_protocol_1);
-    rx_size = rx_size > sizeof(fo.raw) ? sizeof(fo.raw) : rx_size;
+    if (rx_size > sizeof(fo.raw)) rx_size = sizeof(fo.raw);
+
+    /* memset(fo.raw, 0, sizeof(fo.raw)); */
+    memcpy(fo.raw, RxBuffer, rx_size);
+
+    if (ognrelay_base && ognrelay_time && !time_synched) {
+      /* possibly received time data from relay station */
+      set_our_clock(fo.raw);           /* may set time_synched */
+      /* until time-synched any received packets other than time-sync are ignored */
+      return;
+    }
+
+    if (ognrelay_enable && ognrelay_time && !time_synched) {
+      /* possibly received ack message from base station */
+      (void) sync_alive_pkt(fo.raw);   /* may set time_synched */
+      /* until time-synched any received packets other than time-sync are ignored */
+      return;
+    }
+
+    if ((ognrelay_enable || ognrelay_base) && ognrelay_time && time_synched) {
+      if (sync_alive_pkt(fo.raw))      /* was a time-sync packet */
+        return;
+      /* otherwise fall through to process normal traffic packets */
+    }
+
+    /*
 
     char buf[16];
     String msg;
 
     msg = "RXBuffer: ";
 
-    memset(fo.raw, 0, sizeof(fo.raw));
-    memcpy(fo.raw, RxBuffer, rx_size);
-    memcpy(TxBuffer, RxBuffer, rx_size);
-
-    /*
     Serial.print("RxBuffer: ");
     
     for(int i=0;i<rx_size;i++){
@@ -162,39 +204,94 @@ void ParseData()
     Logger_send_udp(&msg);
 
     */
-    
-    if(ognrelay_enable){
-      RF_Transmit(rx_size, true);
-      return;
-    }
 
-    
-
-    if (protocol_decode && (*protocol_decode)((void *) RxBuffer, &ThisAircraft, &fo))
+    if (protocol_decode && (*protocol_decode)((void *) fo.raw, &ThisAircraft, &fo))
     {
-        int i;
+        int i, k, oldest, oldest_waiting;
+        time_t timenow, age, oldest_age;
+        ufo_t* cip;
+
+        timenow = now();
 
         fo.rssi = RF_last_rssi;
 
+        /* if an already-tracked aircraft, update and report */
+        /* - but if reported recently, ignore for now */
+        bool found = false;
+        k = 0;
+        oldest_waiting = 0;
+        oldest_age = 0;
         for (i=0; i < MAX_TRACKING_OBJECTS; i++) {
-            if (Container[i].addr == fo.addr)
-            {
+            cip = &Container[i];
+            if (cip->addr) {
+              ++k;      /* count tracked objects */
+              age = timenow - cip->timestamp;
+              if (ognrelay_enable) {
+                  if (cip->addr == fo.addr) {
+                    found = true;
+                    fo.timestamp = cip->timestamp;        /* keep old timestamp */
+                    if (timenow >= fo.timestamp + (time_t) relay_interval())
+                        fo.no_track = true;               /* time to relay this one again */
+                    *cip = fo;                            /* copy the whole struct */
+                    if (fo.no_track && age >= oldest_age) {  /* override others of same age */
+                        oldest_age = age;
+                        oldest_waiting = i;
+                    }
+                  } else if (cip->no_track) {             /* other waiting to be relayed */
+                    if (age > oldest_age) {
+                       oldest_age = age;
+                       oldest_waiting = i;
+                    }
+                  }
+              } else {   /* not relay station */
+                  if (cip->addr == fo.addr) {
+                      found = true;
+                      *cip = fo;
+                      calc_distance(cip);
+                  }
+              }
+           }
+        }
+        numtracked = k;
+        if (ognrelay_enable && oldest_age > 0)
+            Traffic_Relay(&Container[oldest_waiting],rx_size);
+        if (found)
+            return;
+
+        /* new aircraft, not in the Container[] array yet */
+
+        if (ognrelay_enable) {
+          fo.timestamp = timenow - relay_interval();   /* not relayed yet */
+          fo.no_track = true;
+          Traffic_Relay(&fo,rx_size);
+        } else {
+          calc_distance(&fo)
+        }
+
+        /* put it in an empty slot if available */
+        for (i=0; i < MAX_TRACKING_OBJECTS; i++) {
+            if (Container[i].addr == 0) {
                 Container[i] = fo;
-                Traffic_Update(i);
-                break;
-            }
-            else if (now() - Container[i].timestamp > ENTRY_EXPIRATION_TIME)
-            {
-                Container[i] = fo;
-                Traffic_Update(i);
-                break;
+                ++numtracked;
+                return;
             }
         }
-        // detect and delete double IDs - Caz Yokoyama fix
-        while (++i < MAX_TRACKING_OBJECTS) {
-            if (Container[i].addr == fo.addr)
-                Container[i] = EmptyFO;
+
+        /* no empty slot, replace expired, or oldest */
+        oldest = 0;
+        oldest_age = 0;
+        for (i=0; i < MAX_TRACKING_OBJECTS; i++) {
+            age = timenow - Container[i].timestamp;
+            if (age > ENTRY_EXPIRATION_TIME) {
+                Container[i] = fo;
+                return;
+            }
+            if (age > oldest_age) {
+                oldest_age = age;
+                oldest = i;
+            }
         }
+        Container[oldest] = fo;        
     }
 }
 
@@ -220,26 +317,22 @@ void Traffic_setup()
 
 void Traffic_loop()
 {
-    if (isTimeToUpdateTraffic())
-    {
-        for (int i=0; i < MAX_TRACKING_OBJECTS; i++) {
-            if (Container[i].addr &&
-                (ThisAircraft.timestamp - Container[i].timestamp) <= ENTRY_EXPIRATION_TIME)
-            {
-                if ((ThisAircraft.timestamp - Container[i].timestamp) >= TRAFFIC_VECTOR_UPDATE_INTERVAL)
-                    Traffic_Update(i);
-            }
-            else
-                Container[i] = EmptyFO;
-        }
-
+    if (isTimeToUpdateTraffic()) {
+        ClearExpired();
         UpdateTrafficTimeMarker = millis();
     }
 }
 
 void ClearExpired()
 {
-    for (int i=0; i < MAX_TRACKING_OBJECTS; i++)
-        if (Container[i].addr && (ThisAircraft.timestamp - Container[i].timestamp) > ENTRY_EXPIRATION_TIME)
-            Container[i] = EmptyFO;
+    time_t timenow = now();
+    numtracked = 0;
+    for (int i=0; i < MAX_TRACKING_OBJECTS; i++) {
+        if (Container[i].addr) {
+          if ((timenow - Container[i].timestamp) > ENTRY_EXPIRATION_TIME)
+              Container[i] = EmptyFO;
+          else
+              ++numtracked;
+        }
+    }
 }

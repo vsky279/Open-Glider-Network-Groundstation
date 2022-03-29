@@ -16,17 +16,18 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 #include "SoftRF.h"
 #include "EEPROM.h"
 #include "global.h"
 #include "config.h"
 #include "OLED.h"
 
+#include <protocol.h>
+
 //START SD
 #include <SD.h>
 #include <FS.h>
-#include "OLED.h"
+// #include "OLED.h"
 
 // SD card
 #define SD_SCK  14
@@ -50,8 +51,8 @@ String   ogn_callsign    = "callsign";
 String   ogn_server      = "aprs.glidernet.org";
 uint16_t ogn_port        = 14580;
 uint8_t  ogn_band        = 1;
-uint8_t  ogn_protocol_1  = 0;
-uint8_t  ogn_protocol_2  = 1;
+uint8_t  ogn_protocol_1  = RF_PROTOCOL_LEGACY;
+uint8_t  ogn_protocol_2  = RF_PROTOCOL_OGNTP;
 bool     ogn_debug       = false;
 uint16_t ogn_debugport   = 12000;
 bool     ogn_itrackbit   = false;
@@ -104,6 +105,8 @@ uint32_t new_protocol_port;
 //relay
 bool ognrelay_enable = false;
 bool ognrelay_base = false;
+bool ognrelay_time = false;
+uint32_t ognrelay_key = 0xAEAEAE;
 
 
 #ifdef TTGO
@@ -302,6 +305,7 @@ bool OGN_read_config(void)
 
             ogn_band        = obj["aprs"]["band"];
             ogn_protocol_1  = obj["aprs"]["protocol_1"];
+ogn_protocol_1  = RF_PROTOCOL_LEGACY;  /* override - only protocol supported for now */
             ogn_protocol_2  = obj["aprs"]["protocol_2"];
             ogn_debug       = obj["aprs"]["debug"];
             ogn_debugport   = obj["aprs"]["debugport"];
@@ -372,8 +376,14 @@ bool OGN_read_config(void)
               ognrelay_base = 0;
             else
               ognrelay_base = obj["ognrelay"]["basestation"];
+            if(ognrelay_enable || ognrelay_base)
+              ognrelay_time = obj["ognrelay"]["relaytime"];
+            else
+              ognrelay_time = 0;
+            if (ognrelay_time)
+              ognrelay_key = obj["ognrelay"]["relaykey"];
         }
-    }            
+    }
 
     if (obj.containsKey(F("fanetservice")))
     {
@@ -489,7 +499,12 @@ bool OGN_save_config(void)
     obj["zabbix"]["port"]   = zabbix_port;
     obj["zabbix"]["key"]    = zabbix_key;
 
-    
+    // relay config
+    obj["ognrelay"]["enable"]      = ognrelay_enable;
+    obj["ognrelay"]["basestation"] = ognrelay_base;
+    obj["ognrelay"]["relaytime"]   = ognrelay_time;
+    obj["ognrelay"]["relaykey"]    = ognrelay_key;
+
     if (serializeJson(obj, configFile) == 0)
         Serial.println(F("Failed to write to file"));
 

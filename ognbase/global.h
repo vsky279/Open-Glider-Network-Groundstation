@@ -48,3 +48,5 @@ extern uint32_t new_protocol_port;
 
 extern bool ognrelay_enable;
 extern bool ognrelay_base;
+extern bool ognrelay_time;
+extern uint32_t ognrelay_key;
