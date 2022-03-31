@@ -142,8 +142,13 @@ void Traffic_Relay(ufo_t* fop, size_t rx_size)
     if (ognrelay_enable) {
 
         legacy_packet_t* pkt = (legacy_packet_t *) fop->raw;
-        if (pkt->_unk0 == 0xE) /* received a relayed packet - do not relay it */
+
+        if (pkt->_unk0 > 0) {  /* received relayed, or time, or special FLARM packet - do not relay */
+          --traffic_packets_recvd;
+          if (pkt->_unk0 >= 0xC)  ++bad_packets_recvd;  /* don't count special FLARM packets as "bad" */
           return;
+        }
+
         pkt->_unk0 = 0xE;      /* marks relayed packets */
 
         memcpy(TxBuffer, fop->raw, rx_size);
@@ -153,6 +158,7 @@ void Traffic_Relay(ufo_t* fop, size_t rx_size)
             fop->no_track = false;
             /* set time stamp for next update of same aircraft */
             fop->timestamp = now();
+            ++traffic_packets_relayed;
         }
 
     }
@@ -166,25 +172,27 @@ void ParseData()
     /* memset(fo.raw, 0, sizeof(fo.raw)); */
     memcpy(fo.raw, RxBuffer, rx_size);
 
-    if (ognrelay_base && ognrelay_time && !time_synched) {
-      /* possibly received time data from relay station */
-      set_our_clock(fo.raw);           /* may set time_synched */
-      /* until time-synched any received packets other than time-sync are ignored */
-      return;
-    }
+    if (ognrelay_time) {
 
-    if (ognrelay_enable && ognrelay_time && !time_synched) {
-      /* possibly received ack message from base station */
-      (void) sync_alive_pkt(fo.raw);   /* may set time_synched */
-      /* until time-synched any received packets other than time-sync are ignored */
-      return;
-    }
+      if (time_sync_pkt(fo.raw)) {
 
-    if ((ognrelay_enable || ognrelay_base) && ognrelay_time && time_synched) {
-      if (sync_alive_pkt(fo.raw))      /* was a time-sync packet */
+        if (ognrelay_base)
+            set_our_clock(fo.raw);    /* may set time_synched */
+
+        if (ognrelay_enable)
+            sync_alive_pkt(fo.raw);   /* may set time_synched */
+
         return;
-      /* otherwise fall through to process normal traffic packets */
+      }
+
+      /* until time-synched any received packets other than time-sync are ignored */
+      if (!time_synched)
+        return;
     }
+
+    /* otherwise fall through to process normal traffic packets */
+
+    ++traffic_packets_recvd;
 
     /*
 

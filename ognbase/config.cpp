@@ -371,7 +371,11 @@ ogn_protocol_1  = RF_PROTOCOL_LEGACY;  /* override - only protocol supported for
         //Serial.println(F("found relay config!"));
         if (1)
         {
+#ifdef TTGO
+            ognrelay_enable = 0;
+#else
             ognrelay_enable = obj["ognrelay"]["enable"];
+#endif
             if(ognrelay_enable)
               ognrelay_base = 0;
             else
@@ -380,6 +384,10 @@ ogn_protocol_1  = RF_PROTOCOL_LEGACY;  /* override - only protocol supported for
               ognrelay_time = obj["ognrelay"]["relaytime"];
             else
               ognrelay_time = 0;
+#ifdef TTGO
+            if(ognrelay_base)
+                ognrelay_time = 1;
+#endif
             if (ognrelay_time)
               ognrelay_key = obj["ognrelay"]["relaykey"];
         }

@@ -134,8 +134,12 @@ extern bool                (* protocol_decode)(void *, ufo_t *, ufo_t *);
 extern int8_t RF_last_rssi;
 
 extern bool time_synched;
+extern uint32_t traffic_packets_recvd;
+extern uint32_t traffic_packets_relayed;
+extern uint16_t bad_packets_recvd;
 
+bool time_sync_pkt(uint8_t*);
 void set_our_clock(uint8_t*);
-bool sync_alive_pkt(uint8_t*);
+void sync_alive_pkt(uint8_t*);
 
 #endif /* RFHELPER_H */

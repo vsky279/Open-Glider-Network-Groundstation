@@ -250,7 +250,8 @@ void setup()
   delay(100);
 
 #if defined(TBEAM)
-  hw_info.gnss = GNSS_setup();
+  if (!ognrelay_base || !ognrelay_time)
+    hw_info.gnss = GNSS_setup();
 #endif
   
   ThisAircraft.aircraft_type = settings->aircraft_type;
@@ -318,7 +319,8 @@ void shutdown(const char *msg)
   WiFi_fini();
   
 #if defined(TBEAM)
-  GNSS_fini();
+  if (!ognrelay_base || !ognrelay_time)
+    GNSS_fini();
 #endif
 
   RF_Shutdown();
@@ -380,10 +382,10 @@ void ground()
     ThisAircraft.hdop = 0;
     ThisAircraft.geoid_separation = ogn_geoid_separation;
 
-// #if defined(TBEAM)
-//    if (ogn_band != RF_BAND_US && ogn_band != RF_BAND_AUTO)
-//      GNSS_sleep();
-// #endif
+#if defined(TBEAM)
+    if (ognrelay_base && ognrelay_time)
+      GNSS_sleep();
+#endif
 
     msg = "found position data LAT: ";
     msg += ogn_lat;
@@ -397,10 +399,12 @@ void ground()
   }
 
 #if defined(TBEAM)
-  GNSS_loop();
-#endif
 
-  if (!position_is_set && isValidFix()) {
+  if (!ognrelay_base || !ognrelay_time) {
+
+    GNSS_loop();
+
+    if (!position_is_set) {
     
     ThisAircraft.latitude = gnss.location.lat();
     ThisAircraft.longitude = gnss.location.lng();
@@ -425,7 +429,7 @@ void ground()
 
     position_is_set = true;    
 
-  }
+    }
 
   if(!position_is_set){
     OLED_write("no position data found", 0, 18, true);
@@ -434,20 +438,24 @@ void ground()
     delay(1000);
   }
 
+  }
+
+#else
+
+  if(!position_is_set){
+    OLED_write("no position data found", 0, 18, true);
+    delay(2000);
+  }
+
+#endif
+
   ThisAircraft.timestamp = now();
 
   success = RF_Receive();
 
-#if defined(TBEAM)
-  if (success && position_is_set && isValidGNSStime()) {
-#else
   if (success && position_is_set) {
-#endif
-
       Logger_send_udp(&msg);    
-    
       ParseData();
-    
       ExportTimeSleep = seconds();
   }
 
@@ -558,7 +566,8 @@ void ground()
     if (ogn_sleepmode == 1){
       
 #if defined(TBEAM)      
-      GNSS_sleep();
+      if (!ognrelay_base || !ognrelay_time)
+        GNSS_sleep();
 #endif 
     }
 
