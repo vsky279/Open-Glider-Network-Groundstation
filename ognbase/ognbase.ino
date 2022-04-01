@@ -449,7 +449,7 @@ void ground()
 
 #endif
 
-  ThisAircraft.timestamp = now();
+  ThisAircraft.timestamp = OurTime;  /* was now(); */
 
   success = RF_Receive();
 
@@ -463,13 +463,16 @@ void ground()
 
   if (!ognrelay_enable){
 
-    if ((TimeToRegisterOGN() && (position_is_set) && WiFi.getMode() != WIFI_AP ) || (ground_registred == 0  && (position_is_set) && WiFi.getMode() != WIFI_AP))
-    {  
-      ground_registred = OGN_APRS_Register(&ThisAircraft);
-      ExportTimeRegisterOGN = seconds();
+    if (TimeToRegisterOGN() || ground_registred == 0) {  
+      if (OurTime != 0 && position_is_set && WiFi.getMode() != WIFI_AP) {
+        Serial.println("Registering OGN...");
+        OLED_write("Registering OGN...", 0, 18, true);
+        ground_registred = OGN_APRS_Register(&ThisAircraft);
+        ExportTimeRegisterOGN = seconds();
+      }
     }
   
-    if(ground_registred ==  -1){
+    if(ground_registred == -1) {
       OLED_write("server registration failed!", 0, 18, true);
       OLED_write("please check json file!", 0, 27, false);
       snprintf (buf, sizeof(buf), "%s : %d", ogn_server.c_str(), ogn_port);
@@ -477,10 +480,10 @@ void ground()
       ground_registred = -2; 
     }
   
-    if(ground_registred == -2){
+    if(ground_registred == -2) {
       OGN_APRS_check_Wifi();
       ExportTimeReRegister = seconds();
-      while(TimeToReRegisterOGN()){
+      while(TimeToReRegisterOGN()){                  /* >>> is this safe? <<< */
         os_runstep();
       }
       ground_registred = 0;
@@ -492,7 +495,8 @@ void ground()
         RSM_ExportAircraftPosition();
       }
       OGN_APRS_Export();
-      OLED_info(position_is_set);
+      // OLED_info(position_is_set);
+      OLED_info(false);
       ExportTimeOGN = seconds();
     }
   
@@ -547,7 +551,8 @@ void ground()
   
 
   if (TimeToExportOGN() && ognrelay_enable){
-    OLED_info(position_is_set);
+    // OLED_info(position_is_set);
+    OLED_info(false);
     ExportTimeOGN = seconds();
   }
 

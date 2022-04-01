@@ -449,7 +449,11 @@ void Web_loop(void)
         values += "_";
         values += hours();
         values += "_";
+#if defined(TBEAM)
         values += gnss.satellites.value();
+#else
+        values += "-";
+#endif
         values += "_";
         values += now();
         values += "_";

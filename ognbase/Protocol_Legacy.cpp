@@ -145,7 +145,7 @@ bool legacy_decode(void* legacy_pkt, ufo_t* this_aircraft, ufo_t* fop)
     float    ref_lat   = this_aircraft->latitude;
     float    ref_lon   = this_aircraft->longitude;
     float    geo_separ = this_aircraft->geoid_separation;
-    uint32_t timestamp = (uint32_t) this_aircraft->timestamp;
+    uint32_t timestamp = (uint32_t) OurTime;  /* was this_aircraft->timestamp; */
 
 
     uint32_t key[4];

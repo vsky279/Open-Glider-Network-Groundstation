@@ -29,6 +29,7 @@
 #include "global.h"
 #include "Web.h"
 #include "version.h"
+#include "SoftRF.h"
 #include "logos.h"
 
 SSD1306Wire display(SSD1306_OLED_I2C_ADDR, SDA, SCL, GEOMETRY_128_64, I2C_TWO, 400000);  // ADDRESS, SDA, SCL
@@ -67,7 +68,7 @@ const char* ISO3166_CC[] = {
     [RF_BAND_IN]   = "IN"
 };
 
-byte OLED_setup()
+void OLED_setup()
 {
     display_init = display.init();
     display.flipScreenVertically();
@@ -182,16 +183,20 @@ void OLED_info(bool ntp)
             snprintf(buf, sizeof(buf), "Prot: %s", OLED_Protocol_ID[ogn_protocol_1]);
             display.drawString(0, 36, buf);
 
-            snprintf(buf, sizeof(buf), "UTC: %02d:%02d", hour(now()), minute(now()));
+            //snprintf(buf, sizeof(buf), "UTC: %02d:%02d", hour(now()), minute(now()));
+            snprintf(buf, sizeof(buf), "UTC: %02d:%02d", hour(OurTime), minute(OurTime));
             display.drawString(0, 45, buf);
 
             if (ntp)
-                display.drawString(0, 54, "NTP: True");
+                //display.drawString(0, 54, "NTP: True");
+                display.drawString(0, 54, "Position Set");
             else
             {
-                disp_value = gnss.satellites.value();
-                itoa(disp_value, buf, 10);
-                snprintf(buf, sizeof(buf), "GNSS: %s", buf);
+#if defined(TBEAM)
+                snprintf(buf, sizeof(buf), "GNSS: %d", gnss.satellites.value());
+#else
+                snprintf(buf, sizeof(buf), "No GNSS");
+#endif
                 display.drawString(0, 54, buf);
             }
             /*
@@ -239,7 +244,8 @@ void OLED_info(bool ntp)
             display.drawString(0, 45, buf);
 
             //version
-            snprintf(buf, sizeof(buf), "Version: %s", _VERSION);
+            // snprintf(buf, sizeof(buf), "Version: %s", _VERSION);
+            snprintf(buf, sizeof(buf), "Version: %s", SOFTRF_FIRMWARE_VERSION);
             display.drawString(0, 54, buf);
 
 
@@ -299,9 +305,11 @@ void OLED_info(bool ntp)
             display.drawString(0, 45, buf);       
 
             if(ognrelay_base)
-              snprintf(buf, sizeof(buf), "RELAY-B: %s", ognrelay_base ? "true" : "false");
+              snprintf(buf, sizeof(buf), "RELAY-Base");
+              // snprintf(buf, sizeof(buf), "RELAY-B: %s", ognrelay_base ? "true" : "false");
             if(ognrelay_enable)
-              snprintf(buf, sizeof(buf), "RELAY: %s", ognrelay_enable ? "true" : "false");              
+              snprintf(buf, sizeof(buf), "RELAY-Remote");              
+              // snprintf(buf, sizeof(buf), "RELAY-R: %s", ognrelay_enable ? "true" : "false");              
             display.drawString(0, 54, buf);                                                                           
 
             display.display();

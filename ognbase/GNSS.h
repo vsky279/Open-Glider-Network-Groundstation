@@ -73,7 +73,7 @@ int LookupSeparation(float, float);
 
 void GNSS_sleep(void);
 
-void GNSS_weakup(void);
+void GNSS_wakeup(void);
 
 extern TinyGPSPlus            gnss;
 extern volatile unsigned long PPS_TimeMarker;

@@ -219,7 +219,9 @@ void ParseData()
         time_t timenow, age, oldest_age;
         ufo_t* cip;
 
-        timenow = now();
+        /* timenow = now(); */
+        timenow = OurTime;              /* based on local or relayed GNSS data */
+        fo.timestamp = timenow;
 
         fo.rssi = RF_last_rssi;
 
@@ -254,7 +256,7 @@ void ParseData()
               } else {   /* not relay station */
                   if (cip->addr == fo.addr) {
                       found = true;
-                      *cip = fo;
+                      *cip = fo;       /* includes OurTime in .timestamp */
                       calc_distance(cip);
                   }
               }
@@ -333,7 +335,7 @@ void Traffic_loop()
 
 void ClearExpired()
 {
-    time_t timenow = now();
+    time_t timenow = OurTime;
     numtracked = 0;
     for (int i=0; i < MAX_TRACKING_OBJECTS; i++) {
         if (Container[i].addr) {

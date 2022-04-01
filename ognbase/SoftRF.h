@@ -33,7 +33,7 @@
 
 #include "version.h"
 
-#define SOFTRF_FIRMWARE_VERSION "MB03"   // _VERSION
+#define SOFTRF_FIRMWARE_VERSION "MB04"   // _VERSION
 #define SOFTRF_IDENT            "OGNB-"
 
 #define ENTRY_EXPIRATION_TIME   24 /* seconds */

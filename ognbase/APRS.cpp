@@ -42,6 +42,8 @@ int  ap_uptime        = 0;
 
 #define seconds() (millis() / 1000)
 
+const unsigned long seventyYears = 2208988800UL;
+
 static String zeroPadding(String data, int len)
 {
     if (data.charAt(2) == '.')
@@ -183,11 +185,14 @@ int OGN_APRS_check_messages()
 void OGN_APRS_Export()
 {
     struct aprs_airc_packet APRS_AIRC;
-    time_t                  this_moment = now();
+
+    if (OurTime == 0)  /* no GNSS time available yet */
+      return;
+
+    time_t this_moment = OurTime;  /* was now(); */
 
     String symbol_table[16] = {"/", "/", "\\", "/", "\\", "\\", "/", "/", "\\", "J", "/", "/", "M", "/", "\\", "\\"}; // 0x79 -> aircraft type 1110 dec 14 & 0x51 -> aircraft type 4
     String symbol[16]       = {"z", "^", "^", "X", "", "^", "g", "g", "^", "^", "^", "O", "^", "\'", "", "n", };
-
 
     for (int i = 0; i < MAX_TRACKING_OBJECTS; i++)
         if (Container[i].addr && (this_moment - Container[i].timestamp) <= EXPORT_EXPIRATION_TIME && Container[i].distance < ogn_range * 1000)
@@ -213,8 +218,11 @@ void OGN_APRS_Export()
             // actually, need to make sure Container[i].timestamp is based on SlotTime not current time due slot-2 time extension
             //converting Container[i].timestamp to hour minutes seconds
 
-            time_t receive_time = Container[i].timestamp;
-            APRS_AIRC.timestamp = zeroPadding(String(hour(receive_time)), 2) + zeroPadding(String(minute(receive_time)), 2) + zeroPadding(String(second(receive_time)), 2) + "h";
+            /* since OurTime is seconds since 1900, convert to seconds since 1970 for APRS */
+            time_t APRStime = Container[i].timestamp - seventyYears;
+            APRS_AIRC.timestamp = zeroPadding(String(hour(APRStime)), 2)
+                                + zeroPadding(String(minute(APRStime)), 2)
+                                + zeroPadding(String(second(APRStime)), 2) + "h";
 
             /*Latitude*/
             APRS_AIRC.lat_deg = String(int(LAT));
@@ -316,6 +324,9 @@ void OGN_APRS_Export()
 
 int OGN_APRS_Register(ufo_t* this_aircraft)
 {
+    if (OurTime == 0)  /* no GNSS time available yet */
+      return aprs_registred;
+
     if (OGN_APRS_Connect())
     {
         struct aprs_login_packet APRS_LOGIN;
@@ -356,14 +367,17 @@ int OGN_APRS_Register(ufo_t* this_aircraft)
         /* RUSSIA>APRS,TCPIP*,qAC,248280:/220757h626.56NI09353.92E&/A=000446 */
 
         struct  aprs_reg_packet APRS_REG;
-        float                   LAT = fabs(this_aircraft->latitude);
-        float                   LON = fabs(this_aircraft->longitude);
+        float   LAT = fabs(this_aircraft->latitude);
+        float   LON = fabs(this_aircraft->longitude);
+        time_t  APRStime = OurTime - seventyYears;
 
         APRS_REG.origin   = ogn_callsign;
         APRS_REG.callsign = String(this_aircraft->addr, HEX);
         APRS_REG.callsign.toUpperCase();
         APRS_REG.alt       = zeroPadding(String(int(this_aircraft->altitude * 3.28084)), 6);
-        APRS_REG.timestamp = zeroPadding(String(hour()), 2) + zeroPadding(String(minute()), 2) + zeroPadding(String(second()), 2) + "h";
+        APRS_REG.timestamp = zeroPadding(String(hour(APRStime)), 2)
+                           + zeroPadding(String(minute(APRStime)), 2)
+                           + zeroPadding(String(second(APRStime)), 2) + "h";
 
         APRS_REG.lat_deg = zeroPadding(String(int(LAT)), 2);
         APRS_REG.lat_min = zeroPadding(String((LAT - int(LAT)) * 60, 3), 5);
@@ -410,11 +424,17 @@ void OGN_APRS_KeepAlive()
 
 void OGN_APRS_Status(ufo_t* this_aircraft)
 {
+    if (OurTime == 0)  /* no GNSS time available yet */
+      return;
+
+    time_t  APRStime = OurTime - seventyYears;
     struct aprs_stat_packet APRS_STAT;
     APRS_STAT.origin   = ogn_callsign;
     APRS_STAT.callsign = String(this_aircraft->addr, HEX);
     APRS_STAT.callsign.toUpperCase();
-    APRS_STAT.timestamp      = zeroPadding(String(hour()), 2) + zeroPadding(String(minute()), 2) + zeroPadding(String(second()), 2) + "h";
+    APRS_STAT.timestamp      = zeroPadding(String(hour(APRStime)), 2)
+                             + zeroPadding(String(minute(APRStime)), 2)
+                             + zeroPadding(String(second(APRStime)), 2) + "h";
 
     /*issue17*/ /*v0.1.0.20-ESP32*/
     APRS_STAT.platform      = "v";

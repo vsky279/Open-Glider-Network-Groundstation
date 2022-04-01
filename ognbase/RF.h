@@ -133,6 +133,8 @@ extern bool                (* protocol_decode)(void *, ufo_t *, ufo_t *);
 
 extern int8_t RF_last_rssi;
 
+extern time_t  OurTime;    /* derived from GNSS */
+
 extern bool time_synched;
 extern uint32_t traffic_packets_recvd;
 extern uint32_t traffic_packets_relayed;

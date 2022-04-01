@@ -106,7 +106,7 @@ uint32_t new_protocol_port;
 bool ognrelay_enable = false;
 bool ognrelay_base = false;
 bool ognrelay_time = false;
-uint32_t ognrelay_key = 0xAEAEAE;
+uint32_t ognrelay_key = 0xACAE;
 
 
 #ifdef TTGO
@@ -155,7 +155,7 @@ void performUpdate(Stream &updateSource, size_t updateSize) {
 
 bool OGN_read_config(void)
 {
-    const size_t        capacity = 2048;
+    const size_t        capacity = 2560;
     DynamicJsonDocument baseConfig(capacity);
     JsonObject          obj;
     File configFile;
@@ -433,7 +433,7 @@ ogn_protocol_1  = RF_PROTOCOL_LEGACY;  /* override - only protocol supported for
 
 bool OGN_save_config(void)
 {
-    const size_t        capacity = 2048;
+    const size_t        capacity = 2560;
     DynamicJsonDocument baseConfig(capacity);
     JsonObject          obj;
 

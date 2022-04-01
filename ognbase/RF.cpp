@@ -201,7 +201,7 @@ extern int status_LED;  // LEDHelper
 bool time_synched = false;
 uint32_t when_synched = 0;
 uint32_t when_sync_sent = 0;
-time_t  Time;
+time_t  OurTime = 0;
 uint32_t ref_time_ms;
 
 uint32_t traffic_packets_recvd = 1;      /* avoid division by 0 */
@@ -238,7 +238,7 @@ bool send_time(void)
     pkt->addr = 0xACACAC;                 /* marks time-sync packets */
     pkt->_unk0 = 0xC;                     /* marks time-relay packets */
     uint32_t* p = ( uint32_t *) TxBuffer; 
-    p[1] = (uint32_t) Time;
+    p[1] = (uint32_t) OurTime;
     p[2] = (uint32_t) (millis() - ref_time_ms);
     if (ognrelay_base) {
       p[3] = 0xACACACAC;
@@ -257,7 +257,7 @@ bool send_time(void)
     }
     /* also send hashed combination of time and relay ID for error check & security */
     /* >>> note: the same secret ognrelay_key needs to be in config of both stations */
-    p[5] = TimeHash((Time ^ p[2]) ^ ognrelay_key);   /* security check */
+    p[5] = TimeHash((OurTime ^ p[2]) ^ ognrelay_key);   /* security check */
     p[1] ^= 0xACACACAC;
     p[2] ^= 0xACACACAC;                   /* rudimentary whitening */
     size_t size = LEGACY_PAYLOAD_SIZE;
@@ -289,10 +289,10 @@ void set_our_clock(uint8_t *raw)
       ++bad_packets_recvd;                   /* this statistic within base */
       return;                                /* failed security check */
     }
-    Time = (time_t) RxTime;
+    OurTime = (time_t) RxTime;
     RxOffset += ADJ_FOR_TRANSMISSION_DELAY;   /* ms */
     if (RxOffset >= 1000) {
-      Time += 1;
+      OurTime += 1;
       RxOffset -= 1000;
     }
     when_synched = millis();
@@ -329,16 +329,16 @@ void RF_SetChannel(int tx=0)
       return;
     }
 
-    /* >>> assume base is getting time data from remote station */
+    /* only when base is getting time data periodically from remote station: */
     if (ognrelay_base && ognrelay_time && time_synched) {
 
-    /* use free-running clock between time sync messages */
-    if (millis() >= ref_time_ms + 1000) {
-      Time += 1;
-      ref_time_ms += 1000;
-    }
+      /* use free-running clock between time sync messages */
+      if (millis() >= ref_time_ms + 1000) {
+        OurTime += 1;
+        ref_time_ms += 1000;
+      }
 
-    } else {    /* use GPS time data */
+    } else {    /* use GNSS time data */
 
     switch (settings->mode)
     {
@@ -346,7 +346,7 @@ void RF_SetChannel(int tx=0)
         default:
 
 #if !defined(TBEAM)
-      /* should use TBEAM with GPS */
+      /* should use TBEAM with GNSS */
       if (RF_ready && rf_chip)
           rf_chip->channel(0);
       return;
@@ -354,6 +354,7 @@ void RF_SetChannel(int tx=0)
 
 // restored SoftRF code here, may want to modify later.
 
+#if defined(TBEAM)
     pps_btime_ms = SoC->get_PPS_TimeMarker();
     unsigned long time_corr_neg;
 
@@ -383,7 +384,8 @@ void RF_SetChannel(int tx=0)
     tm.Minute = gnss.time.minute();
     tm.Second = gnss.time.second();
 
-    Time = makeTime(tm) + (gnss.time.age() - time_corr_neg) / 1000;
+    OurTime = makeTime(tm) + (gnss.time.age() - time_corr_neg) / 1000;
+#endif
 
     break;
   }
@@ -417,10 +419,10 @@ void RF_SetChannel(int tx=0)
     else if (ognrelay_base && !tx)
         OGN = 1;
 
-    uint8_t chan = RF_FreqPlan.getChannel(Time, Slot, OGN);
+    uint8_t chan = RF_FreqPlan.getChannel(OurTime, Slot, OGN);
 
     // HOP Testing - time and channel
-    //Serial.printf("Time: %d, %d\r\n", Time,chan);
+    //Serial.printf("Time: %d, %d\r\n", OurTime,chan);
 #if DEBUG
     Serial.print("GSP Fix: ");
     Serial.println(isValidFix());
@@ -936,13 +938,13 @@ static bool sx12xx_receive()
                         RxBuffer[i] = decrypted[i];
                           }
                         }
+                    free(decrypted);        
                     break;
                case RF_PROTOCOL_LEGACY:
                case RF_PROTOCOL_P3I:
                case RF_PROTOCOL_OGNTP:
                     break;
               }
-            free(decrypted);        
           }
         
         rx_packets_counter++;
