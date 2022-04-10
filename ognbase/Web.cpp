@@ -22,10 +22,12 @@
 #include "SoC.h"
 #include "EEPROM.h"
 #include "RF.h"
+#include "Time.h"
 #include "global.h"
 #include "Battery.h"
 #include "Log.h"
 #include "config.h"
+#include "Traffic.h"
 #include <ArduinoJson.h>
 
 #include <ErriezCRC32.h>
@@ -441,7 +443,7 @@ void Web_loop(void)
     {
         String values;
         if(SoC->Battery_voltage() > 3.2)
-          values  =+SoC->Battery_voltage();
+          values  += SoC->Battery_voltage();
         else
           values += 0.0;
         values += "_";
@@ -450,14 +452,14 @@ void Web_loop(void)
         values += hours();
         values += "_";
 #if defined(TBEAM)
-        values += gnss.satellites.value();
+        values += (ognrelay_base & ognrelay_time) ? remote_sats : gnss.satellites.value();
 #else
-        values += "-";
+        values += remote_sats;
 #endif
         values += "_";
-        values += now();
+        values += rx_packets_counter;  // OurTime; // was: now();
         values += "_";
-        values += largest_range;
+        values += numtracked;  // was: largest_range;
         globalClient->text(values);
     }
 }

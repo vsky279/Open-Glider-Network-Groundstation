@@ -29,7 +29,7 @@
 #define VERTICAL_SEPARATION         300 /* metres */
 #define VERTICAL_VISIBILITY_RANGE   500 /* value from FLARM data port specs */
 
-#define TRAFFIC_VECTOR_UPDATE_INTERVAL 27 /* seconds */
+#define TRAFFIC_VECTOR_UPDATE_INTERVAL 30 /* seconds */
 #define TRAFFIC_UPDATE_INTERVAL_MS (TRAFFIC_VECTOR_UPDATE_INTERVAL * 1000)
 #define isTimeToUpdateTraffic() (millis() - UpdateTrafficTimeMarker > \
                                  TRAFFIC_UPDATE_INTERVAL_MS)
@@ -52,8 +52,9 @@ void Traffic_loop(void);
 
 void ClearExpired(void);
 
-void Traffic_Update(int);
-
 extern ufo_t fo, Container[MAX_TRACKING_OBJECTS], EmptyFO;
+extern uint8_t numtracked;
+
+extern uint32_t UpdateTrafficTimeMarker;
 
 #endif /* TRAFFICHELPER_H */

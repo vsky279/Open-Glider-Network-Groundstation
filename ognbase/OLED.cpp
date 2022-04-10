@@ -22,6 +22,7 @@
 
 #include "OLED.h"
 #include "EEPROM.h"
+#include "Time.h"
 #include "RF.h"
 #include "GNSS.h"
 #include "Battery.h"
@@ -184,7 +185,7 @@ void OLED_info(bool ntp)
             display.drawString(0, 36, buf);
 
             //snprintf(buf, sizeof(buf), "UTC: %02d:%02d", hour(now()), minute(now()));
-            snprintf(buf, sizeof(buf), "UTC: %02d:%02d", hour(OurTime), minute(OurTime));
+            snprintf(buf, sizeof(buf), "UTC: %02d:%02d", ThisAircraft.hour, ThisAircraft.minute);
             display.drawString(0, 45, buf);
 
             if (ntp)
@@ -193,9 +194,12 @@ void OLED_info(bool ntp)
             else
             {
 #if defined(TBEAM)
-                snprintf(buf, sizeof(buf), "GNSS: %d", gnss.satellites.value());
+                if (ognrelay_base & ognrelay_time)
+                  snprintf(buf, sizeof(buf), "R-GNSS: %d", remote_sats);
+                else
+                  snprintf(buf, sizeof(buf), "GNSS: %d", gnss.satellites.value());
 #else
-                snprintf(buf, sizeof(buf), "No GNSS");
+                snprintf(buf, sizeof(buf), "R-GNSS: %d", remote_sats);
 #endif
                 display.drawString(0, 54, buf);
             }
@@ -304,12 +308,12 @@ void OLED_info(bool ntp)
             snprintf(buf, sizeof(buf), "GPS-FIX: %s", isValidFix() ? "true" : "false");
             display.drawString(0, 45, buf);       
 
-            if(ognrelay_base)
+            if (ognrelay_base)
               snprintf(buf, sizeof(buf), "RELAY-Base");
-              // snprintf(buf, sizeof(buf), "RELAY-B: %s", ognrelay_base ? "true" : "false");
-            if(ognrelay_enable)
+            else if (ognrelay_enable)
               snprintf(buf, sizeof(buf), "RELAY-Remote");              
-              // snprintf(buf, sizeof(buf), "RELAY-R: %s", ognrelay_enable ? "true" : "false");              
+            else
+              snprintf(buf, sizeof(buf), "Single-Station");
             display.drawString(0, 54, buf);                                                                           
 
             display.display();

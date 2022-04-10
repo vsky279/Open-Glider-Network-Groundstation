@@ -20,6 +20,7 @@
 #endif /* ARDUINO */
 
 #include "RF.h"
+#include "Time.h"
 #include "Protocol_Legacy.h"
 #include "Protocol_OGNTP.h"
 #include "Protocol_P3I.h"
@@ -40,7 +41,7 @@
 
 byte RxBuffer[MAX_PKT_SIZE] __attribute__((aligned(sizeof(uint32_t))));
 
-unsigned long TxTimeMarker = 0;
+uint32_t TxTimeMarker = 0;
 byte TxBuffer[MAX_PKT_SIZE] __attribute__((aligned(sizeof(uint32_t))));
 
 uint32_t tx_packets_counter = 0;
@@ -188,241 +189,58 @@ byte RF_setup(void)
         return RF_IC_NONE;
 }
 
-extern int status_LED;  // LEDHelper
 
-#define FOR_RX 0
-#define FOR_TX 1
-
-#define TIME_TO_TRYSYNC 2700
-#define TIME_TO_ACKSYNC 15000
-#define TIME_TO_RE_SYNC 80000
-#define ADJ_FOR_TRANSMISSION_DELAY 30
-
-bool time_synched = false;
-uint32_t when_synched = 0;
-uint32_t when_sync_sent = 0;
-time_t  OurTime = 0;
-uint32_t ref_time_ms;
-
-uint32_t traffic_packets_recvd = 1;      /* avoid division by 0 */
-uint32_t traffic_packets_relayed = 1;
-uint16_t time_packets_sent = 1;
-uint16_t ack_packets_recvd = 1;
-uint32_t total_delays = 0;
-uint16_t bad_packets_recvd = 0;
-uint16_t sync_restarts = 0;
-
-/* borrow the hash function used in freqplan.h */
-uint32_t TimeHash(uint32_t Time) {
-     Time  = (Time<<15) + (~Time);
-     Time ^= Time>>12;
-     Time += Time<<2;
-     Time ^= Time>>4;
-     Time *= 2057;
-     return Time ^ (Time>>16);
-}
-
-bool send_time(void)
+void RF_SetChannel(int rxtx=FOR_RX)
 {
-    uint32_t rightnow = millis();
-    if (! ognrelay_time)
-      return false;
-#if defined(TBEAM)
-    if (ognrelay_enable && (! isValidGNSStime()))   /* time data source needs GPS time */
-      return false;
-#else
-    if (ognrelay_enable)   /* relay station must have GPS */
-      return false;
-#endif
-    legacy_packet_t* pkt = (legacy_packet_t *) TxBuffer;
-    pkt->addr = 0xACACAC;                 /* marks time-sync packets */
-    pkt->_unk0 = 0xC;                     /* marks time-relay packets */
-    uint32_t* p = ( uint32_t *) TxBuffer; 
-    p[1] = (uint32_t) OurTime;
-    p[2] = (uint32_t) (millis() - ref_time_ms);
-    if (ognrelay_base) {
-      p[3] = 0xACACACAC;
-      p[4] = 0xACACACAC;
-    } else {
-      /* send stats */
-      pkt->addr_type = (((total_delays/ack_packets_recvd) >> 2) ^ 0x07);  /* 3 bits: avg roundtrip ms / 4 */
-      p[3] = (traffic_packets_recvd ^ 0x01FFFFFF)
-            | ((100*(traffic_packets_recvd-traffic_packets_relayed)/traffic_packets_recvd)<<25);  /* % dropped */
-      p[4] = (time_packets_sent ^ 0x0000FFFF)   /* 16 bits */
-            | (((100*(time_packets_sent-ack_packets_recvd)/time_packets_sent)^0x3E)<<15)  /* 5 bits: %!acked/2 */
-            | ((bad_packets_recvd ^ 0x1F8) << 18)  /* 6 bits: bad packets / 8 */
-            | ((sync_restarts ^ 0x01F) << 27);
-      p[3] ^= 0xACACACAC;
-      p[4] ^= 0xACACACAC;                   /* rudimentary whitening */
-    }
-    /* also send hashed combination of time and relay ID for error check & security */
-    /* >>> note: the same secret ognrelay_key needs to be in config of both stations */
-    p[5] = TimeHash((OurTime ^ p[2]) ^ ognrelay_key);   /* security check */
-    p[1] ^= 0xACACACAC;
-    p[2] ^= 0xACACACAC;                   /* rudimentary whitening */
-    size_t size = LEGACY_PAYLOAD_SIZE;
-    bool wait = false;
-    bool success = RF_Transmit(size, wait);
-    if (success) {
-      ++time_packets_sent;
-      when_sync_sent = rightnow;
-    }
-    return success;
-}
-
-bool time_sync_pkt(uint8_t *raw)
-{
-    if (! ognrelay_time)        return false;
-    legacy_packet_t* pkt = (legacy_packet_t *) raw;
-    if (pkt->_unk0 != 0xC)      return false;    /* marks time-relay packets */
-    if (pkt->addr != 0xACACAC)  return false;    /* marks time-sync packets */
-    return true;
-}
-
-void set_our_clock(uint8_t *raw)
-{
-    if (! ognrelay_base)  return;
-    uint32_t* p = (uint32_t *) raw; 
-    uint32_t RxTime   = p[1] ^ 0xACACACAC;    /* undo rudimentary whitening */
-    uint32_t RxOffset = p[2] ^ 0xACACACAC;
-    if (p[5] != TimeHash((RxTime ^ RxOffset) ^ ognrelay_key)) {
-      ++bad_packets_recvd;                   /* this statistic within base */
-      return;                                /* failed security check */
-    }
-    OurTime = (time_t) RxTime;
-    RxOffset += ADJ_FOR_TRANSMISSION_DELAY;   /* ms */
-    if (RxOffset >= 1000) {
-      OurTime += 1;
-      RxOffset -= 1000;
-    }
-    when_synched = millis();
-    ref_time_ms = when_synched - RxOffset;
-    if (send_time())           /* sent an ack successfully */
-      time_synched = true;
-}
-
-void sync_alive_pkt(uint8_t *raw)
-{
-    uint32_t* p = (uint32_t *) raw; 
-    uint32_t RxTime   = p[1] ^ 0xACACACAC;       /* undo rudimentary whitening */
-    uint32_t RxOffset = p[2] ^ 0xACACACAC;
-    if (p[5] != TimeHash((RxTime ^ RxOffset) ^ ognrelay_key)) {
-      ++bad_packets_recvd;
-      return;                              /* failed security check */
-    }
-    when_synched = millis();
-    time_synched = true;    /* remote station switches mode only after ack received */
-    ++ack_packets_recvd;
-    total_delays += (when_synched - when_sync_sent);
-}
-
-void RF_SetChannel(int tx=0)
-{
-    tmElements_t tm;
-    uint8_t Slot;
-    unsigned long pps_btime_ms;
-
     /* until time is synched use channel 0 to communicate between relay ends  */
+
+    if (OurTime == 0) {
+      if (RF_ready && rf_chip)
+          rf_chip->channel(0);
+      return;
+    }
+
     if ((ognrelay_enable || ognrelay_base) && ognrelay_time && !time_synched) {
       if (RF_ready && rf_chip)
           rf_chip->channel(0);
       return;
     }
 
-    /* only when base is getting time data periodically from remote station: */
-    if (ognrelay_base && ognrelay_time && time_synched) {
+    /* OurTime & ref_time_ms were updated in Time_loop() */
 
-      /* use free-running clock between time sync messages */
-      if (millis() >= ref_time_ms + 1000) {
-        OurTime += 1;
-        ref_time_ms += 1000;
-      }
+    uint8_t Slot;
 
-    } else {    /* use GNSS time data */
-
-    switch (settings->mode)
+    switch (RF_timing)
     {
-        case SOFTRF_MODE_GROUND:
-        default:
-
-#if !defined(TBEAM)
-      /* should use TBEAM with GNSS */
-      if (RF_ready && rf_chip)
-          rf_chip->channel(0);
-      return;
-#endif
-
-// restored SoftRF code here, may want to modify later.
-
-#if defined(TBEAM)
-    pps_btime_ms = SoC->get_PPS_TimeMarker();
-    unsigned long time_corr_neg;
-
-    if (pps_btime_ms) {
-      unsigned long last_Commit_Time = millis() - gnss.time.age();
-      if (pps_btime_ms <= last_Commit_Time) {
-        time_corr_neg = (last_Commit_Time - pps_btime_ms) % 1000;
-      } else {
-        time_corr_neg = 1000 - ((pps_btime_ms - last_Commit_Time) % 1000);
+    case RF_TIMING_2SLOTS_PPS_SYNC:
+      if ((millis() - ts->s0.tmarker) >= ts->interval_mid) {
+        ts->s0.tmarker = ref_time_ms + ts->s0.begin - ts->adj;
+        ts->current = 0;
       }
-      ref_time_ms = pps_btime_ms;
-    } else {
-      unsigned long last_RMC_Commit = millis() - gnss.date.age();
-      time_corr_neg = gnss_chip ? gnss_chip->rmc_ms : 100;
-      ref_time_ms = last_RMC_Commit - time_corr_neg;
+      if ((millis() - ts->s1.tmarker) >= ts->interval_mid) {
+        ts->s1.tmarker = ref_time_ms + ts->s1.begin;
+        ts->current = 1;
+      }
+      Slot = ts->current;
+      break;
+    case RF_TIMING_INTERVAL:
+    default:
+      Slot = 0;
+      break;
     }
-
-    int yr    = gnss.date.year();
-    if( yr > 99)
-        yr    = yr - 1970;
-    else
-        yr    += 30;
-    tm.Year   = yr;
-    tm.Month  = gnss.date.month();
-    tm.Day    = gnss.date.day();
-    tm.Hour   = gnss.time.hour();
-    tm.Minute = gnss.time.minute();
-    tm.Second = gnss.time.second();
-
-    OurTime = makeTime(tm) + (gnss.time.age() - time_corr_neg) / 1000;
-#endif
-
-    break;
-  }
-
-  }  /* end of if not (ognrelay_base && time_synched) */
-
-  switch (RF_timing)
-  {
-  case RF_TIMING_2SLOTS_PPS_SYNC:
-    if ((millis() - ts->s0.tmarker) >= ts->interval_mid) {
-      ts->s0.tmarker = ref_time_ms + ts->s0.begin - ts->adj;
-      ts->current = 0;
-    }
-    if ((millis() - ts->s1.tmarker) >= ts->interval_mid) {
-      ts->s1.tmarker = ref_time_ms + ts->s1.begin;
-      ts->current = 1;
-    }
-    Slot = ts->current;
-    break;
-  case RF_TIMING_INTERVAL:
-  default:
-    Slot = 0;
-    break;
-  }
 
     /* use OGNTP frequencies for relay, otherwise FLARM frequencies */
 
     uint8_t OGN = 0;
-    if (ognrelay_enable && tx)
+    if (ognrelay_enable && rxtx==FOR_TX)
         OGN = 1;
-    else if (ognrelay_base && !tx)
+    else if (ognrelay_base && rxtx==FOR_RX)
         OGN = 1;
 
     uint8_t chan = RF_FreqPlan.getChannel(OurTime, Slot, OGN);
 
-    // HOP Testing - time and channel
-    //Serial.printf("Time: %d, %d\r\n", OurTime,chan);
+    // >>> HOP Testing - time and channel
+    // Serial.printf("GPS hour: %d, Time: %d, Chan: %d\r\n", gnss.time.hour(), OurTime, chan);
 #if DEBUG
     Serial.print("GSP Fix: ");
     Serial.println(isValidFix());
@@ -455,31 +273,6 @@ void RF_loop()
         }
         else
             RF_ready = true;
-    }
-
-    if ((ognrelay_enable || ognrelay_base) && ognrelay_time) {
-
-       if (ognrelay_enable && !time_synched && millis() - when_sync_sent > TIME_TO_TRYSYNC) {
-         when_sync_sent = millis();   /* even if no success, do not try too often */
-         if (isValidGNSStime())
-           (void) send_time();
-         return;
-       }
-
-       /* send fresh time data every 15 seconds */
-       if (ognrelay_enable && time_synched && millis() - when_sync_sent > TIME_TO_ACKSYNC) {
-         if (isValidGNSStime()) {
-           if (send_time())   /* success (which also updated when_sync_sent) */
-              return;
-         }
-         /* base sation will send an ack back, so both stations will update when_synched */
-       }
-
-       /* if haven't heard from other station in a while, start over */
-       if (time_synched && millis() - when_synched > TIME_TO_RE_SYNC) {
-          time_synched = false;
-          ++sync_restarts;
-       }
     }
 }
 
@@ -523,7 +316,7 @@ bool RF_Transmit(size_t size, bool wait)
 /* restored SoftRF code for TxTimeMarker: */
 
       Slot_descr_t *next;
-      unsigned long adj;
+      uint32_t adj;
 
       switch (RF_timing)
       {
@@ -598,7 +391,7 @@ static bool sx12xx_receive_complete  = false;
 bool        sx12xx_receive_active    = false;
 static bool sx12xx_transmit_complete = false;
 
-static uint8_t sx12xx_channel_prev = (uint8_t) -1;
+static uint8_t sx12xx_channel_prev = 255;
 
 #if defined(USE_BASICMAC)
 void os_getDevEui(u1_t* buf)
@@ -894,8 +687,8 @@ static bool sx12xx_receive()
 
     if (!sx12xx_receive_active)
     {
-        msg = "activating receive...";
-        Logger_send_udp(&msg);    
+        // msg = "activating receive...";
+        // Logger_send_udp(&msg);    
         sx12xx_setvars();
         sx12xx_rx(sx12xx_rx_func);
         sx12xx_receive_active = true;
@@ -919,8 +712,8 @@ static bool sx12xx_receive()
 
         RF_last_rssi = LMIC.rssi;
 
-        msg = "Receive complete...";
-        Logger_send_udp(&msg);    
+        // msg = "Receive complete...";
+        // Logger_send_udp(&msg);    
 
         /*decrypt payload for private network*/
         /*if packet is bigger , maybe its encryptedr*/

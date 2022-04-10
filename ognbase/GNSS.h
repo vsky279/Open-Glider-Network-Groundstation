@@ -57,7 +57,9 @@ typedef struct gnss_chip_ops_struct {
                            (gnss.location.age() <= NMEA_EXP_TIME) && \
                            (gnss.altitude.age() <= NMEA_EXP_TIME) && \
                            (gnss.date.age() <= NMEA_EXP_TIME))
-#define isValidGNSStime()  (gnss.date.isValid() && (gnss.date.age() <= NMEA_EXP_TIME))
+#define isValidGNSStime()  (gnss.date.isValid() \
+                            && (gnss.date.age() <= NMEA_EXP_TIME) \
+                            && (gnss.satellites.value() > 2))
 
 byte GNSS_setup(void);
 

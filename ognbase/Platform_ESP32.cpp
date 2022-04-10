@@ -685,6 +685,7 @@ static int ESP32_WiFi_connect_TCP(const char* host, int port)
 static int ESP32_WiFi_disconnect_TCP()
 {
     client.stop();
+    return 0;
 }
 
 static int ESP32_WiFi_transmit_TCP(String message)
@@ -735,6 +736,7 @@ static int ESP32_WiFi_connect_TCP2(const char* host, int port)
 static int ESP32_WiFi_disconnect_TCP2()
 {
     zclient.stop();
+    return 0;
 }
 
 static int ESP32_WiFi_transmit_TCP2(String message)

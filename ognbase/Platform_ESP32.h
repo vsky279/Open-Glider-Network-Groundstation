@@ -237,8 +237,9 @@ struct rst_info
 
 #define EXCLUDE_CC13XX
 
-#define POWER_SAVING_WIFI_TIMEOUT 600000UL /* 10 minutes */
+#define POWER_SAVING_WIFI_TIMEOUT 600 /* 600 seconds = 10 minutes */
 
 #endif /* PLATFORM_ESP32_H */
 
 #endif /* ESP32 */
+

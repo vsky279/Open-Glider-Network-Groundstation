@@ -38,6 +38,7 @@ void WiFi_fini()
 #include "GNSS.h"
 #include "EEPROM.h"
 #include "OLED.h"
+#include "Time.h"
 #include "WiFi.h"
 #include "Traffic.h"
 #include "RF.h"
@@ -82,7 +83,7 @@ unsigned int RFlocalPort = RELAY_SRC_PORT;      // local port to listen for UDP 
 char UDPpacketBuffer[256]; // buffer to hold incoming and outgoing packets
 
 #if defined(POWER_SAVING_WIFI_TIMEOUT)
-static unsigned long WiFi_No_Clients_Time_ms = 0;
+static time_t WiFi_No_Clients_Time = 0;
 #endif
 
 size_t Raw_Receive_UDP(uint8_t* buf)
@@ -120,18 +121,27 @@ void Raw_Transmit_UDP()
 void WiFi_setup()
 {
     char buf[32];
+    static bool configged = false;
 
-    if (WiFi.getMode() != WIFI_STA)
-    {
-        WiFi.mode(WIFI_STA);
-        delay(10);
+//    if (!ognrelay_enable) {
+      if (WiFi.getMode() != WIFI_STA)
+      {
+          WiFi.mode(WIFI_STA);
+          delay(500);
+      }
+//    }
+
+    if (! configged) {
+      configged = OGN_read_config();
+      Serial.println(F("Read configuration."));   /* ensure compiler does not skip the OGN_read_config() */
     }
+//    if (!ognrelay_enable) {
 
-    if (OGN_read_config() && !ognrelay_enable)
-    {
+    if (configged) {
+
         Serial.println(F("WiFi config changed."));
 
-        delay(1500);
+        delay(1000);
 
         wifiMulti = new WiFiMulti();
         OLED_draw_Bitmap(85, 20, 1, true);
@@ -170,14 +180,16 @@ void WiFi_setup()
             snprintf(buf, sizeof(buf), "failed..");
             OLED_write(buf, 0, 44, false);
         }
-    }
-    else
-    {
+
+    } else {  /* not configged */
+
         station_ssid = MY_ACCESSPOINT_SSID;
         station_psk  = MY_ACCESSPOINT_PSK;
         WiFi.begin();
         delay(1000);
     }
+
+//    } /* if (!ognrelay_enable) */
 
     if (WiFi.status() != WL_CONNECTED)
     {
@@ -211,7 +223,7 @@ void WiFi_setup()
     Serial.println(RFlocalPort);
 
 #if defined(POWER_SAVING_WIFI_TIMEOUT)
-    WiFi_No_Clients_Time_ms = millis();
+    WiFi_No_Clients_Time = 0;   /* until our clock is stable */
 #endif
 }
 
@@ -234,9 +246,9 @@ void WiFi_loop()
 #if defined(POWER_SAVING_WIFI_TIMEOUT)
     if ((settings->power_save & POWER_SAVE_WIFI) && WiFi.getMode() == WIFI_AP)
     {
-        if (SoC->WiFi_clients_count() == 0)
-        {
-            if ((millis() - WiFi_No_Clients_Time_ms) > POWER_SAVING_WIFI_TIMEOUT)
+        if (SoC->WiFi_clients_count() == 0) {
+            if (ThisAircraft.timestamp != 0 && WiFi_No_Clients_Time != 0
+                && (ThisAircraft.timestamp > WiFi_No_Clients_Time + POWER_SAVING_WIFI_TIMEOUT))
             {
                 //NMEA_fini();
                 Web_fini();
@@ -244,10 +256,13 @@ void WiFi_loop()
 
                 if (settings->nmea_p)
                     StdOut.println(F("$PSRFS,WIFI_OFF"));
+
+                Serial.print(F("shutting down WiFI..."));
             }
+        } else if (ThisAircraft.timestamp != 0 && ThisAircraft.timestamp != WiFi_No_Clients_Time) {
+            WiFi_No_Clients_Time = ThisAircraft.timestamp;
+Serial.print(F("postponing WiFi timeout..."));
         }
-        else
-            WiFi_No_Clients_Time_ms = millis();
     }
 #endif
 }

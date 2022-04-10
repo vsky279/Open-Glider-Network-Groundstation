@@ -16,32 +16,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <string.h>
-#include "SoC.h"
-
-
 #ifndef PVALIDHELPER_H
 #define PVALIDHELPER_H
 
-bool isPacketValid(uint32_t, double, double, double, time_t);
-
-static int distance(double, double, double, double);
-static double deg2rad(double);
-static double rad2deg(double);
-static void cleanUpPacket(uint8_t);
-static void shiftPackets(void);
-static bool appendPacket(uint32_t, double, double, time_t, uint8_t cnt);
-static int calcMaxDistance(double, time_t);
-
-typedef struct aircrafts
-{
-    time_t timestamp;
-    uint32_t addr;
-    float latitude;
-    float longitude;
-    float altitude;
-    float course;
-    uint8_t pkt_counter;
-} aircrafts_t;
+bool isPacketValid(ufo_t*);
 
 #endif /* PVALIDHELPER_H */

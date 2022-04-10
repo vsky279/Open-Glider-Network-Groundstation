@@ -103,9 +103,11 @@ uint8_t parity(uint32_t);
 
 byte RF_setup(void);
 
-void RF_SetChannel(void);
+void RF_SetChannel(int);
+#define FOR_RX 0
+#define FOR_TX 1
 
-void RF_SetHopChannel(void);
+// void RF_SetHopChannel(void);
 
 void RF_loop(void);
 
@@ -115,7 +117,7 @@ size_t RF_Encode_Fanet_s(ufo_t *);
 
 bool RF_Transmit(size_t, bool);
 
-bool RF_Transmit_raw(size_t, bool);
+// bool RF_Transmit_raw(size_t, bool);
 
 bool RF_Receive(void);
 
@@ -123,8 +125,11 @@ void RF_Shutdown(void);
 
 uint8_t RF_Payload_Size(uint8_t);
 
-extern byte          TxBuffer[MAX_PKT_SIZE], RxBuffer[MAX_PKT_SIZE];
-extern unsigned long TxTimeMarker;
+extern byte TxBuffer[MAX_PKT_SIZE], RxBuffer[MAX_PKT_SIZE];
+extern uint32_t TxTimeMarker;
+
+extern uint32_t tx_packets_counter;
+extern uint32_t rx_packets_counter;
 
 extern const rfchip_ops_t* rf_chip;
 extern bool                RF_SX12XX_RST_is_connected;
@@ -132,16 +137,5 @@ extern size_t              (* protocol_encode)(void *, ufo_t *);
 extern bool                (* protocol_decode)(void *, ufo_t *, ufo_t *);
 
 extern int8_t RF_last_rssi;
-
-extern time_t  OurTime;    /* derived from GNSS */
-
-extern bool time_synched;
-extern uint32_t traffic_packets_recvd;
-extern uint32_t traffic_packets_relayed;
-extern uint16_t bad_packets_recvd;
-
-bool time_sync_pkt(uint8_t*);
-void set_our_clock(uint8_t*);
-void sync_alive_pkt(uint8_t*);
 
 #endif /* RFHELPER_H */

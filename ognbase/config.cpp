@@ -478,9 +478,9 @@ bool OGN_save_config(void)
     obj["coordinates"]["lon"]      = ogn_lon;
     obj["coordinates"]["alt"]      = ogn_alt;
     obj["coordinates"]["geoidsep"] = ogn_geoid_separation;
-    //aps config
-    obj["aprs"]["callsign"] = ogn_callsign;
 
+    //aprs config
+    obj["aprs"]["callsign"] = ogn_callsign;
     obj["aprs"]["server"] = ogn_server;
     obj["aprs"]["port"]   = ogn_port;
 
@@ -499,8 +499,10 @@ bool OGN_save_config(void)
     //wifi config
     obj["wifi"]["ssid"][0] =  ogn_ssid[0];
     obj["wifi"]["pass"][0] =  ogn_wpass[0];
+
     //fanet config
-    obj["fanetservice"]["enable"] = fanet_enable;
+    obj["fanetservice"]["enable"] = (int) fanet_enable;
+
     //zabbix config
     obj["zabbix"]["enable"] = zabbix_enable;
     obj["zabbix"]["server"] = zabbix_server;
@@ -508,10 +510,10 @@ bool OGN_save_config(void)
     obj["zabbix"]["key"]    = zabbix_key;
 
     // relay config
-    obj["ognrelay"]["enable"]      = ognrelay_enable;
-    obj["ognrelay"]["basestation"] = ognrelay_base;
-    obj["ognrelay"]["relaytime"]   = ognrelay_time;
-    obj["ognrelay"]["relaykey"]    = ognrelay_key;
+    obj["ognrelay"]["enable"]      = (int) ognrelay_enable;
+    obj["ognrelay"]["basestation"] = (int) ognrelay_base;
+    obj["ognrelay"]["relaytime"]   = (int) ognrelay_time;
+    obj["ognrelay"]["relaykey"]    = (int) ognrelay_key;
 
     if (serializeJson(obj, configFile) == 0)
         Serial.println(F("Failed to write to file"));

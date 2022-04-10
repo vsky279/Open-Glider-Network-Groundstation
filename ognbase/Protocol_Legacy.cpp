@@ -131,21 +131,22 @@ bool legacy_decode(void* legacy_pkt, ufo_t* this_aircraft, ufo_t* fop)
 
     fop->addr = pkt->addr;     /* first 32 bits are not encrypted */
 
-    if (ognrelay_enable) {     /* do not decode further */
-        return true;          /* will be relayed in Traffic.cpp */
+    if (ognrelay_enable) {       /* do not decode further */
+        return true;            /* will be relayed in Traffic.cpp */
     }
 
     if (ognrelay_base) {
       if (pkt->_unk0 != 0xE)   /* marks relayed packets */
         return false;         /* ignore normal packets */
-        /* fall through and decode relayed packets */
+        /* otherwise fall through and decode relayed packets */
     }
+Serial.println("decoding traffic packet...");
 
 
     float    ref_lat   = this_aircraft->latitude;
     float    ref_lon   = this_aircraft->longitude;
     float    geo_separ = this_aircraft->geoid_separation;
-    uint32_t timestamp = (uint32_t) OurTime;  /* was this_aircraft->timestamp; */
+    uint32_t timestamp = (uint32_t) this_aircraft->timestamp;
 
 
     uint32_t key[4];
@@ -155,16 +156,20 @@ bool legacy_decode(void* legacy_pkt, ufo_t* this_aircraft, ufo_t* fop)
     make_key(key, timestamp, (pkt->addr << 8) & 0xffffff);
     btea((uint32_t *) pkt + 1, -5, key);
     
-
+    if (ognrelay_base && pkt->_unk0 == 0xE)                /* a relayed packet */ 
+        pkt->_unk0 = 0;                                    /* to restore parity */
     for (ndx = 0; ndx < sizeof (legacy_packet_t); ndx++)
         pkt_parity += parity(*(((unsigned char *) pkt) + ndx));
     if (pkt_parity % 2)
     {
-        msg = "bad parity of decoded legacy packet";
-        Logger_send_udp(&msg);
-        msg = "decoding failed";
-        Logger_send_udp(&msg);
+if (ognrelay_base)
+Serial.println("bad parity of decoded relayed packet");
+      msg = "bad parity of decoded legacy packet";
+      if (! ognrelay_base) {
+        // msg = "decoding failed";
+        // Logger_send_udp(&msg);
         return false;
+      }
     }
 
     int32_t round_lat = (int32_t) (ref_lat * 1e7) >> 7;
@@ -179,8 +184,8 @@ bool legacy_decode(void* legacy_pkt, ufo_t* this_aircraft, ufo_t* fop)
         lon -= 0x100000;
     lon = ((lon + round_lon) << 7) /* + 0x40 */;
 
-    int32_t ns     = (pkt->ns[0] + pkt->ns[1] + pkt->ns[2] + pkt->ns[3]) / 4;
-    int32_t ew     = (pkt->ew[0] + pkt->ew[1] + pkt->ew[2] + pkt->ew[3]) / 4;
+    int32_t ns = pkt->ns[0];   // (pkt->ns[0] + pkt->ns[1] + pkt->ns[2] + pkt->ns[3]) / 4;
+    int32_t ew = pkt->ew[0];   // (pkt->ew[0] + pkt->ew[1] + pkt->ew[2] + pkt->ew[3]) / 4;
     float   speed4 = sqrtf(ew * ew + ns * ns) * (1 << pkt->smult);
 
     float direction = 0;
@@ -209,14 +214,14 @@ bool legacy_decode(void* legacy_pkt, ufo_t* this_aircraft, ufo_t* fop)
     fop->aircraft_type = pkt->aircraft_type;
     fop->stealth       = pkt->stealth;
     fop->no_track      = pkt->no_track;
-    fop->ns[0]         = pkt->ns[0];
-    fop->ns[1]         = pkt->ns[1];
-    fop->ns[2]         = pkt->ns[2];
-    fop->ns[3]         = pkt->ns[3];
-    fop->ew[0]         = pkt->ew[0];
-    fop->ew[1]         = pkt->ew[1];
-    fop->ew[2]         = pkt->ew[2];
-    fop->ew[3]         = pkt->ew[3];
+//    fop->ns[0]         = pkt->ns[0];
+//    fop->ns[1]         = pkt->ns[1];
+//    fop->ns[2]         = pkt->ns[2];
+//    fop->ns[3]         = pkt->ns[3];
+//    fop->ew[0]         = pkt->ew[0];
+//    fop->ew[1]         = pkt->ew[1];
+//    fop->ew[2]         = pkt->ew[2];
+//    fop->ew[3]         = pkt->ew[3];
 
     return true;
 }

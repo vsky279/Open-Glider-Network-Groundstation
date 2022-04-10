@@ -1,14 +1,14 @@
 {
    "wifi":{
       "ssid":[
-         "xxxxxxx",
+         "The_Woods",
          "xxxxxxx",
          "xxxxxxx",
          "xxxxxxx",
          "xxxxxxx"
       ],
       "pass":[
-         "xxxxxxx",
+         "Gryphon2020",
          "xxxxxxx",
          "xxxxxxx",
          "xxxxxxx",
@@ -17,10 +17,10 @@
       "timeout":12000
    },
    "coordinates":{
-      "lat":46.90929623063438,
-      "lon":6.8723000923436715,
-      "alt":550,
-      "geoidsep":55
+      "lat":43.78917,
+      "lon":-72.35194,
+      "alt":582,
+      "geoidsep":-28
    },
    "zabbix":{
       "enable":false,
@@ -32,33 +32,31 @@
       "enable":false
    },
    "remotelogs":{
-      "enable":true,
+      "enable":false,
       "server":"10.0.1.200",
       "port":12014
    },      
    "aprs":{
-      "callsign":"Neuenburg",
+      "callsign":"GileMtn",
       "server":"aprs.glidernet.org",
       "port":14580,
-      "band":1,
-      "protocol_1":3,
+      "band":2,
+      "protocol_1":0,
       "protocol_2":1,
-      "debug":true,
+      "debug":false,
       "debugport":12000,
       "itrackbit":false,
       "istealthbit":false,
-      "range":100
-   },
-   "sleepmode":{
-      "enable":false,
+      "sleepmode":false,
       "rxidle":3600,
-      "wakeuptimer":3600,   
+      "wakeuptimer":3600,
+      "range":200
    },
    "fanetservice":{
-      "enable":1
+      "enable":0
    },
    "newprot":{
-      "enable":1,
+      "enable":0,
       "server":"10.0.1.200",
       "port":12012
    },      
@@ -68,8 +66,11 @@
    "oled":{
       "disable":0
    },
-   "testmode":{
-   		"enable":1
+   "ognrelay":{
+   		"enable":0,
+   		"basestation":0,
+   		"relaytime":0,
+   		"relaykey":12345
    },   
    "beers":{
       "show":0

@@ -605,7 +605,6 @@ void GNSS_loop()
     PickGNSSFix();
 
     GNSSTimeSync();
-
 }
 
 void GNSS_fini()
@@ -635,23 +634,29 @@ void GNSSTimeSync()
         setTime(gnss.time.hour(), gnss.time.minute(), gnss.time.second(), gnss.date.day(), gnss.date.month(), gnss.date.year());
         GNSSTimeSyncMarker = millis();
     }
+    
+// only set system time once.
+// do not want to change the millis() clock.
+// instead, we keep "OurTime" and "ref_time_ms" in sync with UTC & PPS.
+
+#if 0
     else
     {
-        if ((millis() - GNSSTimeSyncMarker > 60000) /* 1m */ && gnss.time.isValid() &&
+        if ((millis() - GNSSTimeSyncMarker > 60 000) /* 1m */ && gnss.time.isValid() &&
             gnss.time.isUpdated() && (gnss.time.age() <= 1000) /* 1s */)
         {
-  #if 1
+            setTime(gnss.time.hour(), gnss.time.minute(), gnss.time.second(), gnss.date.day(), gnss.date.month(), gnss.date.year());
+            GNSSTimeSyncMarker = millis();
+
             Serial.print("Valid: ");
             Serial.println(gnss.time.isValid());
             Serial.print("isUpdated: ");
             Serial.println(gnss.time.isUpdated());
             Serial.print("age: ");
             Serial.println(gnss.time.age());
-  #endif
-            setTime(gnss.time.hour(), gnss.time.minute(), gnss.time.second(), gnss.date.day(), gnss.date.month(), gnss.date.year());
-            GNSSTimeSyncMarker = millis();
         }
     }
+#endif
 }
 
 void PickGNSSFix()

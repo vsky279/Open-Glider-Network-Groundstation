@@ -33,10 +33,10 @@
 
 #include "version.h"
 
-#define SOFTRF_FIRMWARE_VERSION "MB04"   // _VERSION
+#define SOFTRF_FIRMWARE_VERSION "MB04e"   // _VERSION
 #define SOFTRF_IDENT            "OGNB-"
 
-#define ENTRY_EXPIRATION_TIME   24 /* seconds */
+#define ENTRY_EXPIRATION_TIME   20 /* seconds */
 #define LED_EXPIRATION_TIME     5  /* seconds */
 #define EXPORT_EXPIRATION_TIME  10  /* seconds */
 
@@ -114,7 +114,9 @@
 typedef struct UFO
 {
     uint8_t raw[34];
+
     time_t timestamp;
+    uint8_t hour, minute, second;
 
     uint8_t protocol;
 
@@ -127,6 +129,13 @@ typedef struct UFO
     float course;         /* CoG */
     float speed;          /* ground speed in knots */
     uint8_t aircraft_type;
+
+    /* previous data for comparison */
+    time_t prevtime;
+    float prevlat;
+    float prevlon;
+
+    bool waiting;   /* waiting to be relayed, or to be sent to OGN */
 
     float vs;     /* feet per minute */
 
