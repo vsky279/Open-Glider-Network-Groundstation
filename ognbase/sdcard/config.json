@@ -1,14 +1,14 @@
 {
    "wifi":{
       "ssid":[
-         "The_Woods",
+         "mySSID",
          "xxxxxxx",
          "xxxxxxx",
          "xxxxxxx",
          "xxxxxxx"
       ],
       "pass":[
-         "Gryphon2020",
+         "myPSK",
          "xxxxxxx",
          "xxxxxxx",
          "xxxxxxx",
@@ -70,6 +70,7 @@
    		"enable":0,
    		"basestation":0,
    		"relaytime":0,
+   		"gnsstime":0,
    		"relaykey":12345
    },   
    "beers":{

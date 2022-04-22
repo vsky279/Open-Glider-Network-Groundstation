@@ -192,21 +192,9 @@ byte RF_setup(void)
 
 void RF_SetChannel(int rxtx=FOR_RX)
 {
-    /* until time is synched use channel 0 to communicate between relay ends  */
-
-    if (OurTime == 0) {
-      if (RF_ready && rf_chip)
-          rf_chip->channel(0);
-      return;
-    }
-
-    if ((ognrelay_enable || ognrelay_base) && ognrelay_time && !time_synched) {
-      if (RF_ready && rf_chip)
-          rf_chip->channel(0);
-      return;
-    }
-
     /* OurTime & ref_time_ms were updated in Time_loop() */
+
+    /* set slot, even if only 1 or 2 channels, for tx interval */
 
     uint8_t Slot;
 
@@ -229,13 +217,42 @@ void RF_SetChannel(int rxtx=FOR_RX)
       break;
     }
 
-    /* use OGNTP frequencies for relay, otherwise FLARM frequencies */
+    /* if only one channel is allowed... */
+
+    if (ogn_band > RF_BAND_AU) {
+      if (RF_ready && rf_chip)
+          rf_chip->channel(0);
+      return;
+    }
+
+    /* use OGNTP channel for relay, otherwise FLARM channel */
 
     uint8_t OGN = 0;
     if (ognrelay_enable && rxtx==FOR_TX)
         OGN = 1;
     else if (ognrelay_base && rxtx==FOR_RX)
         OGN = 1;
+
+    /* only 2 channels in Europe, listening to only one of them is good enough */
+    /* thus if no GNSS time, use channel 0 for receiving FLARM, channel 1 for relay */
+
+    if (ogn_band == RF_BAND_EU &&
+           ((!ognrelay_enable && !ognrelay_time && !ogn_gnsstime)  /* base using NTP */
+             || (ognrelay_enable && !ogn_gnsstime))) {             /* remote using arbitrary time */
+      if (RF_ready && rf_chip)
+          rf_chip->channel(OGN);
+      return;
+    }
+
+    /* in US and AU need frequency hopping and thus need sub-second GNSS time */
+
+    /* until time is synched use channel 0 to communicate between relay ends  */
+
+    if (OurTime == 0 || ((ognrelay_enable || ognrelay_base) && ognrelay_time && !time_synched)) {
+      if (RF_ready && rf_chip)
+          rf_chip->channel(0);
+      return;
+    }
 
     uint8_t chan = RF_FreqPlan.getChannel(OurTime, Slot, OGN);
 

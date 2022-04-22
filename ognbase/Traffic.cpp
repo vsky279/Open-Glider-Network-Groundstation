@@ -74,40 +74,10 @@ static int8_t Alarm_Distance(ufo_t* this_aircraft, ufo_t* fop)
  */
 static int8_t Alarm_Vector(ufo_t* this_aircraft, ufo_t* fop)
 {
-    int8_t rval     = ALARM_LEVEL_NONE;
-    int    alt_diff = (int) (fop->altitude - this_aircraft->altitude);
+    int8_t rval = ALARM_LEVEL_NONE;
 
-    if (abs(alt_diff) < VERTICAL_SEPARATION) /* no warnings if too high or too low */
+    /* TBD */
 
-    /* Subtract 2D velocity vector of traffic from 2D velocity vector of this aircraft */
-    {
-        float V_rel_x = this_aircraft->speed * cosf(radians(90.0 - this_aircraft->course)) -
-                        fop->speed * cosf(radians(90.0 - fop->course));
-        float V_rel_y = this_aircraft->speed * sinf(radians(90.0 - this_aircraft->course)) -
-                        fop->speed * sinf(radians(90.0 - fop->course));
-
-        float V_rel_magnitude = sqrtf(V_rel_x * V_rel_x + V_rel_y * V_rel_y) * _GPS_MPS_PER_KNOT;
-        float V_rel_direction = atan2f(V_rel_y, V_rel_x) * 180.0 / PI; /* -180 ... 180 */
-
-        /* convert from math angle into course relative to north */
-        V_rel_direction = (V_rel_direction <= 90.0 ? 90.0 - V_rel_direction :
-                           450.0 - V_rel_direction);
-
-        /* +- 10 degrees tolerance for collision course */
-        if (V_rel_magnitude > 0.1 && fabs(V_rel_direction - fop->bearing) < 10.0)
-        {
-            /* time is seconds prior to impact */
-            float t = fop->distance / V_rel_magnitude;
-
-            /* time limit values are compliant with FLARM data port specs */
-            if (t < 9.0)
-                rval = ALARM_LEVEL_URGENT;
-            else if (t < 13.0)
-                rval = ALARM_LEVEL_IMPORTANT;
-            else if (t < 19.0)
-                rval = ALARM_LEVEL_LOW;
-        }
-    }
     return rval;
 }
 
@@ -125,11 +95,9 @@ static int8_t Alarm_Legacy(ufo_t* this_aircraft, ufo_t* fop)
 
 uint8_t numtracked = 0;
 
-uint8_t relay_interval(void)
-{
-    if (numtracked < 2*MIN_RELAY_INTERVAL)  return MIN_RELAY_INTERVAL;
-    return ((numtracked + 1) / 2);
-}
+/* the following two CAN be different although for now are the same: */
+#define relay_interval()   ((time_t)(numtracked <= 4 ? 4 : numtracked))
+#define report_interval()  ((time_t)(numtracked <= 4 ? 4 : numtracked))
 
 void calc_distance(ufo_t* fop)
 {
@@ -149,7 +117,8 @@ void ParseData()
     size_t rx_size = RF_Payload_Size(ogn_protocol_1);
     if (rx_size > sizeof(fo.raw)) rx_size = sizeof(fo.raw);
 
-    /* memset(fo.raw, 0, sizeof(fo.raw)); */
+    // fo = EmptyFO;   /* all zeros */
+    // memset(fo.raw, 0, sizeof(fo.raw));
     memcpy(fo.raw, RxBuffer, rx_size);
 
     if (ognrelay_time) {
@@ -164,15 +133,15 @@ void ParseData()
 
         return;
       }
-
-      /* until time-synched any received packets other than time-sync are ignored */
-      if (!time_synched)
-        return;
     }
+
+    /* until time-synched any received packets other than time-sync are ignored */
+    if (OurTime == 0 || ! time_synched)
+        return;
 
     /* otherwise fall through to process normal traffic packets */
 
-    ++traffic_packets_recvd;
+//    ++traffic_packets_recvd;
 
     /*
 
@@ -199,18 +168,23 @@ void ParseData()
         time_t timenow;
         ufo_t* cip;
 
+        ++traffic_packets_recvd;
+
+        /* in remote relay station decode() decoded only the addr */
+
 //Serial.println("parsing decoded packet...");
 
         /* timenow = now(); */
-        timenow = OurTime;              /* based on local or relayed GNSS time */
+        timenow = OurTime;
 
+        fo.timestamp = timenow;
         if (! ognrelay_enable) {
-            fo.timestamp = timenow;
             fo.hour = ThisAircraft.hour;
             fo.minute = ThisAircraft.minute;
             fo.second = ThisAircraft.second;
             calc_distance(&fo);
         }
+        fo.waiting = true;   /* unless changed below */
 
         fo.rssi = RF_last_rssi;
 
@@ -220,15 +194,17 @@ void ParseData()
         for (i=0; i < MAX_TRACKING_OBJECTS; i++) {
             cip = &Container[i];
             if (cip->addr == fo.addr) {               /* this fo already tracked */
-              if (ognrelay_enable) {
-                  fo.timestamp = cip->timestamp;      /* last time it was relayed */
-                  if (timenow >= fo.timestamp + (time_t) relay_interval())
-                      fo.waiting = true;              /* time to relay this one again */
-              } else {   /* base station */
+              if (ognrelay_enable) {  /* remote station */
+                  fo.timereported = cip->timereported;   /* last time it was relayed */
+                  if (timenow < fo.timereported + relay_interval())
+                      fo.waiting = false;            /* not yet time to relay this one again */
+              } else {  /* base station */
                   fo.prevtime = cip->timestamp;      /* keep some data from previous packet...   */
                   fo.prevlat = cip->latitude;        /* ... in order to check data in PVALID.cpp */
                   fo.prevlon = cip->longitude;
-                  fo.waiting = true;                 /* waiting to be reported to OGN */
+                  fo.timereported = cip->timereported;  /* last time it was reported to OGN */
+                  if (timenow < fo.timereported + report_interval())
+                      fo.waiting = false;
 //Serial.printf("[%d] received again\r\n", i);
               }
               *cip = fo;                      /* copy the whole struct, including new timestamp */
@@ -236,11 +212,13 @@ void ParseData()
             }
         }
 
-        /* new aircraft, not in the Container[] array yet */
+        /* new aircraft, not currently in the Container[] array */
 
-        fo.waiting = true;
+        fo.prevtime = 0;                                   /* no previous data */
         if (ognrelay_enable)
-            fo.timestamp = timenow - relay_interval();      /* to be relayed */
+          fo.timereported = timenow - relay_interval();    /* ready to be relayed */
+        else
+          fo.timereported = timenow - report_interval();   /* ready to be reported */
 
         /* put it in an empty slot if available */
 
@@ -261,25 +239,28 @@ void ParseData()
         for (i=0; i < MAX_TRACKING_OBJECTS; i++) {
             cip = &Container[i];
             age = (int) (timenow - cip->timestamp);
-            if (! cip->waiting)                /* treat waiting as younger */
+            if (! cip->waiting)                /* treat non-waiting as older */
                 age += ENTRY_EXPIRATION_TIME;
-            if (cip->stealth)
-                age += ENTRY_EXPIRATION_TIME;
-            if (cip->no_track)
-                age += 2 * ENTRY_EXPIRATION_TIME;
+            if (! ognrelay_enable) {           /* remote does not decode these fields */
+                if (cip->stealth)
+                    age += ENTRY_EXPIRATION_TIME;     /* treat stealth as older yet */
+                if (cip->no_track)
+                    age += 2 * ENTRY_EXPIRATION_TIME; /* treat no_track as very old */
+            }
             if (age > oldest_age) {
                 oldest_age = age;
                 oldest = i;
             }
         }
 
-        if (oldest_age < ENTRY_EXPIRATION_TIME && fo.stealth)
-            return;   /* drop it */
+        if (! ognrelay_enable) {           /* remote does not decode these fields */
+            if (oldest_age < ENTRY_EXPIRATION_TIME && fo.stealth)
+                return;   /* drop the new traffic instead of replacing old traffic */
+            if (oldest_age < 2*ENTRY_EXPIRATION_TIME && fo.no_track)
+                return;   /* drop it */
+        }
 
-        if (oldest_age < 2*ENTRY_EXPIRATION_TIME && fo.no_track)
-            return;   /* drop it */
-
-        Container[oldest] = fo;        /* overwrites */
+        Container[oldest] = fo;        /* overwrites older data */
 //if (ognrelay_base)
 //Serial.printf("[%d] overwritten\r\n", oldest);
     }
@@ -308,21 +289,14 @@ void Traffic_setup()
 /* >>> this assumes "Legacy" protocol, should be encapsulated into Legacy.cpp */
 void Traffic_Relay(ufo_t* fop)
 {
-    legacy_packet_t* pkt = (legacy_packet_t *) fop->raw;
-
-    if (pkt->_unk0 > 0) {  /* received relayed, or time, or special FLARM packet - do not relay */
-      --traffic_packets_recvd;
-      if (pkt->_unk0 >= 0xC)  ++bad_packets_recvd;  /* don't count special FLARM packets as "bad" */
-      return;
-    }
-
     if (settings->no_track || settings->stealth || ogn_itrackbit || ogn_istealthbit) {
         fop->waiting = false;
-        fop->timestamp = OurTime;
+        fop->timereported = OurTime;
         ++traffic_packets_relayed;      /* pretend relaying - for testing */
         return;
     }
 
+    legacy_packet_t* pkt = (legacy_packet_t *) fop->raw;
     pkt->_unk0 = 0xE;      /* marks relayed packets */
 
     memcpy(TxBuffer, fop->raw, LEGACY_PAYLOAD_SIZE);
@@ -330,27 +304,27 @@ void Traffic_Relay(ufo_t* fop)
     if (RF_Transmit(LEGACY_PAYLOAD_SIZE, true)) {   /* success transmitting */
         fop->waiting = false;
         /* set time stamp for next update of same aircraft */
-        fop->timestamp = OurTime;
+        fop->timereported = OurTime;
         ++traffic_packets_relayed;
     }
 }
 
 void Traffic_loop()
 {
-    int i, waiting, oldest_waiting;
-    time_t timenow, age, oldest_age;
+    int i, waiting, oldest_waiting, age, oldest_age;
+    time_t timenow;
     ufo_t* cip;
 
     timenow = OurTime;              /* based on GNSS time */
     numtracked = 0;
     waiting = 0;
     oldest_waiting = 0;
-    oldest_age = 0;
+    oldest_age = -1;
     for (i=0; i < MAX_TRACKING_OBJECTS; i++) {
         cip = &Container[i];
         if (cip->addr) {
             ++numtracked;                     /* count tracked objects */
-            age = timenow - cip->timestamp;
+            age = (int) (timenow - cip->timestamp);
             if (cip->waiting) {
                 ++waiting;
                 if (age > oldest_age) {
@@ -363,15 +337,14 @@ void Traffic_loop()
         }
     }
     if (ognrelay_enable) {
-      if (oldest_age > 0)
+      if (oldest_age >= 0)
         Traffic_Relay(&Container[oldest_waiting]);
-    } else {
-        static uint32_t traffic_msg_time = 0;
-        if (millis() > traffic_msg_time + 2000) {
-            Serial.printf("%d recvd, %d trkd, %d waiting, oldest: %d\r\n",
-               traffic_packets_recvd, numtracked, waiting, oldest_age);
-            traffic_msg_time = millis();
-        }
+    }
+    static uint32_t traffic_msg_time = 0;
+    if (millis() > traffic_msg_time + 2000) {
+        Serial.printf("%d recvd, %d trkd, %d waiting, oldest: %d\r\n",
+              traffic_packets_recvd, numtracked, waiting, oldest_age);
+        traffic_msg_time = millis();
     }
 }
 
@@ -382,7 +355,7 @@ void ClearExpired()
     for (int i=0; i < MAX_TRACKING_OBJECTS; i++) {
         if (Container[i].addr) {
           if ((timenow - Container[i].timestamp) > ENTRY_EXPIRATION_TIME)
-              Container[i] = EmptyFO;
+              Container[i].addr = 0;
           else
               ++numtracked;
         }

@@ -16,7 +16,7 @@ bool isPacketValid(ufo_t* fop) {
     static float coslat = 0;
     if (coslat == 0)  coslat = cosf(ThisAircraft.latitude * 0.0174533);
 
-    if (fop->prevtime == 0)                             /* no previouse packet to compare to */
+    if (fop->prevtime == 0)                             /* no previous packet to compare to */
       return true;
 
     float dx, dy, speed, distsq, interval, calcdist;

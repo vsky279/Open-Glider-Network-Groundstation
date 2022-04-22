@@ -123,19 +123,16 @@ void WiFi_setup()
     char buf[32];
     static bool configged = false;
 
-//    if (!ognrelay_enable) {
       if (WiFi.getMode() != WIFI_STA)
       {
           WiFi.mode(WIFI_STA);
           delay(500);
       }
-//    }
 
     if (! configged) {
       configged = OGN_read_config();
       Serial.println(F("Read configuration."));   /* ensure compiler does not skip the OGN_read_config() */
     }
-//    if (!ognrelay_enable) {
 
     if (configged) {
 
@@ -188,8 +185,6 @@ void WiFi_setup()
         WiFi.begin();
         delay(1000);
     }
-
-//    } /* if (!ognrelay_enable) */
 
     if (WiFi.status() != WL_CONNECTED)
     {
@@ -247,21 +242,23 @@ void WiFi_loop()
     if ((settings->power_save & POWER_SAVE_WIFI) && WiFi.getMode() == WIFI_AP)
     {
         if (SoC->WiFi_clients_count() == 0) {
-            if (ThisAircraft.timestamp != 0 && WiFi_No_Clients_Time != 0
-                && (ThisAircraft.timestamp > WiFi_No_Clients_Time + POWER_SAVING_WIFI_TIMEOUT))
-            {
-                //NMEA_fini();
-                Web_fini();
-                WiFi_fini();
 
-                if (settings->nmea_p)
-                    StdOut.println(F("$PSRFS,WIFI_OFF"));
+          if (ThisAircraft.timestamp != 0 && WiFi_No_Clients_Time != 0
+            && (ThisAircraft.timestamp > WiFi_No_Clients_Time + POWER_SAVING_WIFI_TIMEOUT)) {
 
-                Serial.print(F("shutting down WiFI..."));
-            }
-        } else if (ThisAircraft.timestamp != 0 && ThisAircraft.timestamp != WiFi_No_Clients_Time) {
+              //NMEA_fini();
+              Web_fini();
+              WiFi_fini();
+              if (settings->nmea_p)
+                  StdOut.println(F("$PSRFS,WIFI_OFF"));
+              Serial.print(F("shutting down WiFI..."));
+          }
+
+        } else if (ThisAircraft.timestamp != 0 && ThisAircraft.timestamp > WiFi_No_Clients_Time) {
+
             WiFi_No_Clients_Time = ThisAircraft.timestamp;
-Serial.print(F("postponing WiFi timeout..."));
+            Serial.print(F("postponing WiFi timeout..."));
+
         }
     }
 #endif

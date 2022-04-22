@@ -168,7 +168,10 @@ void OLED_info(bool ntp)
             snprintf(buf, sizeof(buf), "ID: %06X", ThisAircraft.addr);
             display.drawString(0, 0, buf);
 
-            snprintf(buf, sizeof(buf), "SSID: %s", WiFi.SSID().c_str());
+            if (WiFi.getMode() == WIFI_AP)
+                snprintf(buf, sizeof(buf), "SSID: %s", WiFi.SSID().c_str());
+            else
+                snprintf(buf, sizeof(buf), "IP: %s", WiFi.localIP().toString().c_str());
             display.drawString(0, 9, buf);
 
             if(ognrelay_enable)
@@ -185,7 +188,9 @@ void OLED_info(bool ntp)
             display.drawString(0, 36, buf);
 
             //snprintf(buf, sizeof(buf), "UTC: %02d:%02d", hour(now()), minute(now()));
-            snprintf(buf, sizeof(buf), "UTC: %02d:%02d", ThisAircraft.hour, ThisAircraft.minute);
+            snprintf(buf, sizeof(buf),
+                ((ognrelay_enable && ! ogn_gnsstime)? "Time %02d:%02d:%02d" : "UTC: %02d:%02d:%02d"),
+                ThisAircraft.hour, ThisAircraft.minute, ThisAircraft.second);
             display.drawString(0, 45, buf);
 
             if (ntp)

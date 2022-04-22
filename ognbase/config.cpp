@@ -23,11 +23,11 @@
 #include "OLED.h"
 
 #include <protocol.h>
+#include <freqplan.h>
 
 //START SD
 #include <SD.h>
 #include <FS.h>
-// #include "OLED.h"
 
 // SD card
 #define SD_SCK  14
@@ -50,7 +50,7 @@ int    ssid_index = 0;
 String   ogn_callsign    = "callsign";
 String   ogn_server      = "aprs.glidernet.org";
 uint16_t ogn_port        = 14580;
-uint8_t  ogn_band        = 1;
+uint8_t  ogn_band        = RF_BAND_EU;
 uint8_t  ogn_protocol_1  = RF_PROTOCOL_LEGACY;
 uint8_t  ogn_protocol_2  = RF_PROTOCOL_OGNTP;
 bool     ogn_debug       = false;
@@ -103,10 +103,11 @@ String new_protocol_server;
 uint32_t new_protocol_port;
 
 //relay
-bool ognrelay_enable = false;
-bool ognrelay_base = false;
-bool ognrelay_time = false;
-uint32_t ognrelay_key = 0xACAE;
+bool ognrelay_enable = false;    /* remote station */
+bool ognrelay_base = false;      /* base station */
+bool ognrelay_time = false;      /* relay time from remote to base */
+bool ogn_gnsstime = false;       /* use GNSS time rather than NTP */
+uint32_t ognrelay_key = 12345;    /* must be same in both stations for relay_time */
 
 
 #ifdef TTGO
@@ -178,8 +179,8 @@ bool OGN_read_config(void)
 
     char buf[32];
 
-    SPI.begin(SD_SCK, SD_MISO, SD_MOSI); // TTGO V2
-    if(!SD.begin(SD_CS)){
+    SPI.begin(SD_SCK, SD_MISO, SD_MOSI); // TTGO V2   >>> this fails on my hardware, have pins changed?
+    if(!SD.begin(SD_CS)){                          // >>> 13 - examples on web have no argument passed here?
       Serial.println("Card Mount Failed");
     }
     else{
@@ -304,7 +305,9 @@ bool OGN_read_config(void)
             ogn_port     = obj["aprs"]["port"];
 
             ogn_band        = obj["aprs"]["band"];
-            ogn_protocol_1  = obj["aprs"]["protocol_1"];
+            if (ogn_band < 1 || ogn_band > 10)    /* override invalid & AUTO with EU */
+                ogn_band = 1;
+//          ogn_protocol_1  = obj["aprs"]["protocol_1"];
 ogn_protocol_1  = RF_PROTOCOL_LEGACY;  /* override - only protocol supported for now */
             ogn_protocol_2  = obj["aprs"]["protocol_2"];
             ogn_debug       = obj["aprs"]["debug"];
@@ -369,28 +372,32 @@ ogn_protocol_1  = RF_PROTOCOL_LEGACY;  /* override - only protocol supported for
     if (obj.containsKey(F("ognrelay")))
     {
         //Serial.println(F("found relay config!"));
-        if (1)
-        {
-#ifdef TTGO
-            ognrelay_enable = 0;
-#else
+        ognrelay_base = obj["ognrelay"]["basestation"];
+        if(ognrelay_base)
+            ognrelay_enable = false;                          /* "base" overrides */
+        else
             ognrelay_enable = obj["ognrelay"]["enable"];
-#endif
-            if(ognrelay_enable)
-              ognrelay_base = 0;
-            else
-              ognrelay_base = obj["ognrelay"]["basestation"];
-            if(ognrelay_enable || ognrelay_base)
-              ognrelay_time = obj["ognrelay"]["relaytime"];
-            else
-              ognrelay_time = 0;
-#ifdef TTGO
+        if(ognrelay_enable || ognrelay_base)
+            ognrelay_time = obj["ognrelay"]["relaytime"];
+        else
+            ognrelay_time = false;
+        if (ognrelay_time)
+            ognrelay_key = obj["ognrelay"]["relaykey"];
+#if defined(TBEAM)
+        if (ognrelay_base && ognrelay_time)                      /* gets time from remote */
+            ogn_gnsstime = false;
+        else if (ogn_band==RF_BAND_AU || ogn_band==RF_BAND_US)  /* if more than 2 channels */
+            ogn_gnsstime = true;                                /* must use GNSS time */
+        else
+            ogn_gnsstime = obj["ognrelay"]["gnsstime"];
+#else
+        ogn_gnsstime = false;                                /* no GNSS hardware */
+        if (ogn_band==RF_BAND_AU || ogn_band==RF_BAND_US) {  /* if more than 2 channels */
+            ognrelay_enable = false;               /* remote station must use GNSS time */
             if(ognrelay_base)
-                ognrelay_time = 1;
-#endif
-            if (ognrelay_time)
-              ognrelay_key = obj["ognrelay"]["relaykey"];
+                ognrelay_time = true;
         }
+#endif
     }
 
     if (obj.containsKey(F("fanetservice")))
@@ -513,6 +520,7 @@ bool OGN_save_config(void)
     obj["ognrelay"]["enable"]      = (int) ognrelay_enable;
     obj["ognrelay"]["basestation"] = (int) ognrelay_base;
     obj["ognrelay"]["relaytime"]   = (int) ognrelay_time;
+    obj["ognrelay"]["gnsstime"]    = (int) ogn_gnsstime;
     obj["ognrelay"]["relaykey"]    = (int) ognrelay_key;
 
     if (serializeJson(obj, configFile) == 0)

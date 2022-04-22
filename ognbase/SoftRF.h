@@ -33,12 +33,12 @@
 
 #include "version.h"
 
-#define SOFTRF_FIRMWARE_VERSION "MB04e"   // _VERSION
+#define SOFTRF_FIRMWARE_VERSION "MB05d"   // _VERSION
 #define SOFTRF_IDENT            "OGNB-"
 
-#define ENTRY_EXPIRATION_TIME   20 /* seconds */
+#define ENTRY_EXPIRATION_TIME   40 /* seconds */
 #define LED_EXPIRATION_TIME     5  /* seconds */
-#define EXPORT_EXPIRATION_TIME  10  /* seconds */
+#define EXPORT_EXPIRATION_TIME  30  /* seconds */
 
 /*
  * If you need for SoftRF to operate in wireless
@@ -113,29 +113,30 @@
 
 typedef struct UFO
 {
-    uint8_t raw[34];
+    uint8_t raw[36];
 
     time_t timestamp;
+    time_t timereported;
     uint8_t hour, minute, second;
-
-    uint8_t protocol;
+    bool waiting;   /* waiting to be relayed, or to be sent to OGN */
 
     uint32_t addr;
     uint8_t addr_type;
+    uint8_t protocol;
+    uint8_t aircraft_type;
+    uint8_t spacer;
     float latitude;
     float longitude;
     float altitude;
     float pressure_altitude;
     float course;         /* CoG */
     float speed;          /* ground speed in knots */
-    uint8_t aircraft_type;
 
     /* previous data for comparison */
     time_t prevtime;
     float prevlat;
     float prevlon;
 
-    bool waiting;   /* waiting to be relayed, or to be sent to OGN */
 
     float vs;     /* feet per minute */
 

@@ -27,6 +27,7 @@
 
 #include "SoftRF.h"
 #include "global.h"
+#include "Time.h"
 #include "RF.h"
 #include "Protocol_Legacy.h"
 #include "EEPROM.h"
@@ -131,17 +132,39 @@ bool legacy_decode(void* legacy_pkt, ufo_t* this_aircraft, ufo_t* fop)
 
     fop->addr = pkt->addr;     /* first 32 bits are not encrypted */
 
-    if (ognrelay_enable) {       /* do not decode further */
-        return true;            /* will be relayed in Traffic.cpp */
-    }
+    if (ognrelay_enable) {
 
-    if (ognrelay_base) {
-      if (pkt->_unk0 != 0xE)   /* marks relayed packets */
-        return false;         /* ignore normal packets */
+        if (pkt->_unk0 != 0) {    /* received relayed, or time, or special FLARM packet - ignore */
+          ++other_packets_recvd;
+          return false;
+        }
+        /* do not decode further */
+        /* will be relayed in Traffic.cpp */
+        return true;
+
+    } else if (ognrelay_base) {
+
+        if (pkt->_unk0 != 0xE) {  /* other than relayed packets */
+          ++other_packets_recvd;
+          return false;          /* ignore normal packets */
+        }
         /* otherwise fall through and decode relayed packets */
-    }
-Serial.println("decoding traffic packet...");
 
+        pkt->_unk0 = 0;           /* to restore parity */
+        // parity may still be wrong if pkt->_unk0 was != 0 originally
+        //  - but those are special FLARM packets that we can ignore
+        //  - and also we skipped those packets above in ognrelay_enable.
+
+    } else {    /* single station mode */
+
+        if (pkt->_unk0 != 0) {    /* received packets that are not normal traffic - ignore */
+          ++other_packets_recvd;
+          return false;
+        }
+        /* otherwise fall through and decode normal packets */
+    }
+
+//Serial.println("decoding traffic packet...");
 
     float    ref_lat   = this_aircraft->latitude;
     float    ref_lon   = this_aircraft->longitude;
@@ -156,20 +179,15 @@ Serial.println("decoding traffic packet...");
     make_key(key, timestamp, (pkt->addr << 8) & 0xffffff);
     btea((uint32_t *) pkt + 1, -5, key);
     
-    if (ognrelay_base && pkt->_unk0 == 0xE)                /* a relayed packet */ 
-        pkt->_unk0 = 0;                                    /* to restore parity */
     for (ndx = 0; ndx < sizeof (legacy_packet_t); ndx++)
         pkt_parity += parity(*(((unsigned char *) pkt) + ndx));
     if (pkt_parity % 2)
     {
 if (ognrelay_base)
 Serial.println("bad parity of decoded relayed packet");
-      msg = "bad parity of decoded legacy packet";
-      if (! ognrelay_base) {
-        // msg = "decoding failed";
-        // Logger_send_udp(&msg);
-        return false;
-      }
+      // msg = "bad parity of decoded legacy packet";
+      // Logger_send_udp(&msg);
+      return false;
     }
 
     int32_t round_lat = (int32_t) (ref_lat * 1e7) >> 7;
@@ -186,7 +204,7 @@ Serial.println("bad parity of decoded relayed packet");
 
     int32_t ns = pkt->ns[0];   // (pkt->ns[0] + pkt->ns[1] + pkt->ns[2] + pkt->ns[3]) / 4;
     int32_t ew = pkt->ew[0];   // (pkt->ew[0] + pkt->ew[1] + pkt->ew[2] + pkt->ew[3]) / 4;
-    float   speed4 = sqrtf(ew * ew + ns * ns) * (1 << pkt->smult);
+    float   speed4 = sqrtf((float)(ew * ew + ns * ns)) * (float)(1 << pkt->smult);
 
     float direction = 0;
     if (speed4 > 0)

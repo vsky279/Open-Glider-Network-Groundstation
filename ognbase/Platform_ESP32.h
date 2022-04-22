@@ -28,7 +28,8 @@
 #include <SPIFFS.h>
 
 /* Maximum of tracked flying objects is now SoC-specific constant */
-#define MAX_TRACKING_OBJECTS    15
+/* For OGNbase allow tracking more objects - they get prioritized */
+#define MAX_TRACKING_OBJECTS    30
 
 #define DEFAULT_SOFTRF_MODEL    SOFTRF_MODEL_STANDALONE
 
@@ -237,9 +238,9 @@ struct rst_info
 
 #define EXCLUDE_CC13XX
 
-#define POWER_SAVING_WIFI_TIMEOUT 600 /* 600 seconds = 10 minutes */
+#define POWER_SAVING_WIFI_TIMEOUT 600
+                 /* 600 seconds = 10 minutes */  // was 600000UL ms.
 
 #endif /* PLATFORM_ESP32_H */
 
 #endif /* ESP32 */
-

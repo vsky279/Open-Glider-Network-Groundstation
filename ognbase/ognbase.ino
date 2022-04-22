@@ -136,7 +136,7 @@
 #define TimeToSleep() (seconds() - ExportTimeSleep >= ogn_rxidle)
 
 //testing
-#define TIME_TO_DIS_WIFI  60
+#define TIME_TO_DIS_WIFI  600
 #define TimeToDisWifi() (seconds() - ExportTimeDisWifi >= TIME_TO_DIS_WIFI)
 
 //testing
@@ -250,26 +250,36 @@ void setup()
   delay(100);
 
 #if defined(TBEAM)
-  if (!ognrelay_base || !ognrelay_time)
+  if (ogn_gnsstime)
     hw_info.gnss = GNSS_setup();
 #endif
+Serial.println("INO setup pt 2");
   
   ThisAircraft.aircraft_type = settings->aircraft_type;
   Battery_setup();
   Traffic_setup();
+Serial.println("INO setup pt 3");
 
   SoC->swSer_enableRx(false);
+Serial.println("INO setup pt 4");
 
   OTA_setup();
+Serial.println("INO setup pt 5");
   delay(2000);
+Serial.println("INO setup pt 6");
 
   Web_setup(&ThisAircraft);
+Serial.println("INO setup pt 7");
+
   Time_setup();
+Serial.println("INO setup pt 8");
   SoC->WDT_setup();
+Serial.println("INO setup pt 9");
 
   if(private_network || remotelogs_enable){
     aes_init();
   }
+Serial.println("INO setup pt 10");
 
 #if defined(TBEAM)
   pinMode(BUTTON, INPUT);
@@ -330,11 +340,6 @@ void shutdown(const char *msg)
   Web_fini();
 
   WiFi_fini();
-  
-#if defined(TBEAM)
-  if (!ognrelay_base || !ognrelay_time)
-    GNSS_fini();
-#endif
 
   RF_Shutdown();
 
@@ -381,7 +386,7 @@ void ground()
     ThisAircraft.geoid_separation = ogn_geoid_separation;
 
 #if defined(TBEAM)
-    if (ognrelay_base && ognrelay_time)
+    if (! ogn_gnsstime)
       GNSS_sleep();
 #endif
 
@@ -394,11 +399,12 @@ void ground()
     Logger_send_udp(&msg);
 
     position_is_set = true;
+
   }
 
 #if defined(TBEAM)
 
-  if (!ognrelay_base || !ognrelay_time) {
+  if (!position_is_set || ogn_gnsstime) {
 
 //Serial.println("GNSS_loop...");
 
@@ -428,6 +434,9 @@ void ground()
     Logger_send_udp(&msg);    
 
     position_is_set = true;    
+
+    if (! ogn_gnsstime)
+      GNSS_sleep();
 
     }
 
@@ -630,7 +639,7 @@ Serial.println("still no position...");
     if (ogn_sleepmode == 1){
       
 #if defined(TBEAM)      
-      if (!ognrelay_base || !ognrelay_time)
+      if (ogn_gnsstime)
         GNSS_sleep();
 #endif 
     }
@@ -639,6 +648,10 @@ Serial.println("still no position...");
     ground_registred = 0;
     if(!ognrelay_enable)
       SoC->WiFi_disconnect_TCP();
+
+    OurTime = 0;
+    time_synched = false;
+
     esp_deep_sleep_start();
   }
 
@@ -669,9 +682,11 @@ Serial.println("still no position...");
 //Serial.println("disable things check...");
 
   if( TimeToDisWifi() && ognrelay_enable ){
-    WiFi.mode(WIFI_OFF);
-    ExportTimeDisWifi = seconds();
-    //Serial.print("disabling Wifi");
+    if (WiFi.getMode() == WIFI_AP) {
+      WiFi.mode(WIFI_OFF);
+      ExportTimeDisWifi = seconds();
+      Serial.print("TimeToDisWifi - disabling Wifi");
+    }
   }
 
   if( TimeToDisableOled() ){

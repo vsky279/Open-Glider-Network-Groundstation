@@ -210,31 +210,38 @@ void OGN_APRS_Export(void)
 //    if (OurTime == 0)  /* no GNSS time available yet */
 //      return;
 
-//Serial.println("OGN export...");
-//Serial.printf("OurTime: %d  hour: %d\r\n", OurTime, hour(OurTime));
-
-//    time_t this_moment = OurTime;  // this (?) CRASHED for unknown reason.
-
-//Serial.printf("numtracked: %d\r\n", numtracked);
-
     for (int i = 0; i < MAX_TRACKING_OBJECTS; i++) {
 
         if (Container[i].addr && Container[i].waiting) {
 
-            Container[i].waiting = false;  /* about to be reported - or ignored */
-
-            if ((ThisAircraft.timestamp - Container[i].timestamp) > EXPORT_EXPIRATION_TIME)
+            if ((ThisAircraft.timestamp - Container[i].timestamp) > EXPORT_EXPIRATION_TIME) {
+                Container[i].waiting = false;
+                // Container[i].timereported = OurTime;
                 continue;
+            }
+
+            if ((Container[i].stealth && !ogn_istealthbit) || (Container[i].no_track && !ogn_itrackbit)) {
+                Container[i].waiting = false;
+                Container[i].timereported = OurTime;
+                continue;
+            }
 
             uint16_t distance = (uint16_t) (Container[i].distance * 0.001);
 
 //Serial.printf("export? [%d] t=%d d=%d\r\n", i, Container[i].timestamp, distance);
 
-            if (distance > ogn_range)
+            if (distance > ogn_range) {
+                Container[i].waiting = false;
+                Container[i].timereported = OurTime;
                 continue;
+            }
 
-            if (!isPacketValid(&Container[i]))
+            if (!isPacketValid(&Container[i])) {
+                // Container[i].waiting = false;
+                // Container[i].timereported = OurTime;
+                Serial.println("... skipping invalid packet");
                 continue;
+            }
 
 //Serial.println("OGN export pt 3...");
 
@@ -349,8 +356,8 @@ void OGN_APRS_Export(void)
             Logger_send_udp(&AircraftPacket);
             Logger_send_udp(&APRS_AIRC.pos_precision);
 
-            if (!Container[i].stealth && !Container[i].no_track || ogn_itrackbit && ogn_istealthbit)
-                SoC->WiFi_transmit_TCP(AircraftPacket);
+            SoC->WiFi_transmit_TCP(AircraftPacket);
+            ++traffic_packets_reported;
         }
     }
 }

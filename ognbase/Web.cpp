@@ -21,8 +21,8 @@
 #include "SPIFFS.h"
 #include "SoC.h"
 #include "EEPROM.h"
-#include "RF.h"
 #include "Time.h"
+#include "RF.h"
 #include "global.h"
 #include "Battery.h"
 #include "Log.h"
@@ -52,17 +52,41 @@ AsyncWebSocketClient* globalClient = NULL;
 
 size_t content_len;
 
-static const char upload_html[] PROGMEM = "<html>\
-                                            <head>\
-                                            <meta http-equiv='Content-Type' content='text/html; charset=utf-8'>\
-                                            </head>\
-                                            <div class = 'upload'>\
-                                            <form method = 'POST' action = '/doUpload' enctype='multipart/form-data'>\
-                                            <input type='file' name='data'/><input type='submit' name='upload' value='Upload' title = 'Upload Files'>\
-                                            </form></div>\
-                                            </html>";
+static const char upload_html[] PROGMEM =
+"<html>\
+ <head>\
+ <meta http-equiv='Content-Type' content='text/html; charset=utf-8'>\
+ </head>\
+ <div class = 'upload'>\
+ <form method = 'POST' action = '/doUpload' enctype='multipart/form-data'>\
+ <input type='file' name='data'/><input type='submit' name='upload' value='Upload' title = 'Upload Files'>\
+ </form></div>\
+ </html>";
 
+const char *ognopmode = "OGNbase";
 
+static const char stats_templ[] PROGMEM =
+"<html>\
+ <head>\
+ <meta http-equiv='Content-Type' content='text/html; charset=utf-8'>\
+ </head>\n\
+ <p>Operation mode: %s</p>\n\
+ <br><p>Base Station Stats:</p>\n\
+ <p>&nbsp; Traffic packets received: %d</p>\n\
+ <p>&nbsp; Traffic packets reported: %d</p>\n\
+ <p>&nbsp; Largest Range: %d</p>\n\
+ <p>&nbsp; Corrupt packets: %d</p>\n\
+ <p>&nbsp; Time-sync restarts: %d</p>\n\
+ <br><p>Remote Station Stats:</p>\n\
+ <p>&nbsp; Traffic packets: %d</p>\n\
+ <p>&nbsp; &nbsp; &nbsp; pct relayed: %d</p>\n\
+ <p>&nbsp; Time packets sent: %d</p>\n\
+ <p>&nbsp; &nbsp; &nbsp; pct not acknowledged: %d</p>\n\
+ <p>&nbsp; Time-sync restarts: %d</p>\n\
+ <p>&nbsp; Corrupt packets: %d</p>\n\
+ <p>&nbsp; Other packets: %d</p>\
+ </html>";
+                                  
 void onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data, size_t len)
 {
     if (type == WS_EVT_CONNECT)
@@ -147,6 +171,72 @@ void handleDoUpdate(AsyncWebServerRequest* request, const String& filename, size
     }
 }
 
+char stats_html[840];
+
+void update_stats()
+{
+ uint32_t zero = 0;
+ if (ognrelay_base && ognrelay_time) {
+     snprintf(stats_html, 839, stats_templ,
+        ognopmode,
+        traffic_packets_recvd,
+        traffic_packets_reported,
+        (uint32_t) largest_range,
+        (uint32_t) bad_packets_recvd,
+        (uint32_t) sync_restarts,
+        remote_traffic,
+        (uint32_t) (100 - remote_dropped),
+        (uint32_t) remote_timesent,
+        (uint32_t) remote_noack,
+        (uint32_t) remote_restarts,
+        (uint32_t) remote_bad,
+        (uint32_t) remote_other);
+   } else if (ognrelay_base) {
+     snprintf(stats_html, 839, stats_templ,
+        ognopmode,
+        traffic_packets_recvd,
+        traffic_packets_reported,
+        (uint32_t) largest_range,
+        (uint32_t) bad_packets_recvd,
+        zero,
+        remote_traffic,
+        (uint32_t) (100 - remote_dropped),
+        zero,
+        zero,
+        zero,
+        (uint32_t) remote_bad,
+        (uint32_t) remote_other);
+   } else if (ognrelay_enable) {
+     snprintf(stats_html, 839, stats_templ,
+        ognopmode,
+        zero,
+        zero,
+        zero,
+        zero,
+        zero,
+        traffic_packets_recvd,
+        (uint32_t) ((100 * traffic_packets_relayed)
+                      / (traffic_packets_recvd+1)),
+        (uint32_t) time_packets_sent,
+        (uint32_t) ((100 * (time_packets_sent - ack_packets_recvd))
+                      / (time_packets_sent+1)),
+        (uint32_t) sync_restarts,
+        (uint32_t) bad_packets_recvd,
+        (uint32_t) other_packets_recvd);
+   } else {  /* single standalone station */
+     snprintf(stats_html, 839, stats_templ,
+        ognopmode,
+        traffic_packets_recvd,
+        traffic_packets_reported,
+        (uint32_t) largest_range,
+        (uint32_t) bad_packets_recvd,
+        zero, zero, zero, zero, zero, zero, zero,
+        (uint32_t) other_packets_recvd);
+   }
+   stats_html[839] = '\0';
+Serial.println(stats_html);
+}
+
 void Web_start()
 {
     wserver.begin();
@@ -167,7 +257,8 @@ void Web_setup(ufo_t* this_aircraft)
 
     if (!SPIFFS.exists("/index.html"))
     {
-        wserver.on("/", HTTP_GET, [upload_html](AsyncWebServerRequest* request){
+        // wserver.on("/", HTTP_GET, [upload_html](AsyncWebServerRequest* request){
+        wserver.on("/", HTTP_GET, [](AsyncWebServerRequest* request){
             request->send(200, "text/html", upload_html);
         });
 
@@ -176,7 +267,7 @@ void Web_setup(ufo_t* this_aircraft)
         Web_start();
         return;
     }
-
+Serial.println("web_setup() pt 1");
     File file = SPIFFS.open("/index.html", "r");
     if (!file)
     {
@@ -194,12 +285,15 @@ void Web_setup(ufo_t* this_aircraft)
     file.read((uint8_t *)index_html, filesize);
     index_html[filesize] = '\0';
 
-    size_t size = 8700;
+    file.close();
+Serial.println("web_setup() pt 2");
+    size_t size = 9600;
     char*  offset;
     char*  Settings_temp = (char *) malloc(size);
 
     if (Settings_temp == NULL)
         return;
+Serial.println("web_setup() pt A");
 
     offset = Settings_temp;
 
@@ -218,24 +312,42 @@ void Web_setup(ufo_t* this_aircraft)
     pos_geo.concat(ogn_geoid_separation);
     /*END  Bugfix*/ 
 
+    String version = SOFTRF_FIRMWARE_VERSION;
+    // version += (ognrelay_enable? " - remote" : (ognrelay_base? " - base" : " - standalone"));
+Serial.println("web_setup() pt B");
+
+    if (ognrelay_base && ognrelay_time)
+        ognopmode = "Base station, time relayed from remote";
+    else if (ognrelay_base)
+        ognopmode = (ogn_gnsstime? "Base station, time from GNSS" : "Base station, time from NTP");
+    else if (ognrelay_enable && ognrelay_time)
+        ognopmode = (ogn_gnsstime? "Remote station, relaying GNSS time" : "Remote station, no time source");
+    else if (ognrelay_enable)
+        ognopmode = (ogn_gnsstime? "Remote station, time from GNSS" : "Remote station, no time source");
+    else   /* single standalone station */
+        ognopmode = (ogn_gnsstime? "Single station, time from GNSS" : "Single station, time from NTP");
+
     snprintf(offset, size, index_html,
              station_addr,
-             SOFTRF_FIRMWARE_VERSION,
+             version.c_str(),
+             ognopmode,
              ogn_callsign,
              pos_lat,
              pos_lon,
              pos_alt,
              pos_geo,
              String(ogn_range),
-             (ogn_band == RF_BAND_AUTO ? "selected" : ""), RF_BAND_AUTO,
+             // (ogn_band == RF_BAND_AUTO ? "selected" : ""), RF_BAND_AUTO,
              (ogn_band == RF_BAND_EU ? "selected" : ""), RF_BAND_EU,
+             (ogn_band == RF_BAND_US ? "selected" : ""), RF_BAND_US,
+             (ogn_band == RF_BAND_AU ? "selected" : ""), RF_BAND_AU,
+             (ogn_band == RF_BAND_NZ ? "selected" : ""), RF_BAND_NZ,
              (ogn_band == RF_BAND_RU ? "selected" : ""), RF_BAND_RU,
              (ogn_band == RF_BAND_CN ? "selected" : ""), RF_BAND_CN,
-             (ogn_band == RF_BAND_US ? "selected" : ""), RF_BAND_US,
-             (ogn_band == RF_BAND_NZ ? "selected" : ""), RF_BAND_NZ,
              (ogn_band == RF_BAND_UK ? "selected" : ""), RF_BAND_UK,
-             (ogn_band == RF_BAND_AU ? "selected" : ""), RF_BAND_AU,
              (ogn_band == RF_BAND_IN ? "selected" : ""), RF_BAND_IN,
+             (ogn_band == RF_BAND_IL ? "selected" : ""), RF_BAND_IL,
+             (ogn_band == RF_BAND_KR ? "selected" : ""), RF_BAND_KR,
              (ogn_protocol_1 == RF_PROTOCOL_LEGACY ? "selected" : ""),
              RF_PROTOCOL_LEGACY, legacy_proto_desc.name,
              (ogn_protocol_1 == RF_PROTOCOL_OGNTP ? "selected" : ""),
@@ -280,14 +392,14 @@ void Web_setup(ufo_t* this_aircraft)
              (zabbix_enable == 1 ? "selected" : ""), "Enabled"
              );
             
-
+Serial.println("web_setup() pt 3");
     size_t len  = strlen(offset);
     String html = String(offset);
 
     wserver.on("/", HTTP_GET, [html](AsyncWebServerRequest* request){
         request->send(200, "text/html", html);
     });
-
+Serial.println("web_setup() pt 4");
 
     // Route to load style.css file
     wserver.on("/style.css", HTTP_GET, [](AsyncWebServerRequest* request){
@@ -306,8 +418,19 @@ void Web_setup(ufo_t* this_aircraft)
         handleDoUpdate(request, filename, index, data, len, final);
     });
 
-    wserver.on("/upload", HTTP_GET, [upload_html](AsyncWebServerRequest* request){
+    // wserver.on("/upload", HTTP_GET, [upload_html](AsyncWebServerRequest* request){
+    wserver.on("/upload", HTTP_GET, [](AsyncWebServerRequest* request){
         request->send(200, "text/html", upload_html);
+    });
+
+Serial.println("web_setup() pt 5");
+    update_stats();
+Serial.println("web_setup() pt 6");
+
+    wserver.on("/stats", HTTP_GET, [](AsyncWebServerRequest* request){
+        update_stats();
+Serial.println(F("requesting stats page..."));
+        request->send(200, "text/html", String(stats_html));
     });
 
     wserver.on("/reboot", HTTP_GET, [](AsyncWebServerRequest* request){
@@ -317,6 +440,11 @@ void Web_setup(ufo_t* this_aircraft)
 
     wserver.on("/doUpload", HTTP_POST, [](AsyncWebServerRequest* request) {}, handleUpload);
 
+    wserver.on("/clear", HTTP_GET, [](AsyncWebServerRequest* request){
+        Serial.println(F("Formatting spiffs..."));
+        SPIFFS.format();
+        request->redirect("/");
+    });    
 
     // Send a GET request to <ESP_IP>/get?inputString=<inputMessage>
     wserver.on("/get", HTTP_GET, [](AsyncWebServerRequest* request) {
@@ -432,7 +560,7 @@ void Web_setup(ufo_t* this_aircraft)
     SoC->swSer_enableRx(true);
     free(Settings_temp);
     free(index_html);
-
+Serial.println("web_setup() pt 9");
     // Start server
     Web_start();
 }
@@ -457,9 +585,12 @@ void Web_loop(void)
         values += remote_sats;
 #endif
         values += "_";
-        values += rx_packets_counter;  // OurTime; // was: now();
+        values += traffic_packets_recvd;   // was: now();
         values += "_";
         values += numtracked;  // was: largest_range;
         globalClient->text(values);
     }
+Serial.println(F("updating stats..."));
+    update_stats();
+Serial.println(F("...updated stats"));
 }
