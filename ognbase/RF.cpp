@@ -233,8 +233,8 @@ void RF_SetChannel(int rxtx=FOR_RX)
     else if (ognrelay_base && rxtx==FOR_RX)
         OGN = 1;
 
-    /* only 2 channels in Europe, listening to only one of them is good enough */
-    /* thus if no GNSS time, use channel 0 for receiving FLARM, channel 1 for relay */
+    /* Only 2 channels in Europe, listening to only one of them is good enough */
+    /* Thus if no GNSS time, use channel 0 for receiving FLARM, channel 1 for relay */
 
     if (ogn_band == RF_BAND_EU &&
            ((!ognrelay_enable && !ognrelay_time && !ogn_gnsstime)  /* base using NTP */
@@ -723,9 +723,10 @@ static bool sx12xx_receive()
         if (size > sizeof(RxBuffer))
             size = sizeof(RxBuffer);
 
-        for (u1_t i=0; i < size; i++){
-            RxBuffer[i] = LMIC.frame[i + LMIC.protocol->payload_offset];
-        }
+        //for (u1_t i=0; i < size; i++){
+        //    RxBuffer[i] = LMIC.frame[i + LMIC.protocol->payload_offset];
+        //}
+        memcpy(RxBuffer, &LMIC.frame[LMIC.protocol->payload_offset], (size_t) size);
 
         RF_last_rssi = LMIC.rssi;
 

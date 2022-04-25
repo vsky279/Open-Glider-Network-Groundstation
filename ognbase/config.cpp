@@ -156,7 +156,7 @@ void performUpdate(Stream &updateSource, size_t updateSize) {
 
 bool OGN_read_config(void)
 {
-    const size_t        capacity = 2560;
+    const size_t        capacity = 2752;
     DynamicJsonDocument baseConfig(capacity);
     JsonObject          obj;
     File configFile;
@@ -234,17 +234,18 @@ bool OGN_read_config(void)
 #endif    
 
 
-    if (SPIFFS.exists(config_files[0])){
+    if (SPIFFS.exists(config_files[0])) {
       configFile = SPIFFS.open(config_files[0]);
       if (!configFile)
       {
           Serial.println(F("Failed to open config.json."));
           return false;
       }      
-    }
-    else{
-      Serial.println(F("config.json doesnt exist, please upload config.json"));
-      return(false);
+    } else {
+        Serial.println(F("config.json doesnt exist, please upload config.json"));
+        OLED_write("no config file", 0, 27, true);
+        delay(1000);
+        return(false);
     }
 
     DeserializationError error = deserializeJson(baseConfig, configFile);
@@ -253,6 +254,8 @@ bool OGN_read_config(void)
     {
         Serial.println(F("Failed to parse json file, using default configuration"));
         Serial.println(error.f_str());
+        OLED_write("config file error", 0, 27, true);
+        delay(1000);
         configFile.close();
         return false;
     }
@@ -262,9 +265,25 @@ bool OGN_read_config(void)
         configFile.close();
     }
 
+    if (!obj.containsKey(F("ognbase"))){
+        Serial.println("config.json not valid - version missing");
+        OLED_write("config.json - no version", 0, 27, true);
+        delay(1000);
+        return false;
+    } else {
+        String jsonversion = "wrong";
+        jsonversion = obj["ognbase"]["version"].as<String>();
+        if (jsonversion != OGNBASE_HTML_VERSION) {
+            Serial.println("Wrong version of config.json");
+            OLED_write("config version wrong", 0, 27, true);
+            delay(1000);
+            return false;
+        }
+    }
+
     if (!obj.containsKey(F("wifi"))){
         //Serial.println("no wifi confgiuration found, return setup mode");
-        configFile.close();        
+        // configFile.close();        
         return false;
     }
     else
@@ -381,8 +400,11 @@ ogn_protocol_1  = RF_PROTOCOL_LEGACY;  /* override - only protocol supported for
             ognrelay_time = obj["ognrelay"]["relaytime"];
         else
             ognrelay_time = false;
-        if (ognrelay_time)
-            ognrelay_key = obj["ognrelay"]["relaykey"];
+        if (ognrelay_time) {
+            ognrelay_key = obj["aprs"]["relaykey"];
+            // String key_str = obj["aprs"]["relaykey"].as<String>();
+            // ognrelay_key = (uint32_t) std::stoi(key_str,nullptr,16);
+        }
 #if defined(TBEAM)
         if (ognrelay_base && ognrelay_time)                      /* gets time from remote */
             ogn_gnsstime = false;
@@ -443,6 +465,7 @@ bool OGN_save_config(void)
     const size_t        capacity = 2560;
     DynamicJsonDocument baseConfig(capacity);
     JsonObject          obj;
+    char buf[32];
 
     if (!SPIFFS.begin(true))
     {
@@ -521,7 +544,12 @@ bool OGN_save_config(void)
     obj["ognrelay"]["basestation"] = (int) ognrelay_base;
     obj["ognrelay"]["relaytime"]   = (int) ognrelay_time;
     obj["ognrelay"]["gnsstime"]    = (int) ogn_gnsstime;
-    obj["ognrelay"]["relaykey"]    = (int) ognrelay_key;
+    obj["ognrelay"]["relaykey"]    = ognrelay_key;
+    // snprintf(buf, sizeof(buf), "%06X", ognrelay_key);
+    // buf[8] = '\0';
+    // char *key_cstr = &buf[2];   /* skip the "0x" */
+    // String key_str = key_cstr;
+    // obj["ognrelay"]["relaykey"]    = key_str;
 
     if (serializeJson(obj, configFile) == 0)
         Serial.println(F("Failed to write to file"));

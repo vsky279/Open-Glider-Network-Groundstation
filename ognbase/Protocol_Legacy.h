@@ -137,6 +137,7 @@ typedef struct
 bool legacy_decode(void *, ufo_t *, ufo_t *);
 
 size_t legacy_encode(void *, ufo_t *);
+size_t relay_encode(void *, ufo_t *);
 
 extern const rf_proto_desc_t legacy_proto_desc;
 

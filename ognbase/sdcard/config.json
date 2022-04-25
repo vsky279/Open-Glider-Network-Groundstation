@@ -1,14 +1,17 @@
 {
+   "ognbase":{
+      "version":"MB06"
+   },
    "wifi":{
       "ssid":[
-         "mySSID",
+         "My_WiFi_SSID",
          "xxxxxxx",
          "xxxxxxx",
          "xxxxxxx",
          "xxxxxxx"
       ],
       "pass":[
-         "myPSK",
+         "My_WiFi_PSK",
          "xxxxxxx",
          "xxxxxxx",
          "xxxxxxx",

@@ -26,19 +26,23 @@ extern bool time_synched;
 extern uint32_t traffic_packets_recvd;
 extern uint32_t traffic_packets_relayed;
 extern uint32_t traffic_packets_reported;
+extern uint32_t other_packets_recvd;
 extern uint16_t bad_packets_recvd;
-extern uint16_t other_packets_recvd;
 extern uint16_t time_packets_sent;
 extern uint16_t ack_packets_recvd;
 extern uint16_t sync_restarts;
 
-extern uint32_t remote_traffic;
-extern uint16_t remote_timesent, remote_bad, remote_other;
-extern uint8_t remote_sats, remote_dropped, remote_noack, remote_restarts, remote_round;
+extern uint32_t remote_traffic, remote_other;
+extern uint16_t remote_timesent, remote_bad;
+extern uint8_t remote_sats, remote_uptime, remote_pctrel, remote_noack, remote_restarts, remote_round;
+extern uint8_t remote_hours;
+extern int uptime;
 
 bool time_sync_pkt(uint8_t*);
 void set_our_clock(uint8_t*);
 void sync_alive_pkt(uint8_t*);
+bool reboot_remote(void);
+bool maybe_remote_reboot(uint8_t*);
 
 void Time_setup(void);
 void Time_loop(void);

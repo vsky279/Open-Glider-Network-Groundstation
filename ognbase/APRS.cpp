@@ -152,15 +152,8 @@ int OGN_APRS_check_messages(void)
 {
     static char RXbuffer[512];  // was malloc()ed
 
-//Serial.println("APRS_chk_msgs pt 0");
-
     int    recStatus = SoC->WiFi_receive_TCP(RXbuffer, 512);
     String msg;
-
-//Serial.println("APRS_chk_msgs pt 1");
-
-//    for (int i = 0; i < recStatus; i++)
-//        msg += RXbuffer[i];
 
     if (recStatus > 0)
     {
@@ -184,7 +177,6 @@ Serial.print(RXbuffer);
           Logger_send_udp(&msg);
         }
     }
-//Serial.println("APRS_chk_msgs pt 2");
 
     if (seconds() - last_packet_time > 60)
     {
@@ -199,7 +191,9 @@ Serial.print(RXbuffer);
 }
 
 static const char* symbol_table[16] =
-    {"/", "/", "\\", "/", "\\", "\\", "/", "/", "\\", "J", "/", "/", "M", "/", "\\", "\\"}; // 0x79 -> aircraft type 1110 dec 14 & 0x51 -> aircraft type 4
+    {"/", "/", "\\", "/", "\\", "\\", "/", "/",
+     "\\", "J", "/", "/", "M", "/", "\\", "\\"};
+    // 0x79 -> aircraft type 1110 dec 14 & 0x51 -> aircraft type 4
 static const char* symbol[16] =
     {"z", "^", "^", "X", " ", "^", "g", "g", "^", "^", "^", "O", "^", "\'", " ", "n"};
 
@@ -243,8 +237,6 @@ void OGN_APRS_Export(void)
                 continue;
             }
 
-//Serial.println("OGN export pt 3...");
-
             if (distance > largest_range)  largest_range = distance;
 
             float LAT = fabs(Container[i].latitude);
@@ -279,7 +271,10 @@ void OGN_APRS_Export(void)
             APRS_AIRC.ground_speed = zeroPadding(String(int(Container[i].speed)), 3);
 
 
-            APRS_AIRC.sender_details = zeroPadding(String(Container[i].aircraft_type << 2 | (Container[i].stealth << 7) | (Container[i].no_track << 6) | Container[i].addr_type, HEX), 2);
+            APRS_AIRC.sender_details = zeroPadding(String((Container[i].aircraft_type << 2)
+                                                     | (Container[i].stealth << 7)
+                                                     | (Container[i].no_track << 6)
+                                                     | (Container[i].addr_type, HEX)), 2);
 
             APRS_AIRC.symbol_table = String(symbol_table[Container[i].aircraft_type]);
             APRS_AIRC.symbol       = String(symbol[Container[i].aircraft_type]);
@@ -357,6 +352,9 @@ void OGN_APRS_Export(void)
             Logger_send_udp(&APRS_AIRC.pos_precision);
 
             SoC->WiFi_transmit_TCP(AircraftPacket);
+
+            Container[i].waiting = false;
+            Container[i].timereported = OurTime;
             ++traffic_packets_reported;
         }
     }

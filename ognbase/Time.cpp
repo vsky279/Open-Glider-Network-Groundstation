@@ -2,6 +2,8 @@
  * Time.cpp
  * Copyright (C) 2019-2020 Linar Yusupov
  *
+ * Time-relay code by Moshe Braner, 2022
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -21,6 +23,7 @@
 #include "Time.h"
 #include "RF.h"
 #include "Log.h"
+#include "OLED.h"
 #include "global.h"
 
 #include <TimeLib.h>
@@ -39,14 +42,18 @@ uint32_t ref_time_ms = 0;      /* assumed local millis() at last PPS */
 #define ADJ_FOR_TRANSMISSION_DELAY 10
 #define TIME_TO_NTP_AGAIN 600000
 
+int uptime = 0;
+uint32_t last_hour = 0;
+
 bool time_synched = false;
 uint32_t when_synched = 0;
 uint32_t when_sync_sent = 0;
 
-uint8_t remote_sats = 0;
-uint32_t remote_traffic = 0;
-uint16_t remote_timesent=0, remote_bad=0, remote_other=0;
-uint8_t remote_dropped=0, remote_noack=0, remote_restarts=0, remote_round=0;
+uint8_t remote_sats=0;
+uint8_t remote_uptime=0;
+uint32_t remote_traffic = 0, remote_other=0;
+uint16_t remote_timesent=0, remote_bad=0;
+uint8_t remote_pctrel=0, remote_noack=0, remote_restarts=0, remote_round=0;
 
 uint32_t traffic_packets_recvd = 0;
 uint32_t traffic_packets_relayed = 0;
@@ -54,9 +61,9 @@ uint32_t traffic_packets_reported = 0;
 uint16_t time_packets_sent = 0;
 uint16_t ack_packets_recvd = 0;
 uint32_t total_delays = 0;
-uint16_t bad_packets_recvd = 0;
-uint16_t other_packets_recvd = 0;
 uint16_t sync_restarts = 0;
+uint16_t bad_packets_recvd = 0;
+uint32_t other_packets_recvd = 0;
 
 
 /********************* GNSS-time relay code ************************/
@@ -96,16 +103,20 @@ bool send_time(void)
     pkt->_unk0 = 0xC;                     /* marks time-relay packets */
     uint32_t* p = ( uint32_t *) TxBuffer; 
     p[1] = (uint32_t) OurTime;
+
     if (ognrelay_enable) {
+
       p[2] = ((millis() - ref_time_ms) & 0x0FFF);
+
       /* send stats */
       p[2] |= (satellites << 12);
-      p[2] |= (other_packets_recvd << 16);
-      pkt->addr_type = (((total_delays/(ack_packets_recvd+1)) >> 2) & 0x07);  /* 3 bits: avg roundtrip ms / 4 */
-      // also available: pkt->_unk1 - 1 bit - not used for now.
-      int pctdrop = 100 * (traffic_packets_recvd - traffic_packets_relayed);
-      pctdrop /= (traffic_packets_recvd+1);    /* percent not relayed */
-      p[3] = (traffic_packets_recvd & 0x01FFFFFF) | (pctdrop<<25);
+      p[2] |= ((other_packets_recvd & 0x0FFFF) << 16);
+      // pkt->addr_type = (((total_delays/(ack_packets_recvd+1)) >> 2) & 0x07);  /* 3 bits: avg roundtrip ms / 4 */
+      pkt->addr_type = (uptime & 0x07);
+      pkt->_unk1 = (uptime & 0x08) >> 3;
+      int pctrel = 100 * traffic_packets_relayed;
+      pctrel /= (traffic_packets_recvd+1);    /* percent relayed */
+      p[3] = (traffic_packets_recvd & 0x01FFFFFF) | (pctrel<<25);
 /* p[4]:
       0000 0000 0000 0000 0000 0000 0000 0000
            |       |    | ^^^^ ^^^^ ^^^^ ^^^^ - time_packets_sent
@@ -113,19 +124,24 @@ bool send_time(void)
            |^^^ ^^^^ 000 - bad packets
       ^^^^ ^ - restarts
 */
-      pctdrop = 100 * (time_packets_sent - ack_packets_recvd);
-      pctdrop /= (time_packets_sent+1);    /* percent not acked */
+      int pctnoak = 100 * (time_packets_sent - ack_packets_recvd);
+      pctnoak /= (time_packets_sent+1);    /* percent not acked */
       p[4] = (time_packets_sent & 0x0000FFFF)      /* 16 bits */
-            | ((pctdrop & 0x7C) << 14)             /* 5 bits: %!acked/4 */
+            | ((pctnoak & 0x7C) << 14)             /* 5 bits: %!acked/4 */
             | ((bad_packets_recvd & 0x3F8) << 17)  /* 7 bits: bad packets / 8 */
             | ((sync_restarts & 0x01F) << 27);
-      p[3] ^= 0xACACACAC;
-      p[4] ^= 0xACACACAC;                         /* rudimentary whitening */
+
+      p[3] ^= 0xACACACAC;                          /* rudimentary whitening */
+      p[4] ^= 0xACACACAC;
+
     } else {   /* base station sending ack - blank fields */
+
       p[2] = 0;
       p[3] = 0xACACACAC;
       p[4] = 0xACACACAC;
+
     }
+
     /* also send hashed combination of time and relay ID for error check & security */
     /* >>> note: the same secret ognrelay_key needs to be in config of both stations */
     p[5] = TimeHash((p[1] ^ p[2]) ^ ognrelay_key);
@@ -133,7 +149,7 @@ bool send_time(void)
     p[2] ^= 0xACACACAC;
     size_t size = LEGACY_PAYLOAD_SIZE;
     bool wait = true;  // false (no wait) often seemed to fail to transmit // 
-    bool success = RF_Transmit(size, wait);      /* transmit rightnow without waiting */
+    bool success = RF_Transmit(size, wait);
     if (success) {
       ++time_packets_sent;
       when_sync_sent = millis();
@@ -167,6 +183,7 @@ void set_our_clock(uint8_t *raw)
       ++bad_packets_recvd;                   /* this statistic collected within base */
       return;                                /* failed security check */
     }
+
     OurTime = (time_t) p[1];
     uint32_t timeOffset = (p[2] & 0x0FFF);
     timeOffset += ADJ_FOR_TRANSMISSION_DELAY;   /* ms */
@@ -196,22 +213,23 @@ void set_our_clock(uint8_t *raw)
     p[4] ^= 0xACACACAC;
     remote_sats = ((p[2]>>12) & 0x0F);
     remote_traffic = (p[3] & 0x01FFFFFF);
-    remote_dropped = (p[3]>>25) & 0x7F;
+    remote_pctrel = (p[3]>>25) & 0x7F;
     remote_timesent = (p[4] & 0x0000FFFF);
     remote_noack = (p[4]>>14) & 0x7C;
     remote_bad = (p[4]>>17) & 0x3F8;
     remote_other = p[2]>>16;
     remote_restarts = (p[4]>>27) & 0x1F;
-    remote_round = (pkt->addr_type <<2);
+    // remote_round = (pkt->addr_type <<2);
+    remote_uptime = (pkt->addr_type & 0x07) | (pkt->_unk1 & 0x01) << 3;
     Serial.println(F("Remote Stats:"));
     Serial.printf(
-    "  traffic %d, \%drop %d, timesent %d, \%noack %d, bad %d, other %d, restarts %d, round %d\r\n",
-        remote_traffic, remote_dropped, remote_timesent, remote_noack,
+    "  traffic %d, \%relayed %d, timesent %d, \%noack %d, bad %d, other %d, restarts %d, round %d\r\n",
+        remote_traffic, remote_pctrel, remote_timesent, remote_noack,
         remote_bad, remote_other, remote_restarts, remote_round);
     Serial.println(F("Local Stats:"));
     Serial.printf("  traffic: %d,  bad: %d,  restarts: %d\r\n",
         traffic_packets_recvd, bad_packets_recvd, sync_restarts);
-
+    /* these stats also displayed in the statistics web page */
     // should also send these stats out via UDP.
 }
 
@@ -234,13 +252,65 @@ void sync_alive_pkt(uint8_t *raw)
     Serial.println(F("received timesync ack..."));
 }
 
+/* this is called by base station to tell the remote station to reboot */
+bool reboot_remote(void)
+{
+    if (! ognrelay_base)  return false;
+
+    legacy_packet_t* pkt = (legacy_packet_t *) TxBuffer;
+    pkt->addr = 0xCACACA;                 /* marks remote_reboot packets */
+    pkt->_unk0 = 0xA;
+
+    uint32_t* p = ( uint32_t *) TxBuffer; 
+
+    p[1] = 0xACACACAC;
+    p[2] = millis();  /* just something unpredictable to hash with */
+    p[3] = 0xACACACAC;
+    p[4] = 0xACACACAC;
+
+    /* also send hashed combination of time and relay ID for error check & security */
+    /* >>> note: the same secret ognrelay_key needs to be in config of both stations */
+    p[5] = TimeHash(p[2] ^ ognrelay_key);
+    p[2] ^= 0xACACACAC;
+    size_t size = LEGACY_PAYLOAD_SIZE;
+    bool wait = true;
+    bool success = RF_Transmit(size, wait);
+    if (success)
+        Serial.println(F("sent remote reboot packet"));
+    return success;
+}
+
+/* check whether the packet is telling the remote station to reboot */
+bool maybe_remote_reboot(uint8_t *raw) {
+    if (! ognrelay_enable)      return false;
+    legacy_packet_t* pkt = (legacy_packet_t *) raw;
+    if (pkt->_unk0 != 0xA)      return false;
+    if (pkt->addr != 0xCACACA)  return false;    /* not a reboot packet */
+
+    uint32_t* p = (uint32_t *) raw; 
+    p[2] ^= 0xACACACAC;                         /* undo rudimentary whitening */
+    if (p[5] != TimeHash(p[2] ^ ognrelay_key)) {
+      ++bad_packets_recvd;                      /* this statistic collected within remote */
+      return true;                             /* failed security check, but not traffic packet */
+    }
+
+    Serial.println("got signal to reboot...");
+
+    if (millis() > 600000                  /* don't reboot _again_ for a while */
+        && WiFi.getMode() == WIFI_OFF) {   /* don't reboot unless WIFI has gone to sleep */
+            Serial.println("rebooting in 3 sec...");
+            delay(3000);
+            SoC->reset();
+    }
+
+    return true;                       /* did not reboot, but not traffic packet */
+}
+
 /********************* time loop code ************************/
 
 void Time_loop()
 {
     uint32_t now_ms = millis();
-
-//Serial.println("inside Time_loop...");
 
     if (ognrelay_base && ognrelay_time && (!time_synched || OurTime==0)) {
     /* initial time-sync when relaying time */
@@ -250,20 +320,25 @@ void Time_loop()
         return;
         /* wait for time data from remote station */
         /* it will be handled by set_our_clock()  */
-//Serial.println(F("waiting for time data..."));  
 
-    } else if (ognrelay_base && ognrelay_time && time_synched && OurTime != 0) {
+    }
+
+    if (ognrelay_base && ognrelay_time && time_synched && OurTime != 0) {
     /* when base is getting time data periodically from remote station */
 
         /* use free-running clock between time sync messages */
         if (now_ms >= ref_time_ms + 1000) {
           OurTime += 1;
           ref_time_ms += 1000;
-//Serial.println(F("free-running clock..."));
         }
 
-    } else if (!ognrelay_enable && !ognrelay_time && !ogn_gnsstime && time_synched && OurTime != 0) {
+    } else if (!ognrelay_enable && !ognrelay_time && !ogn_gnsstime) {
     /* when base (or standalone) is getting time data from NTP */
+
+        if (OurTime == 0 || ! time_synched) {
+            //Serial.println(F("waiting for NTP..."));  
+            return;
+        }
 
         /* get fresh NTP time data periodically */
         static uint32_t time_to_call_ntp = 0;
@@ -302,15 +377,13 @@ void Time_loop()
         if (now_ms >= ref_time_ms + 1000) {
           OurTime += 1;
           ref_time_ms += 1000;
-//Serial.println(F("temporary free-running clock..."));
         }
 #endif
 
     } else { /* get fresh GNSS time data */
 
 #if !defined(TBEAM)
-      /* should use TBEAM with GNSS */
-      Serial.println(F("TTGO calling now()..."));
+      //Serial.println(F("should use TBEAM with GNSS"));
 #endif
 
 #if defined(TBEAM)
@@ -391,6 +464,11 @@ void Time_loop()
 
     }
 
+    if (now_ms > last_hour + 3600000) {
+        ++uptime;    
+        last_hour = now_ms;
+    }
+
     if ((ognrelay_enable || ognrelay_base) && ognrelay_time) {
 
        /* attempting initial time-sync from remote station */
@@ -430,11 +508,6 @@ void Time_loop()
 
 
 /****************************** NTP code ******************************/
-
-#if defined(EXCLUDE_WIFI)
-void Time_setup()
-{}
-#else
 
 #if !defined(EXCLUDE_NTP)
 
@@ -484,22 +557,35 @@ void sendNTPpacket(IPAddress& address)
 
 void Time_setup()
 {
+    char buf[32];
+
+    if (last_hour == 0)
+        last_hour = millis();
+
     /*
      * only use NTP in base station
      * and if not getting time from remote station
      * and if not using local GNSS time
      */
     if (ognrelay_enable || ognrelay_time || ogn_gnsstime)
-      return;
+        return;
 
+    /* rest is only for base (or single) station that is not using GNSS time nor relay time */
+    /*   - i.e., it needs to get the UTC time from NTP to timestamp the OGN reports */
+
+#if !defined(EXCLUDE_WIFI)
 #if !defined(EXCLUDE_NTP)
 
     int    cb = 0;
     String ntpServerName;
 
     // Do not attempt to timesync in Soft AP mode
-    if (WiFi.getMode() == WIFI_AP)
+    if (WiFi.getMode() == WIFI_AP) {
+        Serial.println(F("Cannot get NTP time without internet"));
+        snprintf(buf, sizeof(buf), "no internet no NTP time");
+        OLED_write(buf, 0, 54, false);
         return;
+    }
 
     Serial.println(F("Starting NTP UDP"));
     NTP_udp.begin(localPort);
@@ -590,7 +676,6 @@ void Time_setup()
     Serial.printf("%02d:%02d:%02d\r\n", hour(epoch), minute(epoch), second(epoch));
 
 #endif /* EXCLUDE_NTP */
+#endif /* EXCLUDE_WIFI */
 
 }
-
-#endif /* EXCLUDE_WIFI */

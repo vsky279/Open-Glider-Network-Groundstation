@@ -20,6 +20,7 @@
 #include "ESPAsyncWebServer.h"
 #include "SPIFFS.h"
 #include "SoC.h"
+#include "OLED.h"
 #include "EEPROM.h"
 #include "Time.h"
 #include "RF.h"
@@ -37,8 +38,7 @@
 #define  U_PART U_FLASH
 #define INDEX_CRC 3948812196
 
-#define hours() (millis() / 3600000)
-
+extern unsigned long ExportTimeWebRefresh;
 
 File fsUploadFile;
 
@@ -69,22 +69,23 @@ static const char stats_templ[] PROGMEM =
 "<html>\
  <head>\
  <meta http-equiv='Content-Type' content='text/html; charset=utf-8'>\
- </head>\n\
- <p>Operation mode: %s</p>\n\
- <br><p>Base Station Stats:</p>\n\
- <p>&nbsp; Traffic packets received: %d</p>\n\
- <p>&nbsp; Traffic packets reported: %d</p>\n\
- <p>&nbsp; Largest Range: %d</p>\n\
- <p>&nbsp; Corrupt packets: %d</p>\n\
- <p>&nbsp; Time-sync restarts: %d</p>\n\
- <br><p>Remote Station Stats:</p>\n\
- <p>&nbsp; Traffic packets: %d</p>\n\
- <p>&nbsp; &nbsp; &nbsp; pct relayed: %d</p>\n\
- <p>&nbsp; Time packets sent: %d</p>\n\
- <p>&nbsp; &nbsp; &nbsp; pct not acknowledged: %d</p>\n\
- <p>&nbsp; Time-sync restarts: %d</p>\n\
- <p>&nbsp; Corrupt packets: %d</p>\n\
- <p>&nbsp; Other packets: %d</p>\
+ <meta http-equiv='Refresh' content='23'>\
+ </head>\
+ <p>\r\nOperation mode: %s</p>\
+ <br><p>\r\nBase Station Stats:</p>\
+ <p>&nbsp;\r\n Traffic packets received: %d</p>\
+ <p>&nbsp;\r\n Traffic packets reported: %d</p>\
+ <p>&nbsp;\r\n Largest Range: %d</p>\
+ <p>&nbsp;\r\n Corrupt packets: %d</p>\
+ <p>&nbsp;\r\n Time-sync restarts: %d</p>\
+ <br><p>\r\nRemote Station Stats:</p>\
+ <p>&nbsp;\r\n Traffic packets: %d</p>\
+ <p>&nbsp; &nbsp; &nbsp;\r\n  pct relayed: %d</p>\
+ <p>&nbsp;\r\n Time packets sent: %d</p>\
+ <p>&nbsp; &nbsp; &nbsp;\r\n  pct not acknowledged: %d</p>\
+ <p>&nbsp;\r\n Time-sync restarts: %d</p>\
+ <p>&nbsp;\r\n Corrupt packets: %d</p>\
+ <p>&nbsp;\r\n Other packets: %d</p>\
  </html>";
                                   
 void onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data, size_t len)
@@ -171,13 +172,13 @@ void handleDoUpdate(AsyncWebServerRequest* request, const String& filename, size
     }
 }
 
-char stats_html[840];
+char stats_html[960];
 
 void update_stats()
 {
- uint32_t zero = 0;
- if (ognrelay_base && ognrelay_time) {
-     snprintf(stats_html, 839, stats_templ,
+  uint32_t zero = 0;
+  if (ognrelay_base && ognrelay_time) {
+     snprintf(stats_html, 959, stats_templ,
         ognopmode,
         traffic_packets_recvd,
         traffic_packets_reported,
@@ -185,14 +186,14 @@ void update_stats()
         (uint32_t) bad_packets_recvd,
         (uint32_t) sync_restarts,
         remote_traffic,
-        (uint32_t) (100 - remote_dropped),
+        (uint32_t) remote_pctrel,
         (uint32_t) remote_timesent,
         (uint32_t) remote_noack,
         (uint32_t) remote_restarts,
         (uint32_t) remote_bad,
         (uint32_t) remote_other);
-   } else if (ognrelay_base) {
-     snprintf(stats_html, 839, stats_templ,
+  } else if (ognrelay_base) {
+     snprintf(stats_html, 959, stats_templ,
         ognopmode,
         traffic_packets_recvd,
         traffic_packets_reported,
@@ -200,14 +201,14 @@ void update_stats()
         (uint32_t) bad_packets_recvd,
         zero,
         remote_traffic,
-        (uint32_t) (100 - remote_dropped),
+        (uint32_t) remote_pctrel,
         zero,
         zero,
         zero,
         (uint32_t) remote_bad,
         (uint32_t) remote_other);
-   } else if (ognrelay_enable) {
-     snprintf(stats_html, 839, stats_templ,
+  } else if (ognrelay_enable) {
+     snprintf(stats_html, 959, stats_templ,
         ognopmode,
         zero,
         zero,
@@ -223,8 +224,8 @@ void update_stats()
         (uint32_t) sync_restarts,
         (uint32_t) bad_packets_recvd,
         (uint32_t) other_packets_recvd);
-   } else {  /* single standalone station */
-     snprintf(stats_html, 839, stats_templ,
+  } else {  /* single standalone station */
+     snprintf(stats_html, 959, stats_templ,
         ognopmode,
         traffic_packets_recvd,
         traffic_packets_reported,
@@ -232,8 +233,8 @@ void update_stats()
         (uint32_t) bad_packets_recvd,
         zero, zero, zero, zero, zero, zero, zero,
         (uint32_t) other_packets_recvd);
-   }
-   stats_html[839] = '\0';
+  }
+  stats_html[959] = '\0';
 Serial.println(stats_html);
 }
 
@@ -267,7 +268,7 @@ void Web_setup(ufo_t* this_aircraft)
         Web_start();
         return;
     }
-Serial.println("web_setup() pt 1");
+
     File file = SPIFFS.open("/index.html", "r");
     if (!file)
     {
@@ -286,14 +287,34 @@ Serial.println("web_setup() pt 1");
     index_html[filesize] = '\0';
 
     file.close();
-Serial.println("web_setup() pt 2");
-    size_t size = 9600;
+
+    char *cp = strstr(index_html, "meta name=\"OGNbase-Version\"");
+    if (cp != NULL) {
+        cp += 37;
+        char versionbuf[8];
+        int ii = 0;
+        while (*cp != '\"' && *cp != '\0' && ii < 7)
+            versionbuf[ii++] = *cp++;
+        versionbuf[ii] = '\0';
+        if (strcmp(versionbuf,OGNBASE_HTML_VERSION)) {
+            Serial.println("Wrong version of index.html");
+            OLED_write("Wrong index.html version", 0, 27, true);
+            delay(500);
+            wserver.on("/", HTTP_GET, [](AsyncWebServerRequest* request){
+                request->send(200, "text/html", upload_html);
+            });
+            wserver.on("/doUpload", HTTP_POST, [](AsyncWebServerRequest* request) {}, handleUpload);
+            Web_start();
+            return;
+        }
+    }
+
     char*  offset;
+    size_t size = 9600;
     char*  Settings_temp = (char *) malloc(size);
 
     if (Settings_temp == NULL)
         return;
-Serial.println("web_setup() pt A");
 
     offset = Settings_temp;
 
@@ -314,7 +335,6 @@ Serial.println("web_setup() pt A");
 
     String version = SOFTRF_FIRMWARE_VERSION;
     // version += (ognrelay_enable? " - remote" : (ognrelay_base? " - base" : " - standalone"));
-Serial.println("web_setup() pt B");
 
     if (ognrelay_base && ognrelay_time)
         ognopmode = "Base station, time relayed from remote";
@@ -392,14 +412,12 @@ Serial.println("web_setup() pt B");
              (zabbix_enable == 1 ? "selected" : ""), "Enabled"
              );
             
-Serial.println("web_setup() pt 3");
     size_t len  = strlen(offset);
     String html = String(offset);
 
     wserver.on("/", HTTP_GET, [html](AsyncWebServerRequest* request){
         request->send(200, "text/html", html);
     });
-Serial.println("web_setup() pt 4");
 
     // Route to load style.css file
     wserver.on("/style.css", HTTP_GET, [](AsyncWebServerRequest* request){
@@ -423,19 +441,37 @@ Serial.println("web_setup() pt 4");
         request->send(200, "text/html", upload_html);
     });
 
-Serial.println("web_setup() pt 5");
-    update_stats();
-Serial.println("web_setup() pt 6");
+    snprintf(stats_html, 959, "stats not available yet");
 
     wserver.on("/stats", HTTP_GET, [](AsyncWebServerRequest* request){
         update_stats();
-Serial.println(F("requesting stats page..."));
+        Serial.println(F("requesting stats page..."));
         request->send(200, "text/html", String(stats_html));
     });
+
+    wserver.on("/refresh", HTTP_GET, [](AsyncWebServerRequest* request){
+        ExportTimeWebRefresh = 0;   /* force a refresh of the stats at the top of the status page */
+        request->redirect("/");
+    });    
 
     wserver.on("/reboot", HTTP_GET, [](AsyncWebServerRequest* request){
         request->redirect("/");
         SoC->reset();
+    });    
+
+    wserver.on("/remote_reboot", HTTP_GET, [](AsyncWebServerRequest* request){
+        if (reboot_remote()) {
+          Serial.println(F("sent remote reboot packet..."));
+          OLED_write("remote reboot...", 0, 27, true);
+          delay(1000);
+          // should display something on the web page too.
+          // for now just some hints:
+          remote_sats = 0;            /* hints that remote is restarting */
+          remote_uptime = 0;
+          uptime = 0;
+          ExportTimeWebRefresh = 0;   /* force a refresh of the stats at the top of the status page */
+        }
+        request->redirect("/");
     });    
 
     wserver.on("/doUpload", HTTP_POST, [](AsyncWebServerRequest* request) {}, handleUpload);
@@ -560,9 +596,11 @@ Serial.println(F("requesting stats page..."));
     SoC->swSer_enableRx(true);
     free(Settings_temp);
     free(index_html);
-Serial.println("web_setup() pt 9");
+
     // Start server
     Web_start();
+    delay(500);
+    ExportTimeWebRefresh = 0;   /* force a refresh of the stats at the top on next web_loop() */
 }
 
 void Web_loop(void)
@@ -577,10 +615,10 @@ void Web_loop(void)
         values += "_";
         values += RF_last_rssi;
         values += "_";
-        values += hours();
+        values += (ognrelay_base && ognrelay_time) ? remote_uptime : uptime;
         values += "_";
 #if defined(TBEAM)
-        values += (ognrelay_base & ognrelay_time) ? remote_sats : gnss.satellites.value();
+        values += (ognrelay_base && ognrelay_time) ? remote_sats : gnss.satellites.value();
 #else
         values += remote_sats;
 #endif
@@ -590,7 +628,6 @@ void Web_loop(void)
         values += numtracked;  // was: largest_range;
         globalClient->text(values);
     }
-Serial.println(F("updating stats..."));
-    update_stats();
-Serial.println(F("...updated stats"));
+
+    // update_stats();
 }

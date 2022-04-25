@@ -129,7 +129,7 @@
 #define APRS_PROTO_SWITCH 2
 #define TimeToswitchProto() (seconds() - ExportTimeSwitch >= APRS_PROTO_SWITCH)
 
-#define TIME_TO_REFRESH_WEB 30
+#define TIME_TO_REFRESH_WEB 23
 #define TimeToRefreshWeb() (seconds() - ExportTimeWebRefresh >= TIME_TO_REFRESH_WEB)
 
 //testing
@@ -253,33 +253,24 @@ void setup()
   if (ogn_gnsstime)
     hw_info.gnss = GNSS_setup();
 #endif
-Serial.println("INO setup pt 2");
   
   ThisAircraft.aircraft_type = settings->aircraft_type;
   Battery_setup();
   Traffic_setup();
-Serial.println("INO setup pt 3");
 
   SoC->swSer_enableRx(false);
-Serial.println("INO setup pt 4");
 
   OTA_setup();
-Serial.println("INO setup pt 5");
   delay(2000);
-Serial.println("INO setup pt 6");
 
   Web_setup(&ThisAircraft);
-Serial.println("INO setup pt 7");
 
   Time_setup();
-Serial.println("INO setup pt 8");
   SoC->WDT_setup();
-Serial.println("INO setup pt 9");
 
   if(private_network || remotelogs_enable){
     aes_init();
   }
-Serial.println("INO setup pt 10");
 
 #if defined(TBEAM)
   pinMode(BUTTON, INPUT);
@@ -516,7 +507,7 @@ Serial.println("still no position...");
 
     if(ground_registred == -1) {
       Serial.println("server registration failed!");
-      OLED_write("server registration failed!", 0, 18, true);
+      OLED_write("server reg failed!", 0, 18, true);
       OLED_write("please check json file!", 0, 27, false);
       snprintf (buf, sizeof(buf), "%s : %d", ogn_server.c_str(), ogn_port);
       OLED_write(buf, 0, 36, false);
@@ -539,8 +530,6 @@ Serial.println("still no position...");
 //      ground_registred = 0;
     }
 
-//Serial.println("maybe export...");
-
     if (TimeToExportOGN())
     {
       if (ground_registred == 1) {
@@ -551,10 +540,8 @@ Serial.println("still no position...");
         disp = "Calling APRS_Export...";
         OLED_write(disp, 0, 24, true);
         OGN_APRS_Export();
-//Serial.println("...after export...");
       }
       // OLED_info(position_is_set);
-//Serial.println("OLED_info_1...");
       OLED_info(false);
       ExportTimeOGN = seconds();
     }
@@ -565,10 +552,8 @@ Serial.println("still no position...");
       disp = "keepalive OGN...";
       OLED_write(disp, 0, 24, true);
 //Serial.println("...keepalive...");
-      
       OGN_APRS_KeepAlive();
       ExportTimeKeepAliveOGN = seconds();
-//Serial.println("...keepalive");
     }
   
     if (TimeToStatusOGN() && ground_registred == 1 && (position_is_set ))
@@ -617,7 +602,6 @@ Serial.println("still no position...");
 
   /* use same time marker for OLED display cycling */
   if (TimeToExportOGN() && ognrelay_enable){
-//Serial.println("OLED_info_2...");
     // OLED_info(position_is_set);
     OLED_info(false);
     ExportTimeOGN = seconds();
@@ -631,8 +615,11 @@ Serial.println("still no position...");
     msg += String(ogn_wakeuptimer); 
     msg += " seconds - good night";
     Logger_send_udp(&msg);
-    
-    esp_sleep_enable_timer_wakeup(ogn_wakeuptimer*1000000LL);
+
+    int sleep_length = ogn_wakeuptimer;
+    if (uptime >= 5)  /* hours */
+        sleep_length = 12 * 3600;
+    esp_sleep_enable_timer_wakeup(sleep_length*1000000LL);
     esp_sleep_enable_ext0_wakeup(GPIO_NUM_26,1);
     OLED_disable();
     
@@ -651,6 +638,7 @@ Serial.println("still no position...");
 
     OurTime = 0;
     time_synched = false;
+    uptime = 0;
 
     esp_deep_sleep_start();
   }

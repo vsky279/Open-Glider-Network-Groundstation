@@ -2,6 +2,8 @@
  * Traffic.cpp
  * Copyright (C) 2018-2020 Linar Yusupov
  *
+ * Traffic-relay prioritization code by Moshe Braner, 2022
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -135,6 +137,14 @@ void ParseData()
       }
     }
 
+    if (ognrelay_enable) {
+        if (maybe_remote_reboot(fo.raw))
+            /* a reboot packet, but did not reboot */
+            return;
+        /* else, it was not a remote-reset packet */
+        /* fall through to process as a traffic packet */
+    }
+
     /* until time-synched any received packets other than time-sync are ignored */
     if (OurTime == 0 || ! time_synched)
         return;
@@ -170,42 +180,46 @@ void ParseData()
 
         ++traffic_packets_recvd;
 
-        /* in remote relay station decode() decoded only the addr */
-
 //Serial.println("parsing decoded packet...");
 
         /* timenow = now(); */
         timenow = OurTime;
+        // fo.timestamp = timenow;    /* timestamp (and H,M,S) was set in legacy_decode() */
 
-        fo.timestamp = timenow;
         if (! ognrelay_enable) {
-            fo.hour = ThisAircraft.hour;
-            fo.minute = ThisAircraft.minute;
-            fo.second = ThisAircraft.second;
             calc_distance(&fo);
+            if (fo.distance /*m*/ > 1200 * ogn_range /*km*/)
+                return;                            /* too far, or perhaps corrupted data */
         }
-        fo.waiting = true;   /* unless changed below */
-
-        fo.rssi = RF_last_rssi;
 
         /* if an already-tracked aircraft, update and report */
         /* - but if reported recently, ignore for now */
 
         for (i=0; i < MAX_TRACKING_OBJECTS; i++) {
+
             cip = &Container[i];
             if (cip->addr == fo.addr) {               /* this fo already tracked */
+
+                 /* ignore duplicate FLARM packets (there are many!) */
+                 if (fo.altitude == cip->altitude &&
+                     fo.latitude == cip->latitude &&
+                     fo.longitude == cip->longitude)
+                               return;
+
               if (ognrelay_enable) {  /* remote station */
+
                   fo.timereported = cip->timereported;   /* last time it was relayed */
-                  if (timenow < fo.timereported + relay_interval())
-                      fo.waiting = false;            /* not yet time to relay this one again */
+                  fo.waiting = (timenow >= fo.timereported + relay_interval());
+
               } else {  /* base station */
+
                   fo.prevtime = cip->timestamp;      /* keep some data from previous packet...   */
                   fo.prevlat = cip->latitude;        /* ... in order to check data in PVALID.cpp */
                   fo.prevlon = cip->longitude;
                   fo.timereported = cip->timereported;  /* last time it was reported to OGN */
-                  if (timenow < fo.timereported + report_interval())
-                      fo.waiting = false;
+                  fo.waiting = (timenow >= fo.timereported + report_interval());
 //Serial.printf("[%d] received again\r\n", i);
+
               }
               *cip = fo;                      /* copy the whole struct, including new timestamp */
               return;
@@ -214,34 +228,30 @@ void ParseData()
 
         /* new aircraft, not currently in the Container[] array */
 
-        fo.prevtime = 0;                                   /* no previous data */
-        if (ognrelay_enable)
-          fo.timereported = timenow - relay_interval();    /* ready to be relayed */
-        else
-          fo.timereported = timenow - report_interval();   /* ready to be reported */
+        fo.prevtime = 0;              /* no previous data */
+        fo.waiting = true;
+        fo.timereported = 0;          /* never been relayed or reported */
 
         /* put it in an empty slot if available */
-
-        for (i=0; i < MAX_TRACKING_OBJECTS; i++) {
-            if (Container[i].addr == 0) {
-                Container[i] = fo;
-//if (ognrelay_base)
-//Serial.printf("[%d] new\r\n", i);
-                ++numtracked;
-                return;
-            }
-        }
-
-        /* no empty slot, replace the oldest */
+        /* if no empty slot, replace the oldest */
 
         oldest = 0;
         oldest_age = 0;
         for (i=0; i < MAX_TRACKING_OBJECTS; i++) {
             cip = &Container[i];
-            age = (int) (timenow - cip->timestamp);
-            if (! cip->waiting)                /* treat non-waiting as older */
+            if (cip->addr == 0) {                     /* empty slot */
+                *cip = fo;
+//if (ognrelay_base)
+//Serial.printf("[%d] new\r\n", i);
+                ++numtracked;
+                return;
+            }
+            age = (int) (timenow - cip->timestamp);   /* not ->timereported */
+            if (age < ENTRY_EXPIRATION_TIME && fo.timereported == 0)  /* not previously reported */
+                age = 0;                              /* do not overwrite */
+            if (! cip->waiting)                       /* treat non-waiting as older */
                 age += ENTRY_EXPIRATION_TIME;
-            if (! ognrelay_enable) {           /* remote does not decode these fields */
+            if (! (ognrelay_enable && ! ogn_gnsstime)) {    /* remote could decode these fields */
                 if (cip->stealth)
                     age += ENTRY_EXPIRATION_TIME;     /* treat stealth as older yet */
                 if (cip->no_track)
@@ -253,16 +263,18 @@ void ParseData()
             }
         }
 
-        if (! ognrelay_enable) {           /* remote does not decode these fields */
+        if (! (ognrelay_enable && ! ogn_gnsstime)) {    /* remote could decode these fields */
             if (oldest_age < ENTRY_EXPIRATION_TIME && fo.stealth)
                 return;   /* drop the new traffic instead of replacing old traffic */
             if (oldest_age < 2*ENTRY_EXPIRATION_TIME && fo.no_track)
                 return;   /* drop it */
         }
 
-        Container[oldest] = fo;        /* overwrites older data */
+        if (oldest_age > 0) {
+            Container[oldest] = fo;        /* overwrites older data */
 //if (ognrelay_base)
 //Serial.printf("[%d] overwritten\r\n", oldest);
+        }
     }
 }
 
@@ -286,7 +298,6 @@ void Traffic_setup()
     }
 }
 
-/* >>> this assumes "Legacy" protocol, should be encapsulated into Legacy.cpp */
 void Traffic_Relay(ufo_t* fop)
 {
     if (settings->no_track || settings->stealth || ogn_itrackbit || ogn_istealthbit) {
@@ -296,16 +307,15 @@ void Traffic_Relay(ufo_t* fop)
         return;
     }
 
-    legacy_packet_t* pkt = (legacy_packet_t *) fop->raw;
-    pkt->_unk0 = 0xE;      /* marks relayed packets */
-
-    memcpy(TxBuffer, fop->raw, LEGACY_PAYLOAD_SIZE);
-
-    if (RF_Transmit(LEGACY_PAYLOAD_SIZE, true)) {   /* success transmitting */
-        fop->waiting = false;
-        /* set time stamp for next update of same aircraft */
-        fop->timereported = OurTime;
-        ++traffic_packets_relayed;
+    size_t size = relay_encode((void*) &fop->raw, fop);
+    if (size > 0) {
+      memcpy(TxBuffer, fop->raw, size);
+      if (RF_Transmit(size, true)) {   /* success transmitting */
+          fop->waiting = false;
+          /* set time stamp for next update of same aircraft */
+          fop->timereported = OurTime;
+          ++traffic_packets_relayed;
+      }
     }
 }
 
@@ -323,10 +333,10 @@ void Traffic_loop()
     for (i=0; i < MAX_TRACKING_OBJECTS; i++) {
         cip = &Container[i];
         if (cip->addr) {
-            ++numtracked;                     /* count tracked objects */
-            age = (int) (timenow - cip->timestamp);
+            ++numtracked;                      /* count tracked objects */
             if (cip->waiting) {
-                ++waiting;
+                ++waiting;                     /* count objects waiting to be reported */
+                age = (int) (timenow - cip->timereported);   /* not ->timestamp */
                 if (age > oldest_age) {
                    oldest_age = age;
                    oldest_waiting = i;

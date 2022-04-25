@@ -33,12 +33,13 @@
 
 #include "version.h"
 
-#define SOFTRF_FIRMWARE_VERSION "MB05d"   // _VERSION
+#define SOFTRF_FIRMWARE_VERSION "MB06a"   // _VERSION
 #define SOFTRF_IDENT            "OGNB-"
+#define OGNBASE_HTML_VERSION    "MB06"
 
 #define ENTRY_EXPIRATION_TIME   40 /* seconds */
 #define LED_EXPIRATION_TIME     5  /* seconds */
-#define EXPORT_EXPIRATION_TIME  30  /* seconds */
+#define EXPORT_EXPIRATION_TIME  60  /* seconds */
 
 /*
  * If you need for SoftRF to operate in wireless
