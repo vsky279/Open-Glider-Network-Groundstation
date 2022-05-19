@@ -42,6 +42,9 @@ bool aprs_connected   = false;
 int  last_packet_time = 0; // seconds
 int  ap_uptime        = 0;
 
+char ogn_server_name_buf[12];
+char *ogn_server_name = "GLIDERN0";
+
 #define seconds() (millis() / 1000)
 
 // const unsigned long seventyYears = 2208988800UL;
@@ -176,6 +179,40 @@ Serial.print(RXbuffer);
           Serial.println(msg.c_str());
           Logger_send_udp(&msg);
         }
+
+      if (reg == 1 && recStatus > 41) {
+        if (strncmp(RXbuffer,"# logresp",9) == 0) {
+            char *p;
+            if (p = strstr(RXbuffer,"server GLIDERN")) {
+                if (strlen(p) > 14) {
+                    p += 7;
+                    p[9] = '\0';
+                    (void) strcpy(ogn_server_name_buf, p);
+                    ogn_server_name = ogn_server_name_buf;
+Serial.print("server name from logresp: ");
+Serial.println(ogn_server_name);
+                }
+            }
+        }
+      } else if (reg < 0 && recStatus > 57) {   /* not a registration message */
+        if (strncmp(RXbuffer,"# aprsc",7) == 0) {
+            char *p;
+            if (p = strstr(RXbuffer,"GMT GLIDERN")) {
+                if (strlen(p) > 11) {
+                    p += 4;
+                    if (p[8] == ' ')
+                        p[8] = '\0';
+                    else
+                        p[9] = '\0';
+                    (void) strcpy(ogn_server_name_buf, p);
+                    ogn_server_name = ogn_server_name_buf;
+Serial.print("server name from aprsc: ");
+Serial.println(ogn_server_name);
+                }
+            }
+        }
+      }
+
     }
 
     if (seconds() - last_packet_time > 60)
@@ -211,12 +248,14 @@ void OGN_APRS_Export(void)
             if ((ThisAircraft.timestamp - Container[i].timestamp) > EXPORT_EXPIRATION_TIME) {
                 Container[i].waiting = false;
                 // Container[i].timereported = OurTime;
+                Serial.println("... skipping expired packet");
                 continue;
             }
 
             if ((Container[i].stealth && !ogn_istealthbit) || (Container[i].no_track && !ogn_itrackbit)) {
                 Container[i].waiting = false;
                 Container[i].timereported = OurTime;
+                Serial.println("... skipping stealth packet");
                 continue;
             }
 
@@ -227,6 +266,7 @@ void OGN_APRS_Export(void)
             if (distance > ogn_range) {
                 Container[i].waiting = false;
                 Container[i].timereported = OurTime;
+                Serial.println("... skipping too-far packet");
                 continue;
             }
 
@@ -274,7 +314,7 @@ void OGN_APRS_Export(void)
             APRS_AIRC.sender_details = zeroPadding(String((Container[i].aircraft_type << 2)
                                                      | (Container[i].stealth << 7)
                                                      | (Container[i].no_track << 6)
-                                                     | (Container[i].addr_type, HEX)), 2);
+                                                     | (Container[i].addr_type), HEX), 2);
 
             APRS_AIRC.symbol_table = String(symbol_table[Container[i].aircraft_type]);
             APRS_AIRC.symbol       = String(symbol[Container[i].aircraft_type]);
@@ -407,7 +447,7 @@ int OGN_APRS_Register(ufo_t* this_aircraft)
 
     if (aprs_registred == 1)
     {
-        /* RUSSIA>APRS,TCPIP*,qAC,248280:/220757h626.56NI09353.92E&/A=000446 */
+        /* RUSSIA>APRS,TCPIP*,qAC,GLIDERN2:/220757h626.56NI09353.92E&/A=000446 */
 
         struct  aprs_reg_packet APRS_REG;
         float   LAT = fabs(this_aircraft->latitude);
@@ -415,8 +455,8 @@ int OGN_APRS_Register(ufo_t* this_aircraft)
         // time_t  APRStime = OurTime; // - seventyYears;
 
         APRS_REG.origin   = ogn_callsign;
-        APRS_REG.callsign = String(this_aircraft->addr, HEX);
-        APRS_REG.callsign.toUpperCase();
+        APRS_REG.callsign = String(ogn_server_name);    // String(this_aircraft->addr, HEX);
+        //APRS_REG.callsign.toUpperCase();
         APRS_REG.alt       = zeroPadding(String(int(this_aircraft->altitude * 3.28084)), 6);
         APRS_REG.timestamp = zeroPadding(String(this_aircraft->hour), 2)
                              + zeroPadding(String(this_aircraft->minute), 2)
@@ -476,8 +516,8 @@ void OGN_APRS_Status(ufo_t* this_aircraft)
     // time_t APRStime = OurTime; // - seventyYears;
     struct aprs_stat_packet APRS_STAT;
     APRS_STAT.origin   = ogn_callsign;
-    APRS_STAT.callsign = String(this_aircraft->addr, HEX);
-    APRS_STAT.callsign.toUpperCase();
+    APRS_STAT.callsign = String(ogn_server_name);    // String(this_aircraft->addr, HEX);
+    //APRS_STAT.callsign.toUpperCase();
     APRS_STAT.timestamp      = zeroPadding(String(this_aircraft->hour), 2)
                              + zeroPadding(String(this_aircraft->minute), 2)
                              + zeroPadding(String(this_aircraft->second), 2) + "h";
@@ -488,19 +528,19 @@ void OGN_APRS_Status(ufo_t* this_aircraft)
     APRS_STAT.platform      += "-ESP32";
     
     APRS_STAT.realtime_clock = String(0.0);
-    APRS_STAT.board_voltage  = String(Battery_voltage()) + "V";
+    APRS_STAT.board_voltage  = String(packets_per_minute) + "/min";    // was String(Battery_voltage()) + "V";
 
     // 14/16Acfts[1h]
 
     String StatusPacket = APRS_STAT.origin;
-    StatusPacket += ">OGFLR,TCPIP*,qAC,";
+    StatusPacket += ">OGFLR,TCPIP*,qAS,";    // was qAC but that's for beacons not status.
     StatusPacket += APRS_STAT.callsign;
     StatusPacket += ":>";
     StatusPacket += APRS_STAT.timestamp;
     StatusPacket += " ";
     StatusPacket += APRS_STAT.platform;
     StatusPacket += " ";
-    StatusPacket += APRS_STAT.board_voltage;
+    StatusPacket += APRS_STAT.board_voltage;   // replaced with packets per minute
     //StatusPacket += " ";
     //StatusPacket += ThisAircraft.timestamp;
     StatusPacket += "\r\n";

@@ -20,6 +20,7 @@
 #define TRAFFICHELPER_H
 
 #include "SoC.h"
+#include "SoftRF.h"
 
 #define ALARM_ZONE_NONE       100000 /* zone range is 1000m <-> 10000m */
 #define ALARM_ZONE_LOW        1000   /* zone range is  700m <->  1000m */
@@ -29,7 +30,7 @@
 #define VERTICAL_SEPARATION         300 /* metres */
 #define VERTICAL_VISIBILITY_RANGE   500 /* value from FLARM data port specs */
 
-#define TRAFFIC_VECTOR_UPDATE_INTERVAL 75 /* seconds */
+#define TRAFFIC_VECTOR_UPDATE_INTERVAL (2 * EXPORT_EXPIRATION_TIME) /* seconds */
 #define TRAFFIC_UPDATE_INTERVAL_MS (TRAFFIC_VECTOR_UPDATE_INTERVAL * 1000)
 #define isTimeToUpdateTraffic() (millis() - UpdateTrafficTimeMarker > \
                                  TRAFFIC_UPDATE_INTERVAL_MS)

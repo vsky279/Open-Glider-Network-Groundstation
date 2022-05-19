@@ -104,10 +104,12 @@ uint8_t parity(uint32_t);
 byte RF_setup(void);
 
 void RF_SetChannel(int);
-#define FOR_RX 0
-#define FOR_TX 1
+//#define FOR_RX 0
+//#define FOR_TX 1
 
 // void RF_SetHopChannel(void);
+
+bool RF_TX_ready(void);
 
 void RF_loop(void);
 

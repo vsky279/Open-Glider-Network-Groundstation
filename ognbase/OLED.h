@@ -25,7 +25,7 @@
 
 void OLED_setup(void);
 
-void OLED_write(char *, short, short, bool);
+void OLED_write(const char *, short, short, bool);
 
 void OLED_clear(void);
 
@@ -38,5 +38,7 @@ void OLED_disable(void);
 void OLED_enable(void);
 
 void OLED_draw_Bitmap(int16_t, int16_t, uint8_t, bool);
+
+extern bool OLED_blank;
 
 #endif /* OLEDHELPER_H */

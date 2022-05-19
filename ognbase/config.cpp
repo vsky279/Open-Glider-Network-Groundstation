@@ -179,7 +179,7 @@ bool OGN_read_config(void)
 
     char buf[32];
 
-    SPI.begin(SD_SCK, SD_MISO, SD_MOSI); // TTGO V2   >>> this fails on my hardware, have pins changed?
+    SPI.begin(SD_SCK, SD_MISO, SD_MOSI); // TTGO V2   >>> this failed with Core 2.0.2, works with Core 2.0.3
     if(!SD.begin(SD_CS)){                          // >>> 13 - examples on web have no argument passed here?
       Serial.println("Card Mount Failed");
     }
@@ -406,8 +406,10 @@ ogn_protocol_1  = RF_PROTOCOL_LEGACY;  /* override - only protocol supported for
             // ognrelay_key = (uint32_t) std::stoi(key_str,nullptr,16);
         }
 #if defined(TBEAM)
-        if (ognrelay_base && ognrelay_time)                      /* gets time from remote */
+        if (ognrelay_base && ognrelay_time)                     /* gets time from remote */
             ogn_gnsstime = false;
+        else if (ognrelay_enable && ognrelay_time)              /* sends time to base */
+            ogn_gnsstime = true;
         else if (ogn_band==RF_BAND_AU || ogn_band==RF_BAND_US)  /* if more than 2 channels */
             ogn_gnsstime = true;                                /* must use GNSS time */
         else

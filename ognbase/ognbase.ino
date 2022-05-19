@@ -8,7 +8,7 @@
 
    Credits:
      Arduino core for ESP8266 is developed/supported by ESP8266 Community (support-esp8266@esp8266.com)
-     AVR/Arduino nRF905 Library/Driver is developed by Zak Kemble, contact@zakkemble.co.uk
+     AVR/Arduino nRF905 Library/Driverr is developed by Zak Kemble, contact@zakkemble.co.uk
      flarm_decode is developed by Stanislaw Pusep, http://github.com/creaktive
      Arduino Time Library is developed by Paul Stoffregen, http://github.com/PaulStoffregen
      "Aircraft" and MAVLink Libraries are developed by Andy Little
@@ -108,22 +108,22 @@
 
 #define isTimeToExport() (millis() - ExportTimeMarker > 1000)
 
-#define APRS_EXPORT_AIRCRAFT 5
+#define APRS_EXPORT_AIRCRAFT 6
 #define TimeToExportOGN() (seconds() - ExportTimeOGN >= APRS_EXPORT_AIRCRAFT)
 
-#define APRS_REGISTER_REC 300
+#define APRS_REGISTER_REC 299
 #define TimeToRegisterOGN() (seconds() - ExportTimeRegisterOGN >= APRS_REGISTER_REC)
 
-#define APRS_KEEPALIVE_TIME 240
+#define APRS_KEEPALIVE_TIME 239
 #define TimeToKeepAliveOGN() (seconds() - ExportTimeKeepAliveOGN >= APRS_KEEPALIVE_TIME)
 
-#define APRS_CHECK_KEEPALIVE_TIME 20
+#define APRS_CHECK_KEEPALIVE_TIME 21
 #define TimeToCheckKeepAliveOGN() (seconds() - ExportTimeCheckKeepAliveOGN >= APRS_CHECK_KEEPALIVE_TIME)
 
-#define APRS_CHECK_WIFI_TIME 600
+#define APRS_CHECK_WIFI_TIME 602
 #define TimeToCheckWifi() (seconds() - ExportTimeCheckWifi >= APRS_CHECK_WIFI_TIME)
 
-#define APRS_STATUS_REC 1800
+#define APRS_STATUS_REC 293
 #define TimeToStatusOGN() (seconds() - ExportTimeStatusOGN >= APRS_STATUS_REC)
 
 #define APRS_PROTO_SWITCH 2
@@ -136,14 +136,14 @@
 #define TimeToSleep() (seconds() - ExportTimeSleep >= ogn_rxidle)
 
 //testing
-#define TIME_TO_DIS_WIFI  600
+#define TIME_TO_DIS_WIFI  607
 #define TimeToDisWifi() (seconds() - ExportTimeDisWifi >= TIME_TO_DIS_WIFI)
 
 //testing
 #define TimeToDisableOled() (seconds() - ExportTimeOledDisable >= oled_disable)
 
 //time reregister if failed
-#define TIME_TO_REREG 30
+#define TIME_TO_REREG 29
 #define TimeToReRegisterOGN() (seconds() - ExportTimeReRegister >= TIME_TO_REREG)
 
 /*Testing FANET service messages*/
@@ -323,6 +323,10 @@ void loop()
 
 void shutdown(const char *msg)
 {
+Serial.println(msg);
+OLED_write(msg, 0, 27, true);
+delay(500);
+
   SoC->WDT_fini();
 
   SoC->swSer_enableRx(false);
@@ -454,8 +458,8 @@ Serial.println("still no position...");
 //Serial.println("ground...");
 
    if (position_is_set && !groundstation) {
-   
-    RF_Transmit(RF_Encode(&ThisAircraft), true);
+
+    // RF_Transmit(RF_Encode(&ThisAircraft), true);  // is this necessary?
     groundstation = true;
  
     msg = "good morning, startup esp32 groundstation ";
@@ -481,9 +485,11 @@ Serial.println("still no position...");
 
   if (success && position_is_set) {
       // Logger_send_udp(&msg);
-//Serial.println("Parse...");
+Serial.println("Parse...");
+      uint32_t rx = traffic_packets_recvd;
       ParseData();
-      ExportTimeSleep = seconds();
+      if (traffic_packets_recvd > rx)   /* ignore time-sync packets */
+        ExportTimeSleep = seconds();    /* actual traffic postpones sleep */
   }
 
 //Serial.println("Traffic_loop...");
@@ -496,7 +502,7 @@ Serial.println("still no position...");
 //Serial.println("check registration...");
 
     if (TimeToRegisterOGN() || ground_registred == 0) {  
-      if (OurTime != 0 && position_is_set && WiFi.getMode() != WIFI_AP) {
+      if (OurTime != 0 && ThisAircraft.second != 0 && position_is_set && WiFi.getMode() != WIFI_AP) {
         Serial.println("Registering OGN...");
         OLED_write("Registering OGN...", 0, 18, true);
         ground_registred = OGN_APRS_Register(&ThisAircraft);
@@ -542,7 +548,8 @@ Serial.println("still no position...");
         OGN_APRS_Export();
       }
       // OLED_info(position_is_set);
-      OLED_info(false);
+      if (! OLED_blank)
+        OLED_info(false);
       ExportTimeOGN = seconds();
     }
 
@@ -603,7 +610,8 @@ Serial.println("still no position...");
   /* use same time marker for OLED display cycling */
   if (TimeToExportOGN() && ognrelay_enable){
     // OLED_info(position_is_set);
-    OLED_info(false);
+    if (! OLED_blank)
+      OLED_info(false);
     ExportTimeOGN = seconds();
   }
 
@@ -611,14 +619,18 @@ Serial.println("still no position...");
   
   if ( TimeToSleep() && ogn_sleepmode )
   {
+    int sleep_length = ogn_wakeuptimer;
+    if (uptime >= 5) {  /* hours */
+      if (ognrelay_enable)
+        sleep_length = 12 * 3600;
+      else
+        sleep_length = 11 * 3600 + 1800;
+    }
     msg = "entering sleep mode for ";
-    msg += String(ogn_wakeuptimer); 
+    msg += String(sleep_length); 
     msg += " seconds - good night";
     Logger_send_udp(&msg);
 
-    int sleep_length = ogn_wakeuptimer;
-    if (uptime >= 5)  /* hours */
-        sleep_length = 12 * 3600;
     esp_sleep_enable_timer_wakeup(sleep_length*1000000LL);
     esp_sleep_enable_ext0_wakeup(GPIO_NUM_26,1);
     OLED_disable();
@@ -637,8 +649,9 @@ Serial.println("still no position...");
       SoC->WiFi_disconnect_TCP();
 
     OurTime = 0;
-    time_synched = false;
+    Timesync_restart();
     uptime = 0;
+    last_hour = 0;
 
     esp_deep_sleep_start();
   }

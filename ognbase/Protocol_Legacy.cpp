@@ -53,8 +53,12 @@ const rf_proto_desc_t legacy_proto_desc = {
     .whitening = RF_WHITENING_MANCHESTER,
     .bandwidth = RF_RX_BANDWIDTH_SS_125KHZ,
 
+  .air_time        = 5,   // LEGACY_AIR_TIME,
+  .tm_type         = RF_TIMING_2SLOTS_PPS_SYNC,  
     .tx_interval_min = LEGACY_TX_INTERVAL_MIN,
     .tx_interval_max = LEGACY_TX_INTERVAL_MAX
+//  .slot0           = {400,  800},
+//  .slot1           = {800, 1200}
 };
 
 /* http://en.wikipedia.org/wiki/XXTEA */
@@ -133,18 +137,20 @@ void make_relay_key(uint32_t *key)
         key[i] = (ognrelay_key << i) | i;
 }
 
-bool legacy_decode(void* legacy_pkt, ufo_t* this_aircraft, ufo_t* fop)
+bool legacy_decode(void* buffer, ufo_t* this_aircraft, ufo_t* fop)
 {
     String msg;
 
-    legacy_packet_t* pkt = (legacy_packet_t *) legacy_pkt;
+    legacy_packet_t* pkt = (legacy_packet_t *) buffer;
 
     fop->addr = pkt->addr;     /* first 32 bits are not encrypted */
+Serial.printf("decoding pkt, unk0=%d, addr=%06X\r\n", pkt->_unk0, pkt->addr);
 
     if (ognrelay_enable) {
 
         if (pkt->_unk0 != 0) {    /* received relayed, or time, or special FLARM packet - ignore */
           ++other_packets_recvd;
+Serial.printf("received non-traffic pkt, unk0=%d\r\n", pkt->_unk0);
           return false;
         }
 
@@ -152,6 +158,7 @@ bool legacy_decode(void* legacy_pkt, ufo_t* this_aircraft, ufo_t* fop)
 
         if (pkt->_unk0 != 0xB && pkt->_unk0 != 0xD) {  /* other than relayed packets */
           ++other_packets_recvd;
+//Serial.printf("received non-relay pkt, unk0=%d, addr=%06X\r\n", pkt->_unk0, pkt->addr);
           return false;          /* ignore normal packets */
         }
         /* otherwise fall through and decode relayed packets */
@@ -160,6 +167,7 @@ bool legacy_decode(void* legacy_pkt, ufo_t* this_aircraft, ufo_t* fop)
 
         if (pkt->_unk0 != 0) {    /* received packets that are not normal traffic - ignore */
           ++other_packets_recvd;
+Serial.printf("received non-traffic pkt, unk0=%d\r\n", pkt->_unk0);
           return false;
         }
         /* otherwise fall through and decode normal packets */
@@ -179,10 +187,13 @@ bool legacy_decode(void* legacy_pkt, ufo_t* this_aircraft, ufo_t* fop)
         fop->timestamp = timestamp;
         fop->stealth  = 0;
         fop->no_track = 0;
+//Serial.println("returning un-decrypted packet");
         return true;
     }
 
     bool time_sent = (ognrelay_base && (pkt->_unk0 == 0xD));  /* timestamp sent from remote station */
+
+//Serial.println("... pt2");
 
     /* decrypt packet */
     uint32_t key[4];
@@ -200,12 +211,13 @@ bool legacy_decode(void* legacy_pkt, ufo_t* this_aircraft, ufo_t* fop)
     } else {   /* single station, or remote with GNSS time */
         make_key(key, timestamp, (pkt->addr << 8) & 0xffffff);
     }
-    btea((uint32_t *) pkt + 1, -5, key);
-
+    uint32_t *p = (uint32_t *) pkt;
+    btea(p+1, -5, key);
+    
     /* check data integrity */
     if (time_sent) {
         /* compute checksum and reject packet if fails */
-        uint16_t sentsum = ((uint16_t) pkt->ew[2] << 8) | (uint16_t) pkt->ew[3];
+        uint16_t sentsum = ((uint16_t) pkt->ew[2] << 7) | (uint16_t) (pkt->ew[3] & 0x7F);
         pkt->ew[2] = 0;
         pkt->ew[3] = 0;
         uint16_t checksum=0;
@@ -224,39 +236,51 @@ Serial.println("bad checksum in relayed packet");
         for (int ndx = 0; ndx < sizeof (legacy_packet_t); ndx++)
             pkt_parity += parity(*(((unsigned char *) pkt) + ndx));
         if (pkt_parity % 2) {
+if (ognrelay_base)
 Serial.println("bad parity in relayed packet");
+else
+Serial.println("bad parity in original packet");
             return false;
         }
         // since parity will be right 50% of the time by chance, it's a very weak check!
         fop->rssi  = RF_last_rssi;      /* local reception */
     }
 
+//Serial.println("... pt3");
+
     fop->timestamp = timestamp;
+    fop->addr_type = pkt->addr_type;
     fop->stealth   = pkt->stealth;
     fop->no_track  = pkt->no_track;
 
+    /* set hour, minute, second for OGN reporting of this packet */
+
+    if (! time_sent) {
+      fop->hour   = this_aircraft->hour;
+      fop->minute = this_aircraft->minute;
+      fop->second = this_aircraft->second;
+    }
+
     if (ognrelay_enable) {
-        fop->hour = ThisAircraft.hour;
-        fop->minute = ThisAircraft.minute;
-        fop->second = ThisAircraft.second;
         /* do not decode further */
-        /* packet will be relayed in Traffic.cpp */
+        /* packet will be relayed in Traffic.cpp using legacy_encode() below */
         return true;
     }
 
+//Serial.println("... pt4");
     if (ognrelay_base) {
-      /* set hour, minute, second for OGN reporting of this packet */
-      if (time_sent) {              /* H,M,S sent from remote */
-          fop->hour   = pkt->ns[1];
+
+      if (time_sent) {
+          fop->hour   = pkt->ns[1];   /* original H,M,S sent from remote */
           fop->minute = pkt->ns[2];
           fop->second = pkt->ns[3];
+#if 0
 //        if ((fop->hour > this_aircraft->hour && this_aircraft->hour > 0)
 //            || (fop->minute > this_aircraft->minute && this_aircraft->minute > 0))
 //                return false;     /* apparently corrupted data */
-      } else {
-          fop->hour = ThisAircraft.hour;
-          fop->minute = ThisAircraft.minute;
-          fop->second = ThisAircraft.second;
+#endif
+
+      } else {                      /* approximate adjustment for relay delay */
           int delay = (pkt->_unk1 == 0) ? 4 : 16;
           if (fop->second >= delay) {
               fop->second -= delay;
@@ -272,8 +296,9 @@ Serial.println("bad parity in relayed packet");
             fop->second += 60 - delay;
           }
       }
-    }
+    }  /* single-station leaves HMS as-was in this_aircraft */
 
+//Serial.println("... pt5");
     float    ref_lat   = this_aircraft->latitude;
     float    ref_lon   = this_aircraft->longitude;
     float    geo_separ = this_aircraft->geoid_separation;
@@ -325,12 +350,13 @@ Serial.println("bad parity in relayed packet");
 //    fop->ew[1]         = pkt->ew[1];
 //    fop->ew[2]         = pkt->ew[2];
 //    fop->ew[3]         = pkt->ew[3];
+Serial.println("decode() end...");
 
     return true;
 }
 
 /* this not actually used in OGNbase */
-size_t legacy_encode(void* legacy_pkt, ufo_t* this_aircraft)
+size_t legacy_encode_this(void* legacy_pkt, ufo_t* this_aircraft)
 {
     legacy_packet_t* pkt = (legacy_packet_t *) legacy_pkt;
 
@@ -455,9 +481,15 @@ size_t legacy_encode(void* legacy_pkt, ufo_t* this_aircraft)
 }
 
 /* special encoding for relayed packets */
-size_t relay_encode(void* legacy_pkt, ufo_t* fop)
+
+size_t legacy_encode(void* buffer, ufo_t* fop)
 {
-    legacy_packet_t* pkt = (legacy_packet_t *) legacy_pkt;
+    if (fop == &ThisAircraft)
+        return legacy_encode_this(buffer, fop);   /* happens once at start-up */
+
+    memcpy(buffer, fop->raw, sizeof(legacy_packet_t));
+
+    legacy_packet_t* pkt = (legacy_packet_t *) buffer;
 
     if (ognrelay_enable && ogn_gnsstime) {    /* need to re-encrypt */
 
@@ -473,12 +505,13 @@ size_t relay_encode(void* legacy_pkt, ufo_t* fop)
         uint16_t checksum=0;
         for (ndx = 0; ndx < sizeof (legacy_packet_t); ndx++)
             checksum += (*(((unsigned char *) pkt) + ndx));
-        pkt->ew[2] = (checksum & 0xFF00) >> 8;
-        pkt->ew[3] = checksum & 0x00FF;
+        pkt->ew[2] = (checksum & 0x3F80) >> 7;
+        pkt->ew[3] = checksum & 0x007F;
 
         uint32_t key[4];
         make_relay_key(key);
-        btea((uint32_t *) pkt + 1, 5, key);
+        uint32_t *p = (uint32_t *) pkt;
+        btea(p+1, 5, key);
 
     } else {    /* do not re-encrypt, it is still in the original FLARM encryption */
 

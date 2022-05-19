@@ -310,12 +310,24 @@ static void ESP32_loop()
 
         if (isTimeToBattery())
         {
+#if 0
             if (Battery_voltage() > Battery_threshold())
                 axp.setChgLEDMode(AXP20X_LED_LOW_LEVEL);
             else
                 axp.setChgLEDMode(AXP20X_LED_BLINK_1HZ);
+#endif
         }
     }
+}
+
+void turn_LED_on()
+{
+        axp.setChgLEDMode(AXP20X_LED_LOW_LEVEL);
+}
+
+void turn_LED_off()
+{
+        axp.setChgLEDMode(AXP20X_LED_OFF);
 }
 
 static void ESP32_fini()

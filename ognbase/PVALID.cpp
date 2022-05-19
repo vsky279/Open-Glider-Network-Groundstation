@@ -31,6 +31,9 @@ bool isPacketValid(ufo_t* fop) {
     if (distsq > 2*calcdist*calcdist)                   /* moved too far, bad data */
         return false;
 
+    if (fabs(fop->altitude - fop->prevalt) > interval * 16)    /* bad altitude data */
+        return false;
+
     return true;
 }
 

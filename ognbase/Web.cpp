@@ -77,12 +77,14 @@ static const char stats_templ[] PROGMEM =
  <p>&nbsp;\r\n Traffic packets reported: %d</p>\
  <p>&nbsp;\r\n Largest Range: %d</p>\
  <p>&nbsp;\r\n Corrupt packets: %d</p>\
+ <p>&nbsp;\r\n Other packets: %d</p>\
  <p>&nbsp;\r\n Time-sync restarts: %d</p>\
  <br><p>\r\nRemote Station Stats:</p>\
  <p>&nbsp;\r\n Traffic packets: %d</p>\
+ <p>&nbsp; &nbsp; &nbsp;\r\n  per minute: %d</p>\
  <p>&nbsp; &nbsp; &nbsp;\r\n  pct relayed: %d</p>\
  <p>&nbsp;\r\n Time packets sent: %d</p>\
- <p>&nbsp; &nbsp; &nbsp;\r\n  pct not acknowledged: %d</p>\
+ <p>&nbsp; &nbsp; &nbsp;\r\n  pct acknowledged: %d</p>\
  <p>&nbsp;\r\n Time-sync restarts: %d</p>\
  <p>&nbsp;\r\n Corrupt packets: %d</p>\
  <p>&nbsp;\r\n Other packets: %d</p>\
@@ -184,11 +186,13 @@ void update_stats()
         traffic_packets_reported,
         (uint32_t) largest_range,
         (uint32_t) bad_packets_recvd,
+        other_packets_recvd,
         (uint32_t) sync_restarts,
         remote_traffic,
+        (uint32_t) packets_per_minute,
         (uint32_t) remote_pctrel,
         (uint32_t) remote_timesent,
-        (uint32_t) remote_noack,
+        (uint32_t) remote_ack,
         (uint32_t) remote_restarts,
         (uint32_t) remote_bad,
         (uint32_t) remote_other);
@@ -199,8 +203,10 @@ void update_stats()
         traffic_packets_reported,
         (uint32_t) largest_range,
         (uint32_t) bad_packets_recvd,
+        other_packets_recvd,
         zero,
         remote_traffic,
+        (uint32_t) packets_per_minute,
         (uint32_t) remote_pctrel,
         zero,
         zero,
@@ -215,12 +221,13 @@ void update_stats()
         zero,
         zero,
         zero,
+        zero,
         traffic_packets_recvd,
+        (uint32_t) packets_per_minute,
         (uint32_t) ((100 * traffic_packets_relayed)
                       / (traffic_packets_recvd+1)),
         (uint32_t) time_packets_sent,
-        (uint32_t) ((100 * (time_packets_sent - ack_packets_recvd))
-                      / (time_packets_sent+1)),
+        ((uint32_t) (100 * (ack_packets_recvd+1)) / (time_packets_sent+1)),
         (uint32_t) sync_restarts,
         (uint32_t) bad_packets_recvd,
         (uint32_t) other_packets_recvd);
@@ -231,11 +238,14 @@ void update_stats()
         traffic_packets_reported,
         (uint32_t) largest_range,
         (uint32_t) bad_packets_recvd,
-        zero, zero, zero, zero, zero, zero, zero,
+        other_packets_recvd,
+        zero, zero,
+        (uint32_t) packets_per_minute,
+        zero, zero, zero, zero, zero,
         (uint32_t) other_packets_recvd);
   }
   stats_html[959] = '\0';
-Serial.println(stats_html);
+//Serial.println(stats_html);
 }
 
 void Web_start()
@@ -450,7 +460,8 @@ void Web_setup(ufo_t* this_aircraft)
     });
 
     wserver.on("/refresh", HTTP_GET, [](AsyncWebServerRequest* request){
-        ExportTimeWebRefresh = 0;   /* force a refresh of the stats at the top of the status page */
+        /* refresh the stats at the top of the status page in 2 sec */
+        ExportTimeWebRefresh = millis()/1000 - 21;
         request->redirect("/");
     });    
 
@@ -575,7 +586,7 @@ void Web_setup(ufo_t* this_aircraft)
 
 
         request->redirect("/");
-
+#if 0
         // ogn_reset_all
         if (request->hasParam("ogn_reset_all"))
             if (request->getParam("ogn_reset_all")->value() == "on")
@@ -585,7 +596,7 @@ void Web_setup(ufo_t* this_aircraft)
                 delay(200);
                 SoC->reset();
             }
-
+#endif
         EEPROM_store();
         OGN_save_config();
         RF_Shutdown();
@@ -608,24 +619,22 @@ void Web_loop(void)
     if (globalClient != NULL && globalClient->status() == WS_CONNECTED)
     {
         String values;
-        if(SoC->Battery_voltage() > 3.2)
-          values  += SoC->Battery_voltage();
-        else
-          values += 0.0;
+
+#if defined(TBEAM)
+        values = (ognrelay_base && ognrelay_time) ? remote_sats : gnss.satellites.value();
+#else
+        values = remote_sats;   // was: power
+#endif
         values += "_";
         values += RF_last_rssi;
         values += "_";
         values += (ognrelay_base && ognrelay_time) ? remote_uptime : uptime;
         values += "_";
-#if defined(TBEAM)
-        values += (ognrelay_base && ognrelay_time) ? remote_sats : gnss.satellites.value();
-#else
-        values += remote_sats;
-#endif
+        values += traffic_packets_recvd;    // was satfix
         values += "_";
-        values += traffic_packets_recvd;   // was: now();
+        values += packets_per_minute;   // was: timestamp
         values += "_";
-        values += numtracked;  // was: largest_range;
+        values += numtracked;  // was: largest_range
         globalClient->text(values);
     }
 

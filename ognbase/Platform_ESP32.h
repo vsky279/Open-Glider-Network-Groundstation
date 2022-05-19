@@ -190,6 +190,9 @@ extern Adafruit_NeoPixel strip;
 
 extern WebServer server;
 
+void turn_LED_on(void);
+void turn_LED_off(void);
+
 enum rst_reason
 {
     REASON_DEFAULT_RST = 0,      /* normal startup by power on */

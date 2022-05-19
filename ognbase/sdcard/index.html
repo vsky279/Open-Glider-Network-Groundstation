@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta name="OGNbase-Version" content="MB06">
+  <meta name="OGNbase-Version" content="MB07">
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
   <title>OGN Groundstation</title>
   <link rel="icon" href="data:,">
@@ -13,7 +13,7 @@
    };
    ws.onmessage = function(evt) {
       var daten = evt.data.split("_")
-      document.getElementById("power").innerHTML  = daten[0]  + " V";
+      document.getElementById("power").innerHTML  = daten[0];
       document.getElementById("rssi").innerHTML  = daten[1];
       document.getElementById("hours").innerHTML  = daten[2] + " h";
       document.getElementById("satfix").innerHTML  = daten[3];
@@ -34,7 +34,7 @@
             <p id = "power">connecting</p>
           </div>
           <div class="circle__lower-text">
-              Power
+              GNSS
           </div>
       </div>
     </td>
@@ -54,7 +54,7 @@
             <p id = "hours">connecting</p>
           </div>
           <div class="circle__lower-text">
-              Uptime
+              uptime
           </div>
       </div>
   </td>
@@ -64,7 +64,7 @@
           <p id = "satfix">connecting</p>
         </div>
         <div class="circle__lower-text">
-            GNSS
+            rx pkts
         </div>
     </div>
 </td>
@@ -74,7 +74,7 @@
         <p id = "timestamp">connecting</p>
       </div>
       <div class="circle__lower-text">
-          rx pkts
+          pkts/min
       </div>
   </div>
 </td>
@@ -195,10 +195,6 @@
     <option %s value="1">%s</option>
   </select>
   </td>
-</tr>
-<tr>
-  <td>RESET</td>
-  <td><INPUT type="checkbox" name="ogn_reset_all"></td>
 </tr>
 <tr>
 <td><p><button class="button_save">Save</button></a></p></td>

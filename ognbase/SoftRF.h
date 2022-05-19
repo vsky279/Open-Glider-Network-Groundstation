@@ -33,13 +33,13 @@
 
 #include "version.h"
 
-#define SOFTRF_FIRMWARE_VERSION "MB06a"   // _VERSION
+#define SOFTRF_FIRMWARE_VERSION "MB07c"   // _VERSION
 #define SOFTRF_IDENT            "OGNB-"
-#define OGNBASE_HTML_VERSION    "MB06"
+#define OGNBASE_HTML_VERSION    "MB07"
 
-#define ENTRY_EXPIRATION_TIME   40 /* seconds */
+#define ENTRY_EXPIRATION_TIME   41 /* seconds */
 #define LED_EXPIRATION_TIME     5  /* seconds */
-#define EXPORT_EXPIRATION_TIME  60  /* seconds */
+#define EXPORT_EXPIRATION_TIME  63  /* seconds */
 
 /*
  * If you need for SoftRF to operate in wireless
@@ -137,7 +137,7 @@ typedef struct UFO
     time_t prevtime;
     float prevlat;
     float prevlon;
-
+    float prevalt;
 
     float vs;     /* feet per minute */
 

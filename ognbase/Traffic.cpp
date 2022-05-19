@@ -123,9 +123,13 @@ void ParseData()
     // memset(fo.raw, 0, sizeof(fo.raw));
     memcpy(fo.raw, RxBuffer, rx_size);
 
+legacy_packet_t* p = (legacy_packet_t *) fo.raw;
+Serial.printf("parsing packet: %X %06X\r\n", p->_unk0, p->addr);
+
     if (ognrelay_time) {
 
       if (time_sync_pkt(fo.raw)) {
+Serial.println("handling time-sync packet");
 
         if (ognrelay_base)
             set_our_clock(fo.raw);    /* may set time_synched */
@@ -138,16 +142,21 @@ void ParseData()
     }
 
     if (ognrelay_enable) {
-        if (maybe_remote_reboot(fo.raw))
+        if (maybe_remote_reboot(fo.raw)) {
             /* a reboot packet, but did not reboot */
+Serial.println("got a reboot packet, but did not reboot");
             return;
+        }
         /* else, it was not a remote-reset packet */
         /* fall through to process as a traffic packet */
     }
 
     /* until time-synched any received packets other than time-sync are ignored */
-    if (OurTime == 0 || ! time_synched)
+    if (OurTime == 0 || ! time_synched) {
+        // ++other_packets_recvd;
+Serial.println("ignoring non-time-sync packet");
         return;
+    }
 
     /* otherwise fall through to process normal traffic packets */
 
@@ -171,6 +180,7 @@ void ParseData()
     Logger_send_udp(&msg);
 
     */
+Serial.println("parse calling decode...");
 
     if (protocol_decode && (*protocol_decode)((void *) fo.raw, &ThisAircraft, &fo))
     {
@@ -180,7 +190,7 @@ void ParseData()
 
         ++traffic_packets_recvd;
 
-//Serial.println("parsing decoded packet...");
+Serial.println("parsing decoded packet...");
 
         /* timenow = now(); */
         timenow = OurTime;
@@ -188,8 +198,10 @@ void ParseData()
 
         if (! ognrelay_enable) {
             calc_distance(&fo);
-            if (fo.distance /*m*/ > 1200 * ogn_range /*km*/)
+            if (fo.distance /*m*/ > 1200 * ogn_range /*km*/) {
+Serial.println("too far, rejected");
                 return;                            /* too far, or perhaps corrupted data */
+            }
         }
 
         /* if an already-tracked aircraft, update and report */
@@ -200,28 +212,38 @@ void ParseData()
             cip = &Container[i];
             if (cip->addr == fo.addr) {               /* this fo already tracked */
 
-                 /* ignore duplicate FLARM packets (there are many!) */
-                 if (fo.altitude == cip->altitude &&
-                     fo.latitude == cip->latitude &&
-                     fo.longitude == cip->longitude)
-                               return;
+              if (! (ognrelay_enable && ogn_gnsstime)) {    /* packet is de-crypted */
+                /* ignore duplicate FLARM packets (there are many!) */
+                if (fo.altitude == cip->altitude &&
+                    fo.latitude == cip->latitude &&
+                    fo.longitude == cip->longitude) {
+                       if (timenow - cip->timestamp < 10) {
+Serial.println("duplicate packet, rejected");
+                              return;
+                       }
+                }
+              }
 
               if (ognrelay_enable) {  /* remote station */
 
                   fo.timereported = cip->timereported;   /* last time it was relayed */
                   fo.waiting = (timenow >= fo.timereported + relay_interval());
 
-              } else {  /* base station */
+              } else {  /* base or standalone station */
 
                   fo.prevtime = cip->timestamp;      /* keep some data from previous packet...   */
                   fo.prevlat = cip->latitude;        /* ... in order to check data in PVALID.cpp */
                   fo.prevlon = cip->longitude;
+                  fo.prevalt = cip->altitude;
                   fo.timereported = cip->timereported;  /* last time it was reported to OGN */
                   fo.waiting = (timenow >= fo.timereported + report_interval());
-//Serial.printf("[%d] received again\r\n", i);
 
+Serial.printf("[%d] recvd again, was reported at %d, timest %02d:%02d:%02d, now waiting: %d\r\n",
+   i, fo.timereported, fo.hour, fo.minute, fo.second, fo.waiting);
               }
-              *cip = fo;                      /* copy the whole struct, including new timestamp */
+
+              *cip = fo;         /* copy the whole struct, including new timestamp, etc */
+//Serial.printf("[%d] received again at %d, now waiting: %d\r\n", i, timenow, cip->waiting);
               return;
             }
         }
@@ -241,8 +263,7 @@ void ParseData()
             cip = &Container[i];
             if (cip->addr == 0) {                     /* empty slot */
                 *cip = fo;
-//if (ognrelay_base)
-//Serial.printf("[%d] new\r\n", i);
+Serial.printf("[%d] was empty at %d, now waiting: %d\r\n", i, timenow, cip->waiting);
                 ++numtracked;
                 return;
             }
@@ -272,9 +293,10 @@ void ParseData()
 
         if (oldest_age > 0) {
             Container[oldest] = fo;        /* overwrites older data */
-//if (ognrelay_base)
-//Serial.printf("[%d] overwritten\r\n", oldest);
+Serial.printf("[%d] overwritten at %d, now waiting: %d\r\n", i, timenow, Container[oldest].waiting);
         }
+    } else {
+Serial.println("decode return false");
     }
 }
 
@@ -304,18 +326,18 @@ void Traffic_Relay(ufo_t* fop)
         fop->waiting = false;
         fop->timereported = OurTime;
         ++traffic_packets_relayed;      /* pretend relaying - for testing */
+Serial.println("pretend relaying...");
         return;
     }
 
-    size_t size = relay_encode((void*) &fop->raw, fop);
-    if (size > 0) {
-      memcpy(TxBuffer, fop->raw, size);
-      if (RF_Transmit(size, true)) {   /* success transmitting */
-          fop->waiting = false;
-          /* set time stamp for next update of same aircraft */
-          fop->timereported = OurTime;
-          ++traffic_packets_relayed;
-      }
+    if (RF_Transmit(RF_Encode(fop), true)) {   /* success transmitting */
+        fop->waiting = false;
+Serial.printf("... relayed at %d, prev report %d, timestamp %02d:%02d:%02d\r\n",
+   OurTime, fop->timereported, fop->hour, fop->minute, fop->second);
+        /* set time stamp for next update of same aircraft */
+        fop->timereported = OurTime;
+        ++traffic_packets_relayed;
+//Serial.println("... relayed");
     }
 }
 

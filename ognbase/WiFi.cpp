@@ -49,6 +49,9 @@ void WiFi_fini()
 #include "config.h"
 #include "global.h"
 #include "logos.h"
+#ifdef TBEAM
+#include "Platform_ESP32.h"
+#endif
 
 WiFiMulti *wifiMulti;
 String host_name = HOSTNAME;
@@ -175,7 +178,7 @@ void WiFi_setup()
             Serial.println();
             Serial.println(F("Can not connect to WiFi station"));
             snprintf(buf, sizeof(buf), "failed..");
-            OLED_write(buf, 0, 44, false);
+            OLED_write(buf, 0, 45, false);
         }
 
     } else {  /* not configged */
@@ -194,6 +197,9 @@ void WiFi_setup()
         // Print hostname.
         Serial.println("Hostname: " + host_name);
         Serial.println(F("Wait for WiFi connection."));
+
+        snprintf(buf, sizeof(buf), "Starting AP");
+        OLED_write(buf, 0, 54, false);
 
         WiFi.mode(WIFI_AP);
         SoC->WiFi_setOutputPower(WIFI_TX_POWER_MED); // 10 dB
@@ -238,6 +244,19 @@ void WiFi_loop()
 
 #endif
 
+#ifdef TBEAM
+    if (WiFi.getMode() != WIFI_AP) {
+      static time_t prevtime = 0;
+      if (ThisAircraft.timestamp != prevtime) {
+        prevtime = ThisAircraft.timestamp;
+        if (prevtime & 0x01)
+          turn_LED_on();
+        else
+          turn_LED_off();     /* blink blue LED at 0.5 Hz if time is advancing */
+      }
+    }
+#endif
+
 #if defined(POWER_SAVING_WIFI_TIMEOUT)
     if ((settings->power_save & POWER_SAVE_WIFI) && WiFi.getMode() == WIFI_AP)
     {
@@ -251,7 +270,12 @@ void WiFi_loop()
               WiFi_fini();
               if (settings->nmea_p)
                   StdOut.println(F("$PSRFS,WIFI_OFF"));
-              Serial.print(F("shutting down WiFI..."));
+              Serial.print(F("shutting down WiFI & LED..."));
+#ifdef TBEAM
+              turn_LED_off();   /* turn off bright blue LED to save power and signal end of WiFi */
+              OLED_blank = true;
+              OLED_disable();
+#endif
           }
 
         } else if (ThisAircraft.timestamp != 0 && ThisAircraft.timestamp > WiFi_No_Clients_Time) {

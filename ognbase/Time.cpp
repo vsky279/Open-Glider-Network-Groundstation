@@ -37,23 +37,27 @@ uint32_t base_time_ms = 0;     /* this device millis() at last verified PPS */
 uint32_t ref_time_ms = 0;      /* assumed local millis() at last PPS */
 
 #define TIME_TO_TRYSYNC 2700
-#define TIME_TO_ACKSYNC 10000
+#define TIME_TO_ACKSYNC 10300
 #define TIME_TO_RE_SYNC 185000
-#define ADJ_FOR_TRANSMISSION_DELAY 10
+#define ADJ_FOR_FLARM_RECEPTION 50       /* seems to receive FLARM packets better */
+#define ADJ_FOR_TRANSMISSION_DELAY 30    /* half typical reported round trip time */
 #define TIME_TO_NTP_AGAIN 600000
 
 int uptime = 0;
-uint32_t last_hour = 0;
+time_t last_hour = 0;
 
-bool time_synched = false;
 uint32_t when_synched = 0;
+uint32_t when_sync_tried = 0;
 uint32_t when_sync_sent = 0;
+uint32_t when_to_switch = 0;
+bool time_synched = false;
+bool got_time_ack = false;
 
 uint8_t remote_sats=0;
 uint8_t remote_uptime=0;
 uint32_t remote_traffic = 0, remote_other=0;
 uint16_t remote_timesent=0, remote_bad=0;
-uint8_t remote_pctrel=0, remote_noack=0, remote_restarts=0, remote_round=0;
+uint8_t remote_pctrel=0, remote_ack=0, remote_restarts=0, remote_round=0;
 
 uint32_t traffic_packets_recvd = 0;
 uint32_t traffic_packets_relayed = 0;
@@ -64,6 +68,11 @@ uint32_t total_delays = 0;
 uint16_t sync_restarts = 0;
 uint16_t bad_packets_recvd = 0;
 uint32_t other_packets_recvd = 0;
+
+#define TRAFFIC_MINUTES 8
+uint32_t traffic_by_minute[TRAFFIC_MINUTES];
+int traffic_minute_pointer = 0;
+uint16_t packets_per_minute = 0;
 
 
 /********************* GNSS-time relay code ************************/
@@ -85,6 +94,11 @@ bool send_time(void)
     if (! ognrelay_time)
       return false;
 
+    if (! RF_TX_ready()) {   /* transmitting not allowed at this time */
+Serial.printf("cannot send time right now %d\r\n", millis());
+        return false;
+    }
+
     uint32_t satellites;
 #if defined(TBEAM)
     if (ognrelay_enable && (! isValidGNSStime()))   /* time data source needs GPS time */
@@ -100,13 +114,23 @@ bool send_time(void)
 
     legacy_packet_t* pkt = (legacy_packet_t *) TxBuffer;
     pkt->addr = 0xACACAC;                 /* marks time-relay packets */
-    pkt->_unk0 = 0xC;                     /* marks time-relay packets */
+    if (got_time_ack)
+      pkt->_unk0 = 0xE;
+    else
+      pkt->_unk0 = 0xC;
     uint32_t* p = ( uint32_t *) TxBuffer; 
-    p[1] = (uint32_t) OurTime;
+
+    uint32_t now_ms = millis();
+    uint32_t offset = now_ms - ref_time_ms;
+    if (offset > 1500) {    /* shouldn't happen */
+Serial.printf("send_time: ref_time_ms %d << now %d ??\r\n", ref_time_ms, now_ms);
+        return false;
+    }
 
     if (ognrelay_enable) {
 
-      p[2] = ((millis() - ref_time_ms) & 0x0FFF);
+      p[1] = (uint32_t) OurTime;
+      p[2] = (offset & 0x0FFF);
 
       /* send stats */
       p[2] |= (satellites << 12);
@@ -115,27 +139,30 @@ bool send_time(void)
       pkt->addr_type = (uptime & 0x07);
       pkt->_unk1 = (uptime & 0x08) >> 3;
       int pctrel = 100 * traffic_packets_relayed;
-      pctrel /= (traffic_packets_recvd+1);    /* percent relayed */
-      p[3] = (traffic_packets_recvd & 0x01FFFFFF) | (pctrel<<25);
+      if (traffic_packets_recvd > 0)
+        pctrel /= traffic_packets_recvd;    /* percent relayed */
+      p[3] = (traffic_packets_recvd & 0x01FFFFFF) | ((pctrel & 0x7F) << 25);
 /* p[4]:
       0000 0000 0000 0000 0000 0000 0000 0000
            |       |    | ^^^^ ^^^^ ^^^^ ^^^^ - time_packets_sent
-           |       | ^^^^ 00 - %!acked
+           |       | ^^^^ 00 - %acked
            |^^^ ^^^^ 000 - bad packets
       ^^^^ ^ - restarts
 */
-      int pctnoak = 100 * (time_packets_sent - ack_packets_recvd);
-      pctnoak /= (time_packets_sent+1);    /* percent not acked */
+      int pctack = 100 * ack_packets_recvd;
+      if (time_packets_sent > 0)
+        pctack /= time_packets_sent;               /* percent not acked */
       p[4] = (time_packets_sent & 0x0000FFFF)      /* 16 bits */
-            | ((pctnoak & 0x7C) << 14)             /* 5 bits: %!acked/4 */
+            | ((pctack & 0x7C) << 14)              /* 5 bits: %acked/4 */
             | ((bad_packets_recvd & 0x3F8) << 17)  /* 7 bits: bad packets / 8 */
             | ((sync_restarts & 0x01F) << 27);
 
       p[3] ^= 0xACACACAC;                          /* rudimentary whitening */
       p[4] ^= 0xACACACAC;
 
-    } else {   /* base station sending ack - blank fields */
+    } else {   /* base station sending ack - blank stats fields */
 
+      p[1] = (got_time_ack? (uint32_t) when_to_switch : 0);
       p[2] = 0;
       p[3] = 0xACACACAC;
       p[4] = 0xACACACAC;
@@ -148,16 +175,23 @@ bool send_time(void)
     p[1] ^= 0xACACACAC;
     p[2] ^= 0xACACACAC;
     size_t size = LEGACY_PAYLOAD_SIZE;
-    bool wait = true;  // false (no wait) often seemed to fail to transmit // 
+    bool wait = true;
     bool success = RF_Transmit(size, wait);
     if (success) {
       ++time_packets_sent;
       when_sync_sent = millis();
-      if (ognrelay_enable)
-        Serial.println(F("sent time & stats..."));
-      else
-        Serial.println(F("sent time ack"));
+      if (ognrelay_enable) {
+//        Serial.println(F("sent time & stats..."));
+Serial.printf("send_time: ms=%d, ourt=%d, ofst=%d, reft=%d\r\n", now_ms, OurTime, offset, ref_time_ms);
+        got_time_ack = false;    /* check for ack again for each time-data packet */
+      } else {
+//        Serial.println(F("sent time ack"));
+Serial.printf("send_time_ack: ms=%d, ourt=%d, reft=%d\r\n", now_ms, OurTime, ref_time_ms);
+      }
     }
+else
+Serial.println(F("send_time unsuccessful"));
+
     return success;
 }
 
@@ -166,8 +200,10 @@ bool time_sync_pkt(uint8_t *raw)
 {
     if (! ognrelay_time)        return false;
     legacy_packet_t* pkt = (legacy_packet_t *) raw;
-    if (pkt->_unk0 != 0xC)      return false;    /* marks time-relay packets */
-    if (pkt->addr != 0xACACAC)  return false;    /* marks time-sync packets */
+    if (pkt->addr != 0xACACAC)
+        return false;    /* marks time-sync packets */
+    if (pkt->_unk0 != 0xC && pkt->_unk0 != 0xE)
+        return false;    /* marks time-relay packets */
     return true;
 }
 
@@ -181,56 +217,59 @@ void set_our_clock(uint8_t *raw)
     p[2] ^= 0xACACACAC;                      /* undo rudimentary whitening */
     if (p[5] != TimeHash((p[1] ^ p[2]) ^ ognrelay_key)) {
       ++bad_packets_recvd;                   /* this statistic collected within base */
+Serial.println(F("received time pkt failed check"));
       return;                                /* failed security check */
     }
 
     OurTime = (time_t) p[1];
     uint32_t timeOffset = (p[2] & 0x0FFF);
-    timeOffset += ADJ_FOR_TRANSMISSION_DELAY;   /* ms */
-    if (timeOffset >= 1000) {
+    timeOffset += ADJ_FOR_TRANSMISSION_DELAY;
+    if (timeOffset > 1000) {
       OurTime += 1;
       timeOffset -= 1000;
     }
     when_synched = millis();
     ref_time_ms = when_synched - timeOffset;   /* time of last PPS in remote station */
 
-    if (send_time())           /* sent an ack successfully */
-      time_synched = true;
+Serial.printf("set_our_clock: ms=%d, ourt=%d, ofst=%d, reft=%d\r\n",
+              when_synched, OurTime, timeOffset, ref_time_ms);
 
-    String msg;
-    if (time_synched) {
-      Serial.printf("time_synched at %d ms\r\n", when_synched);
-      msg = "time_synched";
-    } else {
-      Serial.println(F("time-sync ack failed"));
-      msg = "time-sync ack failed";
-    }
-    Logger_send_udp(&msg);
-
-    /* show stats sent from remote station */
     legacy_packet_t* pkt = (legacy_packet_t *) raw;
+    if (pkt->_unk0 == 0xE)
+        got_time_ack = true;    /* for base, this "sticks" */
+
+    /* get stats sent from remote station */
     p[3] ^= 0xACACACAC;
     p[4] ^= 0xACACACAC;
     remote_sats = ((p[2]>>12) & 0x0F);
     remote_traffic = (p[3] & 0x01FFFFFF);
     remote_pctrel = (p[3]>>25) & 0x7F;
     remote_timesent = (p[4] & 0x0000FFFF);
-    remote_noack = (p[4]>>14) & 0x7C;
+    remote_ack = (p[4]>>14) & 0x7C;
     remote_bad = (p[4]>>17) & 0x3F8;
     remote_other = p[2]>>16;
     remote_restarts = (p[4]>>27) & 0x1F;
     // remote_round = (pkt->addr_type <<2);
     remote_uptime = (pkt->addr_type & 0x07) | (pkt->_unk1 & 0x01) << 3;
+    Serial.println(F("Local Stats:"));
+    Serial.printf("  traffic: %d,  reported: %d,  bad: %d,  other: %d,  restarts: %d\r\n",
+        traffic_packets_recvd, traffic_packets_reported,
+        bad_packets_recvd, other_packets_recvd, sync_restarts);
     Serial.println(F("Remote Stats:"));
     Serial.printf(
-    "  traffic %d, \%relayed %d, timesent %d, \%noack %d, bad %d, other %d, restarts %d, round %d\r\n",
-        remote_traffic, remote_pctrel, remote_timesent, remote_noack,
-        remote_bad, remote_other, remote_restarts, remote_round);
-    Serial.println(F("Local Stats:"));
-    Serial.printf("  traffic: %d,  bad: %d,  restarts: %d\r\n",
-        traffic_packets_recvd, bad_packets_recvd, sync_restarts);
+    "  traffic %d, pct rlyed %d, timesent %d, pct ack %d, bad %d, other %d, restarts %d, uptime %d\r\n",
+        remote_traffic, remote_pctrel, remote_timesent, remote_ack,
+        remote_bad, remote_other, remote_restarts, remote_uptime);
     /* these stats also displayed in the statistics web page */
     // should also send these stats out via UDP.
+
+    if (got_time_ack && when_to_switch == 0) {
+        when_to_switch = ((OurTime + 24) & 0xFFFFFFF0) + 8;   /* 16-32 seconds in the future */
+        Serial.printf(">>> will switch to time_synched at %d\r\n", when_to_switch);
+    }       
+
+    delay(40);
+    (void) send_time();    /* may not succeed */
 }
 
 /* this is called by remote station to process incoming ack packets */
@@ -238,18 +277,40 @@ void sync_alive_pkt(uint8_t *raw)
 {
     if (! ognrelay_enable)  return;
 
+    legacy_packet_t* pkt = (legacy_packet_t *) raw;
+    bool base_ack = (pkt->_unk0 == 0xE);        /* base says it got ack-ack */
+
     uint32_t* p = (uint32_t *) raw; 
     p[1] ^= 0xACACACAC;                         /* undo rudimentary whitening */
     p[2] ^= 0xACACACAC;
     if (p[5] != TimeHash((p[1] ^ p[2]) ^ ognrelay_key)) {
+Serial.println(F("received timesync ack failed check"));
       ++bad_packets_recvd;                      /* this statistic collected within remote */
       return;                                   /* failed security check */
     }
-    time_synched = true;    /* remote station switches mode only after ack received */
-    ++ack_packets_recvd;
     when_synched = millis();
-    total_delays += (when_synched - when_sync_sent);
-    Serial.println(F("received timesync ack..."));
+    uint32_t delay = when_synched - when_sync_sent;
+    if (delay < 1000) {
+        ++ack_packets_recvd;
+        total_delays += delay;
+        Serial.printf("received timesync ack: ms=%d, time=%d, ofst=%d, avg round %d ms\r\n",
+           when_synched, p[1], p[2], total_delays/ack_packets_recvd);
+    }
+    if (base_ack && (p[1] > OurTime + 8) && (p[1] < OurTime + 34)) {
+        when_to_switch = p[1];                                /* base chose switch time */
+        Serial.printf(">>> time_synched switch base chose %d\r\n", when_to_switch);
+    }
+    if (when_to_switch == 0) {
+        /* even without ack-ack, choose a switch time */
+        when_to_switch = ((OurTime + 24) & 0xFFFFFFF0) + 8;   /* 16-32 seconds in the future */
+        Serial.printf(">>> will switch to time_synched at %d\r\n", when_to_switch);
+    }
+    if (! base_ack && when_to_switch > 0 && (OurTime - when_to_switch < 8)) {
+        /* without ack-ack, postpone switch time if base still not ready */
+        when_to_switch += 8;
+        Serial.printf(">>> postpone time_synched switch to %d\r\n", when_to_switch);
+    }
+    got_time_ack = true;    /* affects next send_time() */
 }
 
 /* this is called by base station to tell the remote station to reboot */
@@ -275,12 +336,10 @@ bool reboot_remote(void)
     size_t size = LEGACY_PAYLOAD_SIZE;
     bool wait = true;
     bool success = RF_Transmit(size, wait);
-    if (success)
-        Serial.println(F("sent remote reboot packet"));
     return success;
 }
 
-/* check whether the packet is telling the remote station to reboot */
+/* check whether the packet is telling this remote station to reboot */
 bool maybe_remote_reboot(uint8_t *raw) {
     if (! ognrelay_enable)      return false;
     legacy_packet_t* pkt = (legacy_packet_t *) raw;
@@ -291,10 +350,10 @@ bool maybe_remote_reboot(uint8_t *raw) {
     p[2] ^= 0xACACACAC;                         /* undo rudimentary whitening */
     if (p[5] != TimeHash(p[2] ^ ognrelay_key)) {
       ++bad_packets_recvd;                      /* this statistic collected within remote */
-      return true;                             /* failed security check, but not traffic packet */
+      return true;                             /* failed security check, but is not a traffic packet */
     }
 
-    Serial.println("got signal to reboot...");
+    Serial.println(">>>>>> got signal to reboot <<<<<<");
 
     if (millis() > 600000                  /* don't reboot _again_ for a while */
         && WiFi.getMode() == WIFI_OFF) {   /* don't reboot unless WIFI has gone to sleep */
@@ -303,23 +362,52 @@ bool maybe_remote_reboot(uint8_t *raw) {
             SoC->reset();
     }
 
-    return true;                       /* did not reboot, but not traffic packet */
+    return true;                       /* did not reboot, but is not a traffic packet */
+}
+
+void Timesync_restart()
+{
+    time_synched = false;
+    got_time_ack = false;
+    when_synched = 0;
+    when_sync_tried = 0;
+    when_sync_sent = 0;
+    when_to_switch = 0;
+    ++sync_restarts;
 }
 
 /********************* time loop code ************************/
 
-void Time_loop()
+void Time_update()
 {
+static uint32_t then_ms = 0;
     uint32_t now_ms = millis();
+if (now_ms < then_ms)
+Serial.printf("millis() %d -> %d ??\r\n", then_ms, now_ms);
+then_ms = now_ms;
+
+    if (ognrelay_time && ! time_synched && when_to_switch > 0 && OurTime > when_to_switch) {
+        /* at a per-agreed time after initial time-sync contacts */
+        time_synched = true;
+        // when_to_switch = 0;
+        Serial.printf(">>> time_synched at %d ms\r\n", now_ms);
+        String msg = "time_synched";
+        Logger_send_udp(&msg);
+    }
 
     if (ognrelay_base && ognrelay_time && (!time_synched || OurTime==0)) {
     /* initial time-sync when relaying time */
 
-        // OurTime = 0;
         time_synched = false;
+        /* use free-running clock while waiting for when_to_switch */
+        if (OurTime > 0 && now_ms >= ref_time_ms + 1000) {
+          OurTime += 1;
+          ref_time_ms += 1000;
+Serial.printf("free running clock - base still waiting to sync -> %d\r\n", OurTime);
+        }
+        /* else wait for time data from remote station */
         return;
-        /* wait for time data from remote station */
-        /* it will be handled by set_our_clock()  */
+        /* new time packets will be handled by set_our_clock()  */
 
     }
 
@@ -330,9 +418,13 @@ void Time_loop()
         if (now_ms >= ref_time_ms + 1000) {
           OurTime += 1;
           ref_time_ms += 1000;
+Serial.printf("free running clock - base btwn time msgs-> %d\r\n", OurTime);
         }
 
-    } else if (!ognrelay_enable && !ognrelay_time && !ogn_gnsstime) {
+        return;
+    }
+
+    if (!ognrelay_enable && !ognrelay_time && !ogn_gnsstime) {
     /* when base (or standalone) is getting time data from NTP */
 
         if (OurTime == 0 || ! time_synched) {
@@ -351,9 +443,13 @@ void Time_loop()
         if (now_ms >= ref_time_ms + 1000) {
           OurTime += 1;
           ref_time_ms += 1000;
+Serial.printf("free running clock - NTP -> %d\r\n", OurTime);
         }
 
-    } else if (ognrelay_enable && ! ognrelay_time && ! ogn_gnsstime) {
+        return;
+    } 
+
+    if (ognrelay_enable && ! ognrelay_time && ! ogn_gnsstime) {
     /* when remote station is not using GNSS time */
 
         if (OurTime == 0) {    /* starting up */
@@ -366,21 +462,31 @@ void Time_loop()
         if (now_ms >= ref_time_ms + 1000) {
           OurTime += 1;
           ref_time_ms += 1000;
+Serial.println(F("free running clock - remote, no gnss"));
         }
 
+        return;
+    } 
+
 #if defined(TBEAM)
-    } else if ((!ognrelay_base || !ognrelay_time) && OurTime != 0
-               && (now_ms < base_time_ms + 2000
-                   || (now_ms < base_time_ms + 60000 && !isValidGNSStime()))) {
+
+    bool validgnss = isValidGNSStime();
+
+    if ((!ognrelay_base || !ognrelay_time) && OurTime != 0
+          && (now_ms < base_time_ms + (validgnss? 1500 : TIME_TO_RE_SYNC))) {
 
         /* use free-running clock for short periods or during GPS dropouts */
         if (now_ms >= ref_time_ms + 1000) {
           OurTime += 1;
           ref_time_ms += 1000;
+if (validgnss)
+Serial.printf("free running clock - between gnss fixes -> %d\r\n", OurTime);
+else
+Serial.printf("free running clock - gnss dropout -> %d\r\n", OurTime);
         }
+        return;
+    } 
 #endif
-
-    } else { /* get fresh GNSS time data */
 
 #if !defined(TBEAM)
       //Serial.println(F("should use TBEAM with GNSS"));
@@ -388,64 +494,118 @@ void Time_loop()
 
 #if defined(TBEAM)
 
-    if (ognrelay_enable && ! isValidGNSStime()) {     /* even after a minute of free-running */
+    if (! validgnss) {      /* even after free-running for a while */
+        if (ognrelay_enable && ognrelay_time) {
+            // OurTime = 0;
+            if (time_synched)
+                Timesync_restart();
+        }
+//Serial.println(F("waiting for GNSS time..."));
+        return;
+    } 
 
-      // OurTime = 0;
-      if (time_synched) {
-        time_synched = false;
-        ++sync_restarts;
+    uint32_t gnss_age = gnss.time.age();
+    uint32_t last_Commit_Time = now_ms - gnss_age;
+    bool newfix = false;
+    uint32_t pps_btime_ms = SoC->get_PPS_TimeMarker();
+    uint32_t newtime;
+    uint32_t time_corr_neg;
+    if (pps_btime_ms > 0) {
+      newtime = pps_btime_ms + ADJ_FOR_FLARM_RECEPTION;   /* seems to receive FLARM better */
+    } else {   /* PPS not available */
+      time_corr_neg = gnss_chip ? gnss_chip->rmc_ms : 100;
+      newtime = last_Commit_Time - time_corr_neg;
+    }
+    if (gnss_age < 2500 && newtime > base_time_ms) {
+      static uint32_t lasttime_ms = 0;
+      if (last_Commit_Time - lasttime_ms > 150) {     /* new data arrived from GNSS */
+        newfix = true;
+        lasttime_ms = last_Commit_Time;
       }
-//Serial.println(F("waiting for GNSS time..."));  
+    }
 
-    } else {
-//Serial.println(F("processing GNSS time..."));  
+    /* between fixes (but not before first fix): free-running clock */
+    if (ref_time_ms > 0 && !newfix) {
+        if (now_ms >= ref_time_ms + 1000) {
+          OurTime += 1;
+          ref_time_ms += 1000;
+Serial.printf("free running clock - not a new fix -> %d\r\n", OurTime);
+        }
+        return;
+    }
 
-      uint32_t pps_btime_ms = SoC->get_PPS_TimeMarker();
-      if (now_ms > pps_btime_ms + 1010)
-        pps_btime_ms += 1000;
-      uint32_t time_corr_neg;
+    if (pps_btime_ms > 0) {
 
-      if (pps_btime_ms) {
-        uint32_t last_Commit_Time = now_ms - gnss.time.age();
+        if (now_ms > newtime + 1500) {
+Serial.printf("PPS=%d << now=%d ??\r\n", pps_btime_ms, now_ms);
+            //return;
+        }
+        if (newtime < base_time_ms) {
+Serial.printf("PPS=%d < base=%d ??\r\n", pps_btime_ms, base_time_ms);
+            //return;
+        }
+        if (newtime + 200 < ref_time_ms) {
+Serial.printf("PPS=%d < ref=%d ??\r\n", pps_btime_ms, ref_time_ms);
+            //return;
+        }
+
+//Serial.println(F("processing new GNSS time..."));
+
+        // uint32_t last_Commit_Time = now_ms - gnss.time.age();
         if (pps_btime_ms <= last_Commit_Time) {
           time_corr_neg = (last_Commit_Time - pps_btime_ms) % 1000;
         } else {
           time_corr_neg = 1000 - ((pps_btime_ms - last_Commit_Time) % 1000);
         }
-        ref_time_ms = base_time_ms = pps_btime_ms;
-      } else {
-        uint32_t last_RMC_Commit = now_ms - gnss.date.age();
-        time_corr_neg = gnss_chip ? gnss_chip->rmc_ms : 100;
-        ref_time_ms = base_time_ms = last_RMC_Commit - time_corr_neg;
-      }
+        ref_time_ms = base_time_ms = newtime;  // pps_btime_ms + ADJ_FOR_FLARM_RECEPTION
 
-      int yr    = gnss.date.year();
-      if( yr > 99)
-          yr    = yr - 1970;
-      else
-          yr    += 30;
-      tmElements_t tm;
-      tm.Year   = yr;
-      tm.Month  = gnss.date.month();
-      tm.Day    = gnss.date.day();
-      tm.Hour   = gnss.time.hour();
-      tm.Minute = gnss.time.minute();
-      tm.Second = gnss.time.second();
+    } else {   /* PPS not available */
 
-//    OurTime = makeTime(tm) + (gnss.time.age() - time_corr_neg) / 1000;
-      OurTime = makeTime(tm) + (gnss.time.age() + time_corr_neg) / 1000;
-
+        // uint32_t last_RMC_Commit = now_ms - gnss.date.age();
+        // time_corr_neg = gnss_chip ? gnss_chip->rmc_ms : 100;
+        ref_time_ms = base_time_ms = newtime;
     }
+
+
+    int yr    = gnss.date.year();
+    if( yr > 99)
+        yr    = yr - 1970;
+    else
+        yr    += 30;
+    tmElements_t tm;
+    tm.Year   = yr;
+    tm.Month  = gnss.date.month();
+    tm.Day    = gnss.date.day();
+    tm.Hour   = gnss.time.hour();
+    tm.Minute = gnss.time.minute();
+    tm.Second = gnss.time.second();
+
+time_t OldTime = OurTime;
+    OurTime = makeTime(tm) + (gnss_age + time_corr_neg) / 1000;
+if (OurTime > OldTime+1000 || OldTime > OurTime+1000)
+Serial.printf("OldTm=%d NewTm=%d age=%d corr=%d ??\r\n",
+OldTime, OurTime, gnss_age, time_corr_neg);
+
 #endif   /* TBEAM */
+}
 
-    }  /* got time data */
+void Time_loop()
+{
+    Time_update();
 
+    if (OurTime == 0)
+        return;
 
     if (ThisAircraft.timestamp != OurTime) {      /* do this only once per second */
 
-//Serial.println(F("updating our timestamp..."));  
+//Serial.println(F("updating our timestamp..."));
+if (ThisAircraft.timestamp > OurTime)
+Serial.printf("ThisAircraft.timestamp=%d > OurTime=%d ??\r\n", ThisAircraft.timestamp, OurTime);
+else
+Serial.printf("... millis=%d  OurTime=%d  ref_time_ms=%d\r\n", millis(), OurTime, ref_time_ms);
 
       ThisAircraft.timestamp = OurTime;
+      int oldmin = ThisAircraft.minute;
 #if defined(TBEAM)
       if (ogn_gnsstime && isValidGNSStime()) {
         ThisAircraft.hour = gnss.time.hour();
@@ -457,53 +617,87 @@ void Time_loop()
         ThisAircraft.second = second(OurTime);
       }
 #else
-        ThisAircraft.hour = hour(OurTime);
-        ThisAircraft.minute = minute(OurTime);
-        ThisAircraft.second = second(OurTime);
+      ThisAircraft.hour = hour(OurTime);
+      ThisAircraft.minute = minute(OurTime);
+      ThisAircraft.second = second(OurTime);
 #endif
 
-    }
+      if (last_hour == 0) {
+          last_hour = OurTime;                   /* seconds */
+      } else if (OurTime > last_hour + 3600) {
+          ++uptime;                              /* hours */ 
+          last_hour = OurTime;
+      }
 
-    if (now_ms > last_hour + 3600000) {
-        ++uptime;    
-        last_hour = now_ms;
-    }
+      if (OurTime > last_hour + 60) {
+        static bool rounded = false;
+        if (oldmin != ThisAircraft.minute) {
+          /* minute changed, gather per-minute traffic stats */
+          uint32_t cumul_traffic, prev_traffic;
+          if (ognrelay_base)
+            cumul_traffic = remote_traffic;  /* cumulative count of traffic packets */
+          else
+            cumul_traffic = traffic_packets_recvd;
+          prev_traffic = traffic_by_minute[traffic_minute_pointer];
+          traffic_by_minute[traffic_minute_pointer] = cumul_traffic;
+          ++traffic_minute_pointer;
+          if (traffic_minute_pointer >= TRAFFIC_MINUTES) {
+            traffic_minute_pointer = 0;
+            rounded = true;
+          }
+          if (! rounded)   /* cannot yet compute rolling average */
+            packets_per_minute = cumul_traffic
+                 / (traffic_minute_pointer > 0 ? traffic_minute_pointer : 1);
+          else if (OurTime > last_hour + 60*(TRAFFIC_MINUTES+1)
+                      && cumul_traffic > prev_traffic)
+            packets_per_minute = (cumul_traffic - prev_traffic) / TRAFFIC_MINUTES;
+          else   /* first minutes after waking from deep sleep, or no traffic, or rollover */
+            packets_per_minute = 0;
+        }
+      }
+
+    }  /* done once-per-second chores */
+
+    /* handle time-sync packets */
 
     if ((ognrelay_enable || ognrelay_base) && ognrelay_time) {
 
+       uint32_t now_ms = millis();
+
        /* attempting initial time-sync from remote station */
        if (ognrelay_enable && !time_synched
-             && now_ms > when_sync_sent + TIME_TO_TRYSYNC
-             && now_ms > TxTimeMarker) {
+             && now_ms > when_sync_tried + TIME_TO_TRYSYNC) {
          if (isValidGNSStime())
            (void) send_time();        /* may or may not succeed */
-         when_sync_sent = now_ms;   /* even if no success, do not try too often */
+         when_sync_tried = now_ms;    /* even if no success, do not try too often */
          return;
        }
 
-       /* send fresh time data every 10 seconds */
+       /* send fresh time data about every 10 seconds */
        if (ognrelay_enable && time_synched
-             && now_ms > when_sync_sent + TIME_TO_ACKSYNC
-             && now_ms > TxTimeMarker) {
+             && now_ms > when_sync_tried + TIME_TO_ACKSYNC) {
          if (isValidGNSStime()) {
-           if (send_time())           /* success (which also updated when_sync_sent) */
-              return;
+           if (send_time())            /* success (which also updated when_sync_sent) */
+             when_sync_tried = now_ms;
+           else
+             when_sync_tried += 300;   /* failed - try again in 300 ms */
          }
          /* base sation will send an ack back, so both stations will update when_synched */
        }
 
        /* if haven't heard from other station in a while, start over */
        if (time_synched && (now_ms > when_synched + TIME_TO_RE_SYNC)) {
-          time_synched = false;
-          ++sync_restarts;
+          Serial.printf("restarting time sync @ %d ms - syncd @ %d\r\n", now_ms, when_synched);
+          OLED_write("restart time sync", 0, 27, true);
+          Timesync_restart();
           if (ognrelay_base) {
             remote_sats = 0;
             String msg = "restarting time sync";
             Logger_send_udp(&msg);
           }
-          Serial.printf("restarting time sync %d ms - syncd @ %d\r\n", now_ms, when_synched);
        }
-    }
+    }         /* done with ognrelay_time */
+
 }
 
 
@@ -558,9 +752,6 @@ void sendNTPpacket(IPAddress& address)
 void Time_setup()
 {
     char buf[32];
-
-    if (last_hour == 0)
-        last_hour = millis();
 
     /*
      * only use NTP in base station
