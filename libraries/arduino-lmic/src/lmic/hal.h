@@ -35,7 +35,7 @@ extern "C"{
 /*
  * initialize hardware (IO, SPI, TIMER, IRQ).
  */
-void hal_init (void *);
+void hal_init_softrf (void *);
 
 /*
  * drive radio NSS pin (0=low, 1=high).
@@ -46,6 +46,16 @@ void hal_pin_nss (u1_t val);
  * drive radio RX/TX pins (0=rx, 1=tx).
  */
 void hal_pin_rxtx (s1_t val);
+
+/*
+ * control radio TCXO power (0=off, 1=on)
+ * (return if TCXO is present and in use)
+ */
+bool hal_pin_tcxo (u1_t val);
+
+#if defined(ARDUINO_NUCLEO_L073RZ)
+void hal_pin_tcxo_init (void);
+#endif /* ARDUINO_NUCLEO_L073RZ */
 
 /*
  * control radio RST pin (0=low, 1=high, 2=floating)

@@ -18,7 +18,7 @@ extern "C"{
 /*
  * initialize hardware (IO, SPI, TIMER, IRQ).
  */
-void hal_init (void* bootarg);
+void hal_init_softrf (void* bootarg);
 
 /*
  * set watchdog counter (in 2s units)
@@ -35,6 +35,10 @@ void hal_pin_rxtx (s1_t val);
  * (return if TCXO is present and in use)
  */
 bool hal_pin_tcxo (u1_t val);
+
+#if defined(ARDUINO_NUCLEO_L073RZ)
+void hal_pin_tcxo_init (void);
+#endif /* ARDUINO_NUCLEO_L073RZ */
 
 /*
  * control radio RST pin (0=low, 1=high, 2=floating)
