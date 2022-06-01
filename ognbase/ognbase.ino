@@ -650,6 +650,7 @@ Serial.println("Parse...");
 
     OurTime = 0;
     Timesync_restart();
+    //id_list_clear();
     uptime = 0;
     last_hour = 0;
 

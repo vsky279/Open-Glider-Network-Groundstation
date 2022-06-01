@@ -161,7 +161,7 @@ void WiFi_setup()
                 snprintf(buf, sizeof(buf), "Connect %s",  WiFi.SSID().c_str());
                 OLED_write(buf, 0, 45, false);
                 snprintf(buf, sizeof(buf), " at %s",
-			 WiFi.localIP().toString().c_str());
+                WiFi.localIP().toString().c_str());
                 OLED_write(buf, 0, 54, false);
                 host_name += String((SoC->getChipId() & 0xFFFFFF), HEX);
                 SoC->WiFi_hostname(host_name);
@@ -265,23 +265,23 @@ void WiFi_loop()
           if (ThisAircraft.timestamp != 0 && WiFi_No_Clients_Time != 0
             && (ThisAircraft.timestamp > WiFi_No_Clients_Time + POWER_SAVING_WIFI_TIMEOUT)) {
 
-              //NMEA_fini();
-              Web_fini();
-              WiFi_fini();
-              if (settings->nmea_p)
-                  StdOut.println(F("$PSRFS,WIFI_OFF"));
-              Serial.print(F("shutting down WiFI & LED..."));
 #ifdef TBEAM
               turn_LED_off();   /* turn off bright blue LED to save power and signal end of WiFi */
               OLED_blank = true;
               OLED_disable();
 #endif
+              if (settings->nmea_p)
+                  StdOut.println(F("$PSRFS,WIFI_OFF"));
+              //NMEA_fini();
+              Web_fini();
+              WiFi_fini();
+              Serial.println(F("shutting down WiFI & LED..."));
           }
 
         } else if (ThisAircraft.timestamp != 0 && ThisAircraft.timestamp > WiFi_No_Clients_Time) {
 
             WiFi_No_Clients_Time = ThisAircraft.timestamp;
-            Serial.print(F("postponing WiFi timeout..."));
+            // Serial.print(F("postponing WiFi timeout..."));
 
         }
     }

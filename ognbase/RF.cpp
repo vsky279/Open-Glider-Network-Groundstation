@@ -195,6 +195,7 @@ byte RF_setup(void)
 uint8_t current_slot = 0;
 uint8_t txchan = 0;
 uint8_t rxchan = 0;
+uint32_t RF_OK_until = 0;
 uint32_t TxTimeMarker = 0;
 uint32_t TxEndMarker  = 0;
 
@@ -223,8 +224,6 @@ void RF_loop()
 
     /* OurTime & ref_time_ms were updated in Time_loop() */
 
-    static uint32_t RF_OK_until = 0;
-
     uint32_t now_ms = millis();
 
     if (now_ms < RF_OK_until) {
@@ -249,12 +248,12 @@ void RF_loop()
 
     if (ogn_band == RF_BAND_EU &&
            ((!ognrelay_enable && !ognrelay_time && !ogn_gnsstime)  /* base using NTP */
-             || (ognrelay_enable && !ogn_gnsstime))) {             /* remote using arbitrary time */
+             || (ognrelay_enable && !ogn_gnsstime))) {             /* remote using approximate time */
         if (ognrelay_enable) {
           txchan = 1;
           rxchan = 0;
         } else if (ognrelay_base) {
-          txchan = 0;   /* does not actually transmit */
+          txchan = 0;
           rxchan = 1;
         } else {
           txchan = 0;
@@ -379,22 +378,31 @@ bool RF_Transmit(size_t size, bool wait)
 
         RF_tx_size = size;
 
-        uint32_t now_ms = millis();
         if (!wait || RF_TX_ready()) {
 
-            if (txms > 0 && millis() > txms+200) {
+            uint32_t now_ms = millis();
+
+            if (txms > 0 && now_ms > txms+200) {
                tx_packets_counter++;  /* counts the PREVIOUS transmission */
                txms = 0;
-Serial.printf("tx_packets_counter to %d at millis=%d\r\n", tx_packets_counter, millis());
+Serial.printf("tx_packets_counter to %d at millis=%d\r\n", tx_packets_counter, now_ms);
             }
 
             rf_chip->channel(txchan);
             rf_chip->transmit();         /* this may loop? */
-            txms = millis();
 delay(10);
+            txms = now_ms;
             RF_tx_size = 0;
             TxTimeMarker = TxEndMarker;  /* do not transmit again until next slot */
-            /* do not set next transmit time here - it is done in RF_loop() */
+            /* do not set next transmit time here - it is done in RF_loop()       */
+            /* exception: when remote relay is not using GNSS time - in that case */
+            /*   in Europe try and transmit on ch1 when FLARMs are not using ch1  */
+            /*   - assume this transmission is soon after a reception on ch0      */
+            if (ogn_band == RF_BAND_EU && ognrelay_enable && !ogn_gnsstime) {
+                RF_OK_until = now_ms + 1000;
+                TxTimeMarker = now_ms + SoC->random(800, 995);
+                TxEndMarker  = now_ms + 995;
+            }
             rf_chip->channel(rxchan);
 
 // Serial.println(">");

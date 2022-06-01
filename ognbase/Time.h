@@ -21,6 +21,8 @@
 
 extern time_t OurTime;    /* derived from GNSS */
 extern uint32_t ref_time_ms;
+extern uint16_t have_approx_time;
+extern bool reverse_time_sync;
 
 extern bool time_synched;
 extern uint32_t traffic_packets_recvd;

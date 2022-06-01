@@ -182,10 +182,10 @@ Serial.printf("received non-traffic pkt, unk0=%d\r\n", pkt->_unk0);
 
     uint32_t timestamp = (uint32_t) this_aircraft->timestamp;
 
-    if (ognrelay_enable && ! ogn_gnsstime) {
+    if (ognrelay_enable && ! ogn_gnsstime && ! have_approx_time) {
         /* no time data, cannot decrypt */
         fop->timestamp = timestamp;
-        fop->stealth  = 0;
+        fop->stealth  = 0;          /* for queueing in traffic.cpp */
         fop->no_track = 0;
 //Serial.println("returning un-decrypted packet");
         return true;
@@ -262,13 +262,30 @@ Serial.println("bad parity in original packet");
     }
 
     if (ognrelay_enable) {
-        /* do not decode further */
-        /* packet will be relayed in Traffic.cpp using legacy_encode() below */
-        return true;
+      if (!ogn_gnsstime) {
+        // >>> do some sanity checks here in case approx_time is off by a second
+        //     and thus the decrypted data is random garbage
+        // - if we knew what is in the "gps" field could check that
+        if (pkt->airborne == 0)  return false;
+        if (pkt->stealth)   return false;
+        if (pkt->no_track)  return false;
+      }
+      /* do not decode further */
+      /* packet will be relayed in Traffic.cpp using legacy_encode() below */
+      return true;
     }
 
 //Serial.println("... pt4");
     if (ognrelay_base) {
+
+      if (!ogn_gnsstime && !ognrelay_time) {
+        // >>> do some sanity checks here in case NTP time is off by a second
+        //     and thus the decrypted data is random garbage
+        // - if we knew what is in the "gps" field could check that
+        if (pkt->airborne == 0)  return false;
+        if (pkt->stealth)   return false;
+        if (pkt->no_track)  return false;
+      }
 
       if (time_sent) {
           fop->hour   = pkt->ns[1];   /* original H,M,S sent from remote */
@@ -303,17 +320,32 @@ Serial.println("bad parity in original packet");
     float    ref_lon   = this_aircraft->longitude;
     float    geo_separ = this_aircraft->geoid_separation;
 
-    int32_t round_lat = (int32_t) (ref_lat * 1e7) >> 7;
-    int32_t lat       = (pkt->lat - round_lat) % (uint32_t) 0x080000;
-    if (lat >= 0x040000)
-        lat -= 0x080000;
-    lat = ((lat + round_lat) << 7) /* + 0x40 */;
+    // int32_t round_lat = (int32_t) (ref_lat * 1e7) >> 7;
+    // int32_t lat       = (pkt->lat - round_lat) % (uint32_t) 0x080000;
+    // if (lat >= 0x040000)
+    //    lat -= 0x080000;
+    // lat = ((lat + round_lat) << 7) /* + 0x40 */;
+    int32_t round_lat, round_lon;
+    if (ref_lat < 0.0)
+        round_lat = -(((int32_t) (-ref_lat * 1e7) + 0x40) >> 7);
+    else
+        round_lat = ((int32_t) (ref_lat * 1e7) + 0x40) >> 7;
+    int32_t ilat = ((int32_t)pkt->lat - round_lat) & 0x07FFFF;
+    if (ilat >= 0x040000) ilat -= 0x080000;
+    float lat = (float)((ilat + round_lat) << 7) * 1e-7;
 
-    int32_t round_lon = (int32_t) (ref_lon * 1e7) >> 7;
-    int32_t lon       = (pkt->lon - round_lon) % (uint32_t) 0x100000;
-    if (lon >= 0x080000)
-        lon -= 0x100000;
-    lon = ((lon + round_lon) << 7) /* + 0x40 */;
+    // int32_t round_lon = (int32_t) (ref_lon * 1e7) >> 7;
+    // int32_t lon       = (pkt->lon - round_lon) % (uint32_t) 0x100000;
+    // if (lon >= 0x080000)
+    //     lon -= 0x100000;
+    // lon = ((lon + round_lon) << 7) /* + 0x40 */;
+    if (ref_lon < 0.0)
+        round_lon = -(((int32_t) (-ref_lon * 1e7) + 0x40) >> 7);
+    else
+        round_lon = ((int32_t) (ref_lon * 1e7) + 0x40) >> 7;
+    int32_t ilon = ((int32_t)pkt->lon - round_lon) & 0x0FFFFF;
+    if (ilon >= 0x080000) ilon -= 0x0100000;
+    float lon = (float)((ilon + round_lon) << 7) * 1e-7;
 
     int32_t ns = pkt->ns[0];
     int32_t ew = pkt->ew[0];
@@ -335,8 +367,8 @@ Serial.println("bad parity in original packet");
     fop->protocol = RF_PROTOCOL_LEGACY;
 
     fop->addr_type     = pkt->addr_type;
-    fop->latitude      = (float)lat / 1e7;
-    fop->longitude     = (float)lon / 1e7;
+    fop->latitude      = lat;
+    fop->longitude     = lon;
     fop->altitude      = (float) alt - geo_separ;
     fop->speed         = speed4 / (4 * _GPS_MPS_PER_KNOT);
     fop->course        = direction;
@@ -350,7 +382,7 @@ Serial.println("bad parity in original packet");
 //    fop->ew[1]         = pkt->ew[1];
 //    fop->ew[2]         = pkt->ew[2];
 //    fop->ew[3]         = pkt->ew[3];
-Serial.println("decode() end...");
+//Serial.println("decode() end...");
 
     return true;
 }
@@ -426,8 +458,16 @@ size_t legacy_encode_this(void* legacy_pkt, ufo_t* this_aircraft)
 
     pkt->gps = 323;
 
-    pkt->lat = (uint32_t(lat * 1e7) >> 7) & 0x7FFFF;
-    pkt->lon = (uint32_t(lon * 1e7) >> 7) & 0xFFFFF;
+    // pkt->lat = (uint32_t(lat * 1e7) >> 7) & 0x7FFFF;
+    // pkt->lon = (uint32_t(lon * 1e7) >> 7) & 0xFFFFF;
+    if (lat < 0.0)
+        pkt->lat = (uint32_t) (-(((int32_t) (-lat * 1e7) + 0x40) >> 7)) & 0x07FFFF;
+    else
+        pkt->lat = (((uint32_t) (lat * 1e7) + 0x40) >> 7) & 0x07FFFF;
+    if (lon < 0.0)
+        pkt->lon = (uint32_t) (-(((int32_t) (-lon * 1e7) + 0x40) >> 7)) & 0x0FFFFF;
+    else
+        pkt->lon = (((uint32_t) (lon * 1e7) + 0x40) >> 7) & 0x0FFFFF;
 
     if (alt < 0)
     {
@@ -485,13 +525,13 @@ size_t legacy_encode_this(void* legacy_pkt, ufo_t* this_aircraft)
 size_t legacy_encode(void* buffer, ufo_t* fop)
 {
     if (fop == &ThisAircraft)
-        return legacy_encode_this(buffer, fop);   /* happens once at start-up */
+        return legacy_encode_this(buffer, fop);   /* may happen once at start-up */
 
     memcpy(buffer, fop->raw, sizeof(legacy_packet_t));
 
     legacy_packet_t* pkt = (legacy_packet_t *) buffer;
 
-    if (ognrelay_enable && ogn_gnsstime) {    /* need to re-encrypt */
+    if (ognrelay_enable && (ogn_gnsstime || have_approx_time)) {    /* need to re-encrypt */
 
         pkt->ns[1] = fop->hour;
         pkt->ns[2] = fop->minute;

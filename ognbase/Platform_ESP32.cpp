@@ -249,7 +249,7 @@ static void ESP32_setup()
             axp.setLDO2Voltage(3300);  // LoRa, AXP192 power-on value: 3300
             axp.setLDO3Voltage(3000);  // GPS,  AXP192 power-on value: 2800
 
-            pinMode(SOC_GPIO_PIN_TBEAM_V08_PMU_IRQ, INPUT_PULLUP);
+            pinMode(SOC_GPIO_PIN_TBEAM_V08_PMU_IRQ, INPUT_PULLUP);  // SoftRF version says "INPUT"
 
             attachInterrupt(digitalPinToInterrupt(SOC_GPIO_PIN_TBEAM_V08_PMU_IRQ),
                             ESP32_PMU_Interrupt_handler, FALLING);
@@ -279,19 +279,23 @@ static void ESP32_loop()
 
         if (is_irq)
         {
+#if 0
+Serial.println("ESP32_loop() handling PMU IRQ...");
+Serial.flush();
+#endif
             if (axp.readIRQ() == AXP_PASS)
             {
                 if (axp.isPEKLongtPressIRQ())
                 {
                     down = true;
-#if 0
+#if 1
                     Serial.println(F("Longt Press IRQ"));
                     Serial.flush();
 #endif
                 }
                 if (axp.isPEKShortPressIRQ())
                 {
-#if 0
+#if 1
                     Serial.println(F("Short Press IRQ"));
                     Serial.flush();
 #endif
@@ -305,7 +309,7 @@ static void ESP32_loop()
             portEXIT_CRITICAL_ISR(&PMU_mutex);
 
             if (down)
-                shutdown("  OFF  ");
+                shutdown("  -- OFF -- ");
         }
 
         if (isTimeToBattery())
@@ -352,6 +356,8 @@ static void ESP32_fini()
     else if (hw_info.model == SOFTRF_MODEL_PRIME_MK2 &&
              hw_info.revision == 8)
     {
+
+Serial.println("ESP32_fini() turning LED off...");
         axp.setChgLEDMode(AXP20X_LED_OFF);
 
         delay(2000); /* Keep 'OFF' message on OLED for 2 seconds */
@@ -359,12 +365,16 @@ static void ESP32_fini()
         axp.setPowerOutPut(AXP192_LDO2, AXP202_OFF);
         axp.setPowerOutPut(AXP192_LDO3, AXP202_OFF);
         axp.setPowerOutPut(AXP192_DCDC2, AXP202_OFF);
-        axp.setPowerOutPut(AXP192_DCDC1, AXP202_OFF);
+        /* workaround against AXP I2C access blocking by 'noname' OLED */
+        //if (u8x8 == NULL)
+          axp.setPowerOutPut(AXP192_DCDC1, AXP202_OFF);
         axp.setPowerOutPut(AXP192_EXTEN, AXP202_OFF);
 
         delay(20);
 
         esp_sleep_enable_ext0_wakeup((gpio_num_t) SOC_GPIO_PIN_TBEAM_V08_PMU_IRQ, 0); // 1 = High, 0 = Low
+
+        // axp.shutdown();     // SoftRF version does this
     }
 
     esp_deep_sleep_start();

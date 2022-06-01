@@ -528,19 +528,18 @@ void OGN_APRS_Status(ufo_t* this_aircraft)
     APRS_STAT.platform      += "-ESP32";
     
     APRS_STAT.realtime_clock = String(0.0);
-    APRS_STAT.board_voltage  = String(packets_per_minute) + "/min";    // was String(Battery_voltage()) + "V";
-
-    // 14/16Acfts[1h]
+    APRS_STAT.board_voltage  = String(packets_per_minute) + "/min "
+        + String(numvisible) + "/" + String(numseen_1hr) + "Acfts[1h]";    // was String(Battery_voltage()) + "V";
 
     String StatusPacket = APRS_STAT.origin;
-    StatusPacket += ">OGFLR,TCPIP*,qAS,";    // was qAC but that's for beacons not status.
+    StatusPacket += ">OGFLR,TCPIP*,qAC,";     // or should it be qAS?
     StatusPacket += APRS_STAT.callsign;
     StatusPacket += ":>";
     StatusPacket += APRS_STAT.timestamp;
     StatusPacket += " ";
     StatusPacket += APRS_STAT.platform;
     StatusPacket += " ";
-    StatusPacket += APRS_STAT.board_voltage;   // replaced with packets per minute
+    StatusPacket += APRS_STAT.board_voltage;   // replaced with packets per minute and IDs seen in last hour
     //StatusPacket += " ";
     //StatusPacket += ThisAircraft.timestamp;
     StatusPacket += "\r\n";

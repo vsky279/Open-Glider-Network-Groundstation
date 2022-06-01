@@ -45,16 +45,18 @@ enum
     TRAFFIC_ALARM_LEGACY
 };
 
+void id_list_clear(void);
 void ParseData(void);
-
 void Traffic_setup(void);
-
 void Traffic_loop(void);
-
 void ClearExpired(void);
 
 extern ufo_t fo, Container[MAX_TRACKING_OBJECTS], EmptyFO;
 extern uint8_t numtracked;
+extern uint16_t numseen_ever;
+extern uint16_t numseen_today;
+extern uint16_t numseen_1hr;
+extern uint16_t numvisible;
 
 extern uint32_t UpdateTrafficTimeMarker;
 

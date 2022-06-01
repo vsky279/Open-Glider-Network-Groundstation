@@ -33,9 +33,9 @@
 
 #include "version.h"
 
-#define SOFTRF_FIRMWARE_VERSION "MB07c"   // _VERSION
+#define SOFTRF_FIRMWARE_VERSION "MB08a"   // _VERSION
 #define SOFTRF_IDENT            "OGNB-"
-#define OGNBASE_HTML_VERSION    "MB07"
+#define OGNBASE_HTML_VERSION    "MB08"
 
 #define ENTRY_EXPIRATION_TIME   41 /* seconds */
 #define LED_EXPIRATION_TIME     5  /* seconds */
@@ -112,6 +112,16 @@
 #define ENABLE_AHRS
 #endif /* PREMIUM_PACKAGE */
 
+
+/* data structure for keeping track of how many unique aircraft IDs were seen */
+typedef struct id_list_entry {
+    uint32_t addr;
+    time_t timestamp;
+    id_list_entry *prev;
+    id_list_entry *next;
+    bool invisible;
+} id_list_entry_t;
+
 typedef struct UFO
 {
     uint8_t raw[36];
@@ -158,6 +168,9 @@ typedef struct UFO
 
     /* ADS-B (ES, UAT, GDL90) specific data */
     uint8_t callsign[8];
+
+    /* where it is in list of traffic seen */
+    id_list_entry_t *listed;
 } ufo_t;
 
 typedef struct hardware_info

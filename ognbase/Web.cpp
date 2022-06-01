@@ -75,7 +75,8 @@ static const char stats_templ[] PROGMEM =
  <br><p>\r\nBase Station Stats:</p>\
  <p>&nbsp;\r\n Traffic packets received: %d</p>\
  <p>&nbsp;\r\n Traffic packets reported: %d</p>\
- <p>&nbsp;\r\n Largest Range: %d</p>\
+ <p>&nbsp;\r\n Aircraft seen ever: %d, today: %d</p>\
+ <p>&nbsp;\r\n Largest Range: %d km</p>\
  <p>&nbsp;\r\n Corrupt packets: %d</p>\
  <p>&nbsp;\r\n Other packets: %d</p>\
  <p>&nbsp;\r\n Time-sync restarts: %d</p>\
@@ -184,6 +185,8 @@ void update_stats()
         ognopmode,
         traffic_packets_recvd,
         traffic_packets_reported,
+        (uint32_t) numseen_ever,
+        (uint32_t) numseen_today,
         (uint32_t) largest_range,
         (uint32_t) bad_packets_recvd,
         other_packets_recvd,
@@ -201,6 +204,8 @@ void update_stats()
         ognopmode,
         traffic_packets_recvd,
         traffic_packets_reported,
+        (uint32_t) numseen_ever,
+        (uint32_t) numseen_today,
         (uint32_t) largest_range,
         (uint32_t) bad_packets_recvd,
         other_packets_recvd,
@@ -216,12 +221,8 @@ void update_stats()
   } else if (ognrelay_enable) {
      snprintf(stats_html, 959, stats_templ,
         ognopmode,
-        zero,
-        zero,
-        zero,
-        zero,
-        zero,
-        zero,
+        zero, zero, zero, zero,
+        zero, zero, zero, zero,
         traffic_packets_recvd,
         (uint32_t) packets_per_minute,
         (uint32_t) ((100 * traffic_packets_relayed)
@@ -236,6 +237,8 @@ void update_stats()
         ognopmode,
         traffic_packets_recvd,
         traffic_packets_reported,
+        (uint32_t) numseen_ever,
+        (uint32_t) numseen_today,
         (uint32_t) largest_range,
         (uint32_t) bad_packets_recvd,
         other_packets_recvd,
@@ -353,7 +356,8 @@ void Web_setup(ufo_t* this_aircraft)
     else if (ognrelay_enable && ognrelay_time)
         ognopmode = (ogn_gnsstime? "Remote station, relaying GNSS time" : "Remote station, no time source");
     else if (ognrelay_enable)
-        ognopmode = (ogn_gnsstime? "Remote station, time from GNSS" : "Remote station, no time source");
+        ognopmode = (ogn_gnsstime? "Remote station, time from GNSS" : 
+                    (have_approx_time>0? "Remote station, approx time from base" : "Remote station, no time source"));
     else   /* single standalone station */
         ognopmode = (ogn_gnsstime? "Single station, time from GNSS" : "Single station, time from NTP");
 
@@ -626,7 +630,7 @@ void Web_loop(void)
         values = remote_sats;   // was: power
 #endif
         values += "_";
-        values += RF_last_rssi;
+        values += numseen_1hr;     // was: RF_last_rssi
         values += "_";
         values += (ognrelay_base && ognrelay_time) ? remote_uptime : uptime;
         values += "_";
