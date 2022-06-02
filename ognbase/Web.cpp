@@ -180,6 +180,12 @@ char stats_html[960];
 void update_stats()
 {
   uint32_t zero = 0;
+  if (ognrelay_enable && ! ogn_gnsstime && ! ognrelay_time) {
+     if (have_approx_time > 0)
+        ognopmode = "Remote station, NTP time from base";
+     else
+        ognopmode = "Remote station, no precise time";
+  }
   if (ognrelay_base && ognrelay_time) {
      snprintf(stats_html, 959, stats_templ,
         ognopmode,
@@ -351,15 +357,20 @@ void Web_setup(ufo_t* this_aircraft)
 
     if (ognrelay_base && ognrelay_time)
         ognopmode = "Base station, time relayed from remote";
+    else if (ognrelay_base && ogn_gnsstime)
+        ognopmode = "Base station, time from GNSS";
     else if (ognrelay_base)
-        ognopmode = (ogn_gnsstime? "Base station, time from GNSS" : "Base station, time from NTP");
-    else if (ognrelay_enable && ognrelay_time)
-        ognopmode = (ogn_gnsstime? "Remote station, relaying GNSS time" : "Remote station, no time source");
+        ognopmode = "Base station, time from NTP";
+    else if (ognrelay_enable && ognrelay_time && ogn_gnsstime)
+        ognopmode = "Remote station, relaying GNSS time";
+    else if (ognrelay_enable && ogn_gnsstime)
+        ognopmode = "Remote station, time from GNSS"; 
     else if (ognrelay_enable)
-        ognopmode = (ogn_gnsstime? "Remote station, time from GNSS" : 
-                    (have_approx_time>0? "Remote station, approx time from base" : "Remote station, no time source"));
-    else   /* single standalone station */
-        ognopmode = (ogn_gnsstime? "Single station, time from GNSS" : "Single station, time from NTP");
+        ognopmode = "Remote station, no precise time";
+    else if (ogn_gnsstime)
+        ognopmode = "Single station, time from GNSS";
+    else
+        ognopmode = "Single station, time from NTP";
 
     snprintf(offset, size, index_html,
              station_addr,

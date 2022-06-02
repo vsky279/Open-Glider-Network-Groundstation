@@ -144,13 +144,13 @@ bool legacy_decode(void* buffer, ufo_t* this_aircraft, ufo_t* fop)
     legacy_packet_t* pkt = (legacy_packet_t *) buffer;
 
     fop->addr = pkt->addr;     /* first 32 bits are not encrypted */
-Serial.printf("decoding pkt, unk0=%d, addr=%06X\r\n", pkt->_unk0, pkt->addr);
+//Serial.printf("decoding pkt, unk0=%X, addr=%06X\r\n", pkt->_unk0, pkt->addr);
 
     if (ognrelay_enable) {
 
-        if (pkt->_unk0 != 0) {    /* received relayed, or time, or special FLARM packet - ignore */
+        if (pkt->_unk0 != 0) {    /* received relayed, or special FLARM packet - ignore */
           ++other_packets_recvd;
-Serial.printf("received non-traffic pkt, unk0=%d\r\n", pkt->_unk0);
+Serial.printf("received non-traffic pkt, unk0=%X\r\n", pkt->_unk0);
           return false;
         }
 
@@ -158,7 +158,7 @@ Serial.printf("received non-traffic pkt, unk0=%d\r\n", pkt->_unk0);
 
         if (pkt->_unk0 != 0xB && pkt->_unk0 != 0xD) {  /* other than relayed packets */
           ++other_packets_recvd;
-//Serial.printf("received non-relay pkt, unk0=%d, addr=%06X\r\n", pkt->_unk0, pkt->addr);
+Serial.printf("received non-relay pkt, unk0=%X, addr=%06X\r\n", pkt->_unk0, pkt->addr);
           return false;          /* ignore normal packets */
         }
         /* otherwise fall through and decode relayed packets */
@@ -167,7 +167,7 @@ Serial.printf("received non-traffic pkt, unk0=%d\r\n", pkt->_unk0);
 
         if (pkt->_unk0 != 0) {    /* received packets that are not normal traffic - ignore */
           ++other_packets_recvd;
-Serial.printf("received non-traffic pkt, unk0=%d\r\n", pkt->_unk0);
+//Serial.printf("received non-traffic pkt, unk0=%X\r\n", pkt->_unk0);
           return false;
         }
         /* otherwise fall through and decode normal packets */
@@ -192,8 +192,6 @@ Serial.printf("received non-traffic pkt, unk0=%d\r\n", pkt->_unk0);
     }
 
     bool time_sent = (ognrelay_base && (pkt->_unk0 == 0xD));  /* timestamp sent from remote station */
-
-//Serial.println("... pt2");
 
     /* decrypt packet */
     uint32_t key[4];
@@ -236,17 +234,15 @@ Serial.println("bad checksum in relayed packet");
         for (int ndx = 0; ndx < sizeof (legacy_packet_t); ndx++)
             pkt_parity += parity(*(((unsigned char *) pkt) + ndx));
         if (pkt_parity % 2) {
-if (ognrelay_base)
-Serial.println("bad parity in relayed packet");
-else
-Serial.println("bad parity in original packet");
+//if (ognrelay_base)
+//Serial.println("bad parity in relayed packet");
+//else
+//Serial.println("bad parity in original packet");
             return false;
         }
         // since parity will be right 50% of the time by chance, it's a very weak check!
         fop->rssi  = RF_last_rssi;      /* local reception */
     }
-
-//Serial.println("... pt3");
 
     fop->timestamp = timestamp;
     fop->addr_type = pkt->addr_type;
@@ -275,7 +271,6 @@ Serial.println("bad parity in original packet");
       return true;
     }
 
-//Serial.println("... pt4");
     if (ognrelay_base) {
 
       if (!ogn_gnsstime && !ognrelay_time) {
@@ -288,14 +283,10 @@ Serial.println("bad parity in original packet");
       }
 
       if (time_sent) {
+
           fop->hour   = pkt->ns[1];   /* original H,M,S sent from remote */
           fop->minute = pkt->ns[2];
           fop->second = pkt->ns[3];
-#if 0
-//        if ((fop->hour > this_aircraft->hour && this_aircraft->hour > 0)
-//            || (fop->minute > this_aircraft->minute && this_aircraft->minute > 0))
-//                return false;     /* apparently corrupted data */
-#endif
 
       } else {                      /* approximate adjustment for relay delay */
           int delay = (pkt->_unk1 == 0) ? 4 : 16;
@@ -315,7 +306,6 @@ Serial.println("bad parity in original packet");
       }
     }  /* single-station leaves HMS as-was in this_aircraft */
 
-//Serial.println("... pt5");
     float    ref_lat   = this_aircraft->latitude;
     float    ref_lon   = this_aircraft->longitude;
     float    geo_separ = this_aircraft->geoid_separation;
@@ -374,15 +364,6 @@ Serial.println("bad parity in original packet");
     fop->course        = direction;
     fop->vs            = ((float) vs10) * (_GPS_FEET_PER_METER * 6.0);
     fop->aircraft_type = pkt->aircraft_type;
-//    fop->ns[0]         = pkt->ns[0];
-//    fop->ns[1]         = pkt->ns[1];
-//    fop->ns[2]         = pkt->ns[2];
-//    fop->ns[3]         = pkt->ns[3];
-//    fop->ew[0]         = pkt->ew[0];
-//    fop->ew[1]         = pkt->ew[1];
-//    fop->ew[2]         = pkt->ew[2];
-//    fop->ew[3]         = pkt->ew[3];
-//Serial.println("decode() end...");
 
     return true;
 }
@@ -505,16 +486,6 @@ size_t legacy_encode_this(void* legacy_pkt, ufo_t* this_aircraft)
     pkt->parity = (pkt_parity % 2);
 
     make_key(key, timestamp, (pkt->addr << 8) & 0xffffff);
-
-#if 0
-    Serial.print(key[0]);
-    Serial.print(", ");
-    Serial.print(key[1]);
-    Serial.print(", ");
-    Serial.print(key[2]);
-    Serial.print(", ");
-    Serial.println(key[3]);
-#endif
     btea((uint32_t *) pkt + 1, 5, key);
 
     return sizeof(legacy_packet_t);

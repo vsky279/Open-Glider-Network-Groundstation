@@ -40,8 +40,8 @@ uint32_t ref_time_ms = 0;      /* assumed local millis() at last PPS */
 #define TIME_TO_TRYSYNC 2700
 #define TIME_TO_ACKSYNC 10300
 #define TIME_TO_RE_SYNC 185000
-#define ADJ_FOR_FLARM_RECEPTION 50       /* seems to receive FLARM packets better */
-#define ADJ_FOR_TRANSMISSION_DELAY 30    /* half typical reported round trip time */
+#define ADJ_FOR_FLARM_RECEPTION 40       /* seems to receive FLARM packets better */
+#define ADJ_FOR_TRANSMISSION_DELAY 10
 #define TIME_TO_NTP_AGAIN 600000
 
 int uptime = 0;
@@ -97,7 +97,7 @@ bool send_time(void)
     uint8_t mark;
 
     if (! RF_TX_ready()) {   /* transmitting not allowed at this time */
-Serial.printf("cannot send time right now %d\r\n", millis());
+//Serial.printf("cannot send time right now %d\r\n", millis());
         return false;
     }
     
@@ -197,18 +197,18 @@ Serial.printf("send_time: ref_time_ms %d << now %d ??\r\n", ref_time_ms, now_ms)
       ++time_packets_sent;
       when_sync_sent = millis();
       if (ognrelay_enable) {
-//        Serial.println(F("sent time & stats..."));
-Serial.printf("send_time: ms=%d, ourt=%d, ofst=%d, reft=%d\r\n", now_ms, OurTime, offset, ref_time_ms);
+        Serial.println(F("sent time & stats..."));
+//Serial.printf("send_time: ms=%d, ourt=%d, ofst=%d, reft=%d\r\n", now_ms, OurTime, offset, ref_time_ms);
         got_time_ack = false;    /* check for ack again for each time-data packet */
       } else if (reverse_time_sync) {
           Serial.println(F("base sent time to remote"));
       } else {
-//        Serial.println(F("sent time ack"));
-Serial.printf("send_time_ack: ms=%d, ourt=%d, reft=%d\r\n", now_ms, OurTime, ref_time_ms);
+          Serial.println(F("sent time ack"));
+//Serial.printf("send_time_ack: ms=%d, ourt=%d, reft=%d\r\n", now_ms, OurTime, ref_time_ms);
       }
     }
-else
-Serial.println(F("send_time unsuccessful"));
+//else
+//Serial.println(F("send_time unsuccessful"));
 
     return success;
 }
@@ -216,16 +216,17 @@ Serial.println(F("send_time unsuccessful"));
 /* just check whether the packet is a time-sync one */
 bool time_sync_pkt(uint8_t *raw)
 {
-    if (! ognrelay_time)        return false;
+    if (! (ognrelay_time || (ognrelay_enable && reverse_time_sync)))
+        return false;
     legacy_packet_t* pkt = (legacy_packet_t *) raw;
-    if (pkt->addr != 0xACACAC)
-        return false;    /* marks time-sync packets */
-    if (pkt->_unk0 == 0xE)
-        return true;     /* marks acked time-relay packets */
-    if (pkt->_unk0 == 0xC)
-        return true;     /* marks un-acked time-relay packets */
-    if (pkt->_unk0 == 0xA)
-        return true;     /* marks reverse-time-relay packets */
+    if (pkt->addr != 0xACACAC)     /* marks time-sync packets */
+        return false;
+    if (pkt->_unk0 == 0xE)         /* marks acked time-relay packets */
+        return true;
+    if (pkt->_unk0 == 0xC)         /* marks un-acked time-relay packets */
+        return true;
+    if (pkt->_unk0 == 0xA)         /* marks reverse-time-relay packets */
+        return true;
     return false;
 }
 
@@ -413,11 +414,7 @@ void Timesync_restart()
 
 void Time_update()
 {
-static uint32_t then_ms = 0;
     uint32_t now_ms = millis();
-if (now_ms < then_ms)
-Serial.printf("millis() %d -> %d ??\r\n", then_ms, now_ms);
-then_ms = now_ms;
 
     if (ognrelay_time && ! time_synched && when_to_switch > 0 && OurTime > when_to_switch) {
         /* at a per-agreed time after initial time-sync contacts */
@@ -436,7 +433,7 @@ then_ms = now_ms;
         if (OurTime > 0 && now_ms >= ref_time_ms + 1000) {
           OurTime += 1;
           ref_time_ms += 1000;
-Serial.printf("free running clock - base still waiting to sync -> %d\r\n", OurTime);
+//Serial.printf("free running clock - base still waiting to sync -> %d\r\n", OurTime);
         }
         /* else wait for time data from remote station */
         return;
@@ -451,7 +448,7 @@ Serial.printf("free running clock - base still waiting to sync -> %d\r\n", OurTi
         if (now_ms >= ref_time_ms + 1000) {
           OurTime += 1;
           ref_time_ms += 1000;
-Serial.printf("free running clock - base btwn time msgs-> %d\r\n", OurTime);
+//Serial.printf("free running clock - base btwn time msgs-> %d\r\n", OurTime);
         }
 
         return;
@@ -461,7 +458,6 @@ Serial.printf("free running clock - base btwn time msgs-> %d\r\n", OurTime);
     /* when base (or standalone) is getting time data from NTP */
 
         if (OurTime == 0 || ! time_synched) {
-            //Serial.println(F("waiting for NTP..."));  
             return;
         }
 
@@ -476,7 +472,7 @@ Serial.printf("free running clock - base btwn time msgs-> %d\r\n", OurTime);
         if (now_ms >= ref_time_ms + 1000) {
           OurTime += 1;
           ref_time_ms += 1000;
-Serial.printf("free running clock - NTP -> %d\r\n", OurTime);
+//Serial.printf("free running clock - NTP -> %d\r\n", OurTime);
         }
 
         return;
@@ -496,10 +492,10 @@ Serial.printf("free running clock - NTP -> %d\r\n", OurTime);
           OurTime += 1;
           ref_time_ms += 1000;
           if (have_approx_time == 0) {
-Serial.println(F("free running clock - remote, no gnss"));
+//Serial.println(F("free running clock - remote, no gnss"));
           } else {
               --have_approx_time;
-Serial.println(F("have_approx_time - remote, no gnss"));
+//Serial.println(F("have_approx_time - remote, no gnss"));
           }
         }
 
@@ -517,10 +513,10 @@ Serial.println(F("have_approx_time - remote, no gnss"));
         if (now_ms >= ref_time_ms + 1000) {
           OurTime += 1;
           ref_time_ms += 1000;
-if (validgnss)
-Serial.printf("free running clock - between gnss fixes -> %d\r\n", OurTime);
-else
-Serial.printf("free running clock - gnss dropout -> %d\r\n", OurTime);
+//if (validgnss)
+//Serial.printf("free running clock - between gnss fixes -> %d\r\n", OurTime);
+//else
+//Serial.printf("free running clock - gnss dropout -> %d\r\n", OurTime);
         }
         return;
     } 
@@ -567,7 +563,7 @@ Serial.printf("free running clock - gnss dropout -> %d\r\n", OurTime);
         if (now_ms >= ref_time_ms + 1000) {
           OurTime += 1;
           ref_time_ms += 1000;
-Serial.printf("free running clock - not a new fix -> %d\r\n", OurTime);
+//Serial.printf("free running clock - not a new fix -> %d\r\n", OurTime);
         }
         return;
     }
@@ -617,13 +613,7 @@ Serial.printf("PPS=%d < ref=%d ??\r\n", pps_btime_ms, ref_time_ms);
     tm.Minute = gnss.time.minute();
     tm.Second = gnss.time.second();
 
-time_t OldTime = OurTime;
     OurTime = makeTime(tm) + (gnss_age + time_corr_neg) / 1000;
-if (OurTime > OldTime+1000 || OldTime > OurTime+1000)
-Serial.printf("OldTm=%d NewTm=%d age=%d corr=%d ??\r\n",
-OldTime, OurTime, gnss_age, time_corr_neg);
-else
-Serial.printf("new GNSS time fix -> %d\r\n", OurTime);
 
 #endif   /* TBEAM */
 }
@@ -636,12 +626,6 @@ void Time_loop()
         return;
 
     if (ThisAircraft.timestamp != OurTime) {      /* do this only once per second */
-
-//Serial.println(F("updating our timestamp..."));
-if (ThisAircraft.timestamp > OurTime)
-Serial.printf("ThisAircraft.timestamp=%d > OurTime=%d ??\r\n", ThisAircraft.timestamp, OurTime);
-else
-Serial.printf("... millis=%d  OurTime=%d  ref_time_ms=%d\r\n", millis(), OurTime, ref_time_ms);
 
       ThisAircraft.timestamp = OurTime;
       int oldmin = ThisAircraft.minute;

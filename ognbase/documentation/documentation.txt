@@ -65,13 +65,11 @@ Installing firmware for the first time
 
 The T-Beam often arrives from the factory with SoftRF installed.  That allows installation of OGNbase, just like updated versions of SoftRF, via Wifi.  See instructions here: https://github.com/lyusupov/SoftRF/wiki/Firmware-update-%28Web-method%29#esp32
 
-On the Paxcounter, or a T-Beam without a working version of SoftRF or OGNbase installed, OGNbase needs to be installed via the USB jack.  Get the ZIP file with the 4 .bin files here:
-https://github.com/lyusupov/SoftRF/blob/master/software/firmware/binaries/ESP32/SoftRF/SoftRF-firmware-v1.0-ESP32.zip
-and then follow the same instructions as for SoftRF, here: https://github.com/lyusupov/SoftRF/tree/master/software/firmware/binaries#esp32 - substituting the OGNbase .bin file for the SoftRF.ino.bin file.  In the future a single ZIP file with all the needed files will be available here: https://github.com/moshe-braner/Open-Glider-Network-Groundstation
+On the Paxcounter, or a T-Beam without a working version of SoftRF or OGNbase already installed, OGNbase needs to be installed via the USB jack.  Follow the same instructions as for SoftRF, here: https://github.com/lyusupov/SoftRF/blob/master/software/firmware/binaries/README.md#esp32 - substituting the OGNbase .bin file for the SoftRF.ino.bin file.  A ZIP file with the needed files and more detailed instructions is available here: https://github.com/moshe-braner/Open-Glider-Network-Groundstation/tree/main/ognbase/binaries
 
 Remember to use the correct OGNbase .bin file for the hardware, there are a T-Beam version, and a "TTGO" version for the Paxcounter.
 
-After firmware installation OGNbase will start up waiting for upload of a configuration file.  The next two sections describe the configuration file, and the web interface that allows uploading it and other files.  Note that a later update of the OGNbase firmware normally does not require uploading the configuration file.  The configuration file (and other other small files) remains intact in the small file-storage area (called "SPIFFS") reserved in the flash memory of the device.
+After firmware installation OGNbase will start up waiting for upload of a configuration file.  The next two sections describe the configuration file, and the web interface that allows uploading it and other files.  Note that a later update of the OGNbase firmware normally does not require uploading the configuration file again.  The configuration file, and other small files, remain intact in the small file-storage area (called "SPIFFS") reserved in the flash memory of the device.
 
 
 Configuration file options
@@ -159,20 +157,20 @@ Some of the other sections in the configuration file are about things I do not u
 
 The Web Interface
 
-After startup, OGNbase tries to connect to a Wifi network. If it fails in that attempt, it sets up its own network, and offers its web interface at the IP address 192.168.1.1.  Otherwise it offers its web interface at an IP address that is chosen by the hosting network.  That IP address will be shown on the OLED display of the device, and you can also see it in the DHCP client list of the hosting network.
+After startup, OGNbase tries to connect to a Wifi network, and offers its web interface at an IP address that is chosen by the hosting network.  That IP address will be shown on the OLED display of the device, and you can also see it in the DHCP client list of the hosting network.
 
-If no configuration file (naming the wifi network) has been loaded, OGNbase has no choice but to set up its own network.  One then must connect a computer, tablet or smartphone to this network in order to upload a configuration file.
+If no configuration file (naming the wifi network) has been loaded, or if the named network is out of range, OGNbase has no choice but to set up its own network, with the access password 987654321.  OGN then offers its web interface at the IP address 192.168.1.1.
 
-Either way, a web browser (on a computer, tablet, or smartphone connected to the same network), if pointed to the OGNbase IP address, will conenct to the mini web server built into OGNbase, allowing one to view and change settings, or even upadte the firmware.
+Either way, a web browser (on a computer, tablet, or smartphone connected to the same network), if pointed to the OGNbase IP address, will connect to the mini web server built into OGNbase, allowing one to view and change settings, upload a configuration file, or even update the firmware.
 
 The web interface shows either the OGNbase status page, or its file-upload page, or its statistics page - see sections below.
 
 
 Uploading files
 
-Before any configuration files are uploaded to the device, the web interface automatically goes to the file-upload page.  On that page, click the "browse" button on the left, select a file in the browser's file-selection window, click "open" (or whatever that window wants), then click "upload" in the OGNbase file-upload page.  The file will be uploaded immediately and with no confirmation.
+Before any configuration files are uploaded to the device, the web interface automatically goes to the file-upload page.  On that page, click the "browse" button on the left, select a file in the browser's file-selection window, click "open" (or whatever that window wants), then click "upload" in the OGNbase file-upload page.  The file will be uploaded immediately and with no confirmation, and the status page will be displayed again.
 
-You cannot see what what files are already there, but if you upload a file it will silently overwrite a file by the same name that if it is already there.
+You cannot see what what files are already loaded into the device, but if you upload a file it will silently overwrite a file by the same name that if it is already there.
 
 The one file you MUST upload is the configuration file, which must be named config.json - it was described in a section above.
 
@@ -180,18 +178,20 @@ Optionally you can also upload the files "index.html" and "style.css".  Once you
 
 To upload files after that (for example, if you want to change the configuration), there are two ways:
 (1) in the Web interface status page, click the "upload" button, that will go to the file-upload page.
-(2) on the Paxcounter hardware, which has an SD card slot, can put all the files (optionally even a firmware update file) on the SD card, and upon startup OGNbase will theoretically read them from the SD card.  I have not succeeded in making that happen, but see here:  https://github.com/roema/Open-Glider-Network-Groundstation/tree/main/ognbase/sdcard
+(2) on the Paxcounter hardware, which has an SD card slot, can put all the files (optionally even a firmware update file, renamed "ognbase.bin", within the "firmware" folder) on the SD card, and upon startup OGNbase will read them from the SD card.  See here:  https://github.com/roema/Open-Glider-Network-Groundstation/tree/main/ognbase/sdcard
 
 
 Other features of the web interface
 
-The status page shows the OGNbase settings in effect, and (at the top) a few statistics on its operation.  The buttons and links at the bottom allow resetting the local or remote device, or reaching the statistics page, the file upload page, the firmware update page.  The "clear" button removes all the files stored in the device - there is normally no need to do that, since uploading a file overwrites the previous version.  But if you accidentally uploaded a wrong file, perhaps a large one that fills the space, this button may be useful.  Also a future version of the firmware may be incompatible with the existing uploaded files, so it may be a good idea to clear the files before updating the firmware.
+The status page shows the OGNbase settings in effect, and (at the top) a few statistics on its operation.  The buttons and links at the bottom allow resetting the local or remote device, or reaching the statistics page, the file upload page, the firmware update page.  The "clear" button removes all the files stored in the device - there is normally no need to do that, since uploading a file overwrites the previous version.  But if you accidentally uploaded a wrong file, perhaps a large one that fills the space, this button may be useful.  Also a future version of the firmware may be incompatible with the existing uploaded files, so it may be a good idea to clear the files before updating the firmware.  (See later section about firmware updates.)
 
-The OGNbase settings visible in the status page can be changed there, and a "save" button can save them to the stored configuration file.  But I have not tried that, and it is best to edit the configuration file outside of the device and then upload it.
+The OGNbase settings visible in the status page can be changed there, and a "save" button can save them to the stored configuration file.  But it is best to edit the configuration file outside of the device and then upload it.
 
-If in relay mode, the "Remote Reboot" button sends a radio packet from the base station that tells the remote station to reboot.  The reboot only happens under some conditions: The remote station has been running for at least 10 minutes and has already turned off its WiFi server, and the packet arrived ungarbled and passed a security check based on the secret "relay key".  Not every click of the button actually sends such a packet.  It is safe to press this button a few times, just in case, since the remote station will not reboot again for 10 minutes.  Every time it - or the "Refresh" button - is clicked, the statistics at the top of the status page refresh, if in time-relay mode the number of (remote) GNSS satellites received are displayed, which shows whether the remote station has finished rebooting and establishing communications.
+If in relay mode, the "Remote Reboot" button sends a radio packet from the base station that tells the remote station to reboot.  The reboot only happens under some conditions: The remote station has been running for at least 10 minutes and has already turned off its WiFi server, and the packet arrived ungarbled and passed a security check based on the secret "relay key".  Not every click of the button actually sends such a packet.  It is safe to press this button a few times, just in case, since the remote station will not reboot again for 10 minutes.  Every time this button - or the "Refresh" button - is clicked, the statistics at the top of the status page refresh, if in time-relay mode the number of (remote) GNSS satellites received are displayed, which shows whether the remote station has finished rebooting and establishing communications.
 
-The statistics page, reachable via a link at the bottom of the status page, shows additional statistics, especially relevant to relay mode.  The statistics get refreshed when following that link, when the statistics page is refreshed in your browser, or automatically every 23 seconds.  To get back to the status page, use your browser's "back" button.
+The statistics page, reachable via a button at the bottom of the status page, shows additional statistics, especially relevant to relay mode.  These include the number of unique aircraft seen (today or ever), and the number of radio packets currently received per minute.  The statistics get refreshed when following that link, when the statistics page is refreshed in your browser, or automatically every 23 seconds.  To get back to the status page, use your browser's "back" button.
+
+Note that the base station can only report statistics from the remote station if time-relay is happening, since the statistics are sent from the remote station as part of the time-relay packets.
 
 
 OLED display
@@ -206,13 +206,13 @@ The USB port of the device can be connected to a computer, and by running a suit
 
 Updating the OGNbase firmware
 
-There are 3 ways to "flash" a new (or old) version of the OGNbase firmware, replacing the existing version.  Remember to use the correct OGNbase .bin file for the hardware, there are a T-Beam version, and a "TTGO" version for the Paxcounter.
+There are 3 ways to "flash" a new (or old) version of the OGNbase firmware, replacing the existing version on the device.  Remember to use the correct OGNbase .bin file for the hardware, there are a T-Beam version, and a "TTGO" version for the Paxcounter.
 
-It may be necessary to replace the configuration and/or index.html and style.css files at the same time as updating the firmware, since new versions of the firmware may expect different or additional settings.  Upload the new files first, and then update the firmware, all within the same session in the web interface, without rebooting until after the firmware update.  One can optionally clear the stored files via the "clear" button in the status page first.  But do not reboot with the files cleared, or you will need to connect to the wifi network generated by the device in order to upload the new files, a bit annoying.  The worst case is if the old files are there, it is possible that the new version of OGNbase firmware will not be able to fully start up, and one must then re-flash the firmware via the USB port.  OGNbase tries to avoid this situation by checking this line in the index.html file:   meta name="OGNbase-Version" content="MB06"  - if the version is wrong it ignores the index.html file and loads the upload-files page.  This page may show up in the WiFi network named in the config.json file.  Similarly, OGNbase checks the version number near the top of the config.json file and refuses it if it does not match the version the firmware expects.
+It may be necessary to replace the configuration and/or index.html and style.css files at the same time as updating the firmware, since new versions of the firmware may expect different or additional settings.  The best approach is to upload the new files first, and then update the firmware, all within the same session in the web interface, without rebooting until after the firmware update.  One can optionally clear the stored files via the "clear" button in the status page first.  But if you reboot with the files cleared, you will need to connect to the wifi network generated by the device in order to upload the new files, a bit annoying.  The worst case is if the old files are there, it is possible that the new version of OGNbase firmware will not be able to fully start up, and one must then re-flash the firmware via the USB port.  OGNbase tries to avoid that situation by checking this line in the index.html file:   meta name="OGNbase-Version" content="MB08"  - if the version is wrong it ignores the index.html file and loads the upload-files page.  Similarly, OGNbase checks the version number near the top of the config.json file and refuses it if it does not match the version the firmware expects.
 
-"On The Air" (OTA) firmware update is done via WiFi.  Click the "update" button in the status page and then select the .bin file to upload, similar to the uploading of configuration files.  Once you click "update" it takes about a minute, do not disturb it.  After that, you may need to press the reset button on the device (or power it off and on again).
+"On The Air" (OTA) firmware update is done via WiFi, whether within the network the device connects to as directed by the existing confifuration, or via the hotspot it generates.  In a web browser, click the "update" button in the status page and then select the .bin file to upload, similar to the uploading of configuration files.  Once you click "update" it takes about a minute, do not disturb it.  After that, you may need to press the reset button on the device (or power it off and on again).
 
-On the Paxcounter hardware it is also possible to update the firmware (and/or configuration files) via an SD card.  Put the files on the SD card as seens here: https://github.com/moshe-braner/Open-Glider-Network-Groundstation/tree/main/ognbase/sdcard - all in the root folder, except for the ognbase.bin firmware file which should be in the "firmware" folder.  Insert the SD card into the SD card slot on the Paxcounter and power it on.  The OLED display will show what it is doing.
+On the Paxcounter hardware it is also possible to update the firmware (and/or configuration files) via an SD card.  Put the files on the SD card as seen here: https://github.com/moshe-braner/Open-Glider-Network-Groundstation/tree/main/ognbase/sdcard - all in the root folder, except for the "ognbase.bin" firmware file which should be in the "firmware" folder.  Insert the SD card into the SD card slot on the Paxcounter and power it on.  The OLED display will show what it is doing.
 
 Finally, firmware update via the USB port is always possible, see the section above about "Installing firmware for the first time".
 
@@ -250,7 +250,7 @@ Single station with GNSS as the source of the current time - this is needed in t
    		"relaykey":54321
    },   
 
-Remote relay station without GNSS, i.e., without any source for the current time - only works in regions with 1 or 2 channels:
+Remote relay station without GNSS, i.e., without a source for the current time - only works in regions with 1 or 2 channels, and aided by the base station sending the NTP time to the remote station:
 
    "ognrelay":{
    		"enable":1,
@@ -260,7 +260,7 @@ Remote relay station without GNSS, i.e., without any source for the current time
    		"relaykey":54321
    },   
 
-Base station without time-relay and without GNSS (gets time from NTP) - only works in regions with 1 or 2 channels:
+Base station without time-relay and without GNSS (gets time from NTP) - only works in regions with 1 or 2 channels, and the base station sends the NTP time to the remote station:
 
    "ognrelay":{
    		"enable":0,
@@ -326,9 +326,9 @@ When the remote station is ready to relay the position of one aircraft, it choos
 
 To avoid competing with FLARM for the radio spectrum, OGNbase relays messages on a different frequency than FLARM transmits on.  That is of course not possible in regions where only one channel is available.  In regions with 2 channels (Europe), it uses the "other" channel, the one not used by FLARM at this moment.  That's if the exact time is known, since it is used to choose the channel.  Otherwise (without GNSS time) it only listens to FLARMs on channel 0 (where it should be able to hear half of the FLARM packets), and only relays on channel 1.  In regions with more than 2 channels (US, AU) GNSS time is required, and it selects the channel using the OGNTP protocol, i.e., it uses the same frequency that OGN tracker devices would use, which is always different from that used by FLARM.  Since such trackers are quite uncommon (except in certain major contests) that should not be a problem.  And in any case an OGNbase remote station only transmits as many radio packets as a *single* FLARM or OGN tracker device.
 
-The relayed radio packet is the same as the one originally received from FLARM, in its raw (encrypted) format.  Except for 4 bits in the first (un-encrypted) 32 bits, which are changed from 0000 (in standard FLARM taffic reports) to 1101 (0xD) or 1011 (0xB) to mark it as a relayed packet, with and without a timestamp, respectively.  The base station in such a relay operation ignores all radio packets that do not have that mark.
+Ideally the report to OGN will include the exact original time when the aircraft sent this position.  FLARM packets do not include a timestamp, they are supposed to be sent in "real time".  The packets relayed by OGN may be delayed by several seconds, or up to 30 seconds if there are many other aircraft reporting in the area.  Therefore OGNbase inserts into the packet the time the packet was originally received by the remote station.  the base station uses that timestamp for reporting to OGN.  This is only possible when the remote station has GNSS time data (or time sent from the base station).  If it does not, the remote station only sends one bit, signaling whether the packet was relayed more than 12 seconds after it was received.  The base station then computes an approximate timestamp: the time it received the relayed packet minus 4 seconds, or minus 16 seconds if the packet was marked as delayed.
 
-Ideally the report to OGN will include the exact original time when the aircraft sent this position.  FLARM packets do not include a timestamp, they are supposed to be sent in "real time".  The packets relayed by OGN may be delayed by several seconds, or up to 30 seconds if there are many other aircraft reporting in the area.  Therefore OGNbase inserts into the packet the time the packet was originally received by the remote station.  the base station uses that timestamp for reporting to OGN.  This is only possible when the remote station has GNSS time data.  If it does not, the remote station only sends one bit, signaling whether the packet was relayed more than 12 seconds after it was received.  The base station then computes an approximate timestamp: the time it received the relayed packet minus 4 seconds, or minus 16 seconds if the packet was marked as delayed.
+The relayed radio packet is the same as the one originally received from FLARM, except for 4 bits in the first (un-encrypted) 32 bits, which are changed from 0000 (in standard FLARM taffic reports) to 1101 (0xD) or 1011 (0xB) to mark it as a relayed packet, with and without a timestamp, respectively.  The base station in such a relay operation ignores all radio packets that do not have that mark.
 
 The choice of different frequencies from the FLARM frequencies should keep FLARMs from receiving the relayed packets and mistaking them for real traffic.  (It is real traffic, but shifted somewhat in time.)  This will not work well with only 2 channels, let alone 1.  The encrytion key used by FLARM depends on the current time (in 64-second intervals).  Therefore, if the remote station has GNSS time data, OGNbase de-crypts the packet, and later re-encrypts the packet for relay transmission, using a different key, based on the "relay key" from the configuration.  If the remote station does not have GNSS time, the base station sends it the NTP time, which is precise enough for decrypting the FLARM packets.  If the remote station cannot de-crypt the original packet, it relays the packet with the original encryption, but with a bit flipped to try and make FLARMs reject the packet due to wrong parity.  Moreover, the extra bits set in the first word make the packet look like some special non-traffic FLARM packets, except that the packet contents will look like garbage to a FLARM that tries to interpret them.  Perhaps in the future OGNbase will use a different message protocol, e.g., OGNTP protocol, or even FANET, for the relayed messages.
 
@@ -349,5 +349,4 @@ Once the base station gets the time from the remote station, it can keep its own
 
 Time packets are distinguished from traffic reports by a specific "aircraft ID", and by a few other bits in the first (unencrypted) word of the FLARM-protocol radio packet set to a specific value (0xC), different from FLARM traffic packets (where those bits are all zeros) and from relayed traffic packets (where they hold one of two other values, as mentioned above).  Time packets are also validated using a hash based on the "relay key" known to both the remote and base stations.
 
-Be patient, it may take several minutes for the time-relay to be established.  During that time traffic packets are not relayed.  Once time-synch is achieved, the base station will display the correct UTC time on the OLED display, and report on its web page the number of GNSS satellites received by the remote station.
-
+Be patient, it may take a minute or even several for the time-relay to be established.  During that time traffic packets are not relayed.  Once time-synch is achieved, the base station will display the correct UTC time on the OLED display, and report on its web page the number of GNSS satellites received by the remote station.

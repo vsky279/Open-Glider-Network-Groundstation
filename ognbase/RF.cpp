@@ -281,14 +281,14 @@ void RF_loop()
     int ms_since_pps = now_ms - ref_time_ms;
 
     if (ms_since_pps < 0) {   /* should not happen */
-Serial.printf("ref_time_ms %d > now %d ??\r\n", ref_time_ms, now_ms);
+//Serial.printf("ref_time_ms %d > now %d ??\r\n", ref_time_ms, now_ms);
       --OurTime;
       ref_time_ms -= 1000;
       return;
     }
 
     if (ms_since_pps >= 1300) {   /* should not happen */
-Serial.printf("ref_time_ms %d << now %d ??\r\n", ref_time_ms, now_ms);
+//Serial.printf("ref_time_ms %d << now %d ??\r\n", ref_time_ms, now_ms);
       ++OurTime;
       ref_time_ms += 1000;
       return;
@@ -385,12 +385,12 @@ bool RF_Transmit(size_t size, bool wait)
             if (txms > 0 && now_ms > txms+200) {
                tx_packets_counter++;  /* counts the PREVIOUS transmission */
                txms = 0;
-Serial.printf("tx_packets_counter to %d at millis=%d\r\n", tx_packets_counter, now_ms);
+//Serial.printf("tx_packets_counter to %d at millis=%d\r\n", tx_packets_counter, now_ms);
             }
 
             rf_chip->channel(txchan);
             rf_chip->transmit();         /* this may loop? */
-delay(10);
+
             txms = now_ms;
             RF_tx_size = 0;
             TxTimeMarker = TxEndMarker;  /* do not transmit again until next slot */
@@ -403,11 +403,12 @@ delay(10);
                 TxTimeMarker = now_ms + SoC->random(800, 995);
                 TxEndMarker  = now_ms + 995;
             }
+
+            delay(10);  // now hopefully transmission is really done
             rf_chip->channel(rxchan);
 
 // Serial.println(">");
-Serial.printf("tx on ch %d at %d s + %d ms\r\n",
-txchan, OurTime, txms-ref_time_ms);
+Serial.printf("tx on ch %d at %d s + %d ms\r\n", txchan, OurTime, txms-ref_time_ms);
 
             return true;
         }
@@ -438,8 +439,7 @@ bool RF_Receive(void)
         rval = rf_chip->receive();
 
 if (rval)
-Serial.printf("rx on ch %d at %d s + %d ms\r\n",
-rxchan, OurTime, millis()-ref_time_ms);
+Serial.printf("rx on ch %d at %d s + %d ms\r\n", rxchan, OurTime, millis()-ref_time_ms);
 
     }
 

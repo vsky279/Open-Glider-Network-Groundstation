@@ -436,7 +436,7 @@ void ground()
     }
 
   if(!position_is_set){
-Serial.println("still no position...");
+    Serial.println("still no position...");
     OLED_write("no position data found", 0, 18, true);
     delay(1000);
     OLED_write("waiting for GPS fix", 0, 18, true);
@@ -485,7 +485,7 @@ Serial.println("still no position...");
 
   if (success && position_is_set) {
       // Logger_send_udp(&msg);
-Serial.println("Parse...");
+//Serial.println("Parse...");
       uint32_t rx = traffic_packets_recvd;
       ParseData();
       if (traffic_packets_recvd > rx)   /* ignore time-sync packets */
@@ -542,7 +542,7 @@ Serial.println("Parse...");
         if(new_protocol_enable && testmode_enable){
           RSM_ExportAircraftPosition();
         }
-        Serial.println("Calling APRS_Export...");
+        //Serial.println("Calling APRS_Export...");
         disp = "Calling APRS_Export...";
         OLED_write(disp, 0, 24, true);
         OGN_APRS_Export();
@@ -555,10 +555,9 @@ Serial.println("Parse...");
 
     if (TimeToKeepAliveOGN() && ground_registred == 1)
     {
-      Serial.println("keepalive...");
+      //Serial.println("keepalive...");
       disp = "keepalive OGN...";
       OLED_write(disp, 0, 24, true);
-//Serial.println("...keepalive...");
       OGN_APRS_KeepAlive();
       ExportTimeKeepAliveOGN = seconds();
     }
@@ -585,14 +584,14 @@ Serial.println("Parse...");
     }
 
     if(TimeToCheckKeepAliveOGN() && ground_registred == 1){
-      Serial.println("check APRS msgs...");
+      //Serial.println("check APRS msgs...");
       ground_registred = OGN_APRS_check_messages();
       ExportTimeCheckKeepAliveOGN = seconds();
       MONIT_send_trap();
     }
 
     if( TimeToCheckWifi() && !ognrelay_enable){
-      Serial.println("APRS check wifi...");
+      //Serial.println("APRS check wifi...");
       OLED_draw_Bitmap(39, 5, 3 , true);
       OLED_write("check connections..", 15, 45, false);
       if(OGN_APRS_check_Wifi()){

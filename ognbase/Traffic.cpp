@@ -44,15 +44,6 @@ uint16_t numseen_today = 0;
 uint16_t numseen_1hr = 0;
 uint16_t numvisible = 0;
 
-void id_list_clear()
-{
-    id_list_head = NULL;
-    numseen_ever = 0;
-    numseen_today = 0;
-    numseen_1hr = 0;
-    numvisible = 0;
-}
-
 /* closed-ring doubly-linked list stored in static array */
 void id_list_setup()
 {
@@ -64,6 +55,16 @@ void id_list_setup()
        id_list[i].prev = (i>0? &id_list[i-1] : &id_list[MAX_LISTED-1]);
        id_list[i].next = (i<MAX_LISTED-1? &id_list[i+1] : &id_list[0]);
     }
+}
+
+/* not actually used at this time */
+void id_list_clear()
+{
+    numseen_ever = 0;
+    numseen_today = 0;
+    numseen_1hr = 0;
+    numvisible = 0;
+    id_list_setup();
 }
 
 /* search for a given aircraft ID in the list */
@@ -84,12 +85,17 @@ id_list_entry_t *find_id(uint32_t addr)
 /* move an already-listed aircraft to top of list */
 void refresh_id(ufo_t *fop)
 {
-    if (!id_list_head)  return;        /* should not happen */
+    if (!id_list_head)          /* should not happen */
+        return;
     id_list_entry_t *p = fop->listed;
-    if (p == NULL)  return;            /* should not happen */
-    if (p->addr != fop->addr)  return;  /* should not happen */
+    if (p == NULL)              /* should not happen */
+        return;
+    if (p->addr != fop->addr)   /* should not happen */
+        return;
     p->timestamp = fop->timestamp;
-    if (p == id_list_head)  return;    /* already at top of list */
+    p->invisible = (fop->stealth || fop->no_track);
+    if (p == id_list_head)      /* already at top of list */
+        return;
     // de-link from list
     p->prev->next = p->next;
     p->next->prev = p->prev;
@@ -106,7 +112,8 @@ void refresh_id(ufo_t *fop)
 /* add a new aircraft as top of list */
 void add_id(ufo_t *fop)
 {
-    if (!id_list_head)  return;     /* should not happen */
+    if (!id_list_head)     /* should not happen */
+        return;
     // overwrite last entry in list - no need to change the linking
     id_list_entry_t *p = id_list_head->prev;
     id_list_head = p;
@@ -147,7 +154,7 @@ void count_ids_seen()
             // the rest are from previous days
             // truncate numseen_ever count if list is full
             if (id_list_head->prev->addr != 0) {
-                numseen_ever = 9999;   // overflow
+                numseen_ever = 999;   // overflow
                 return;
             }
             //if (p->timestamp < day_cutoff)
@@ -155,8 +162,8 @@ void count_ids_seen()
         }
         if (p->next == id_list_head) {  /* end of list */
             /* list is full and all from today */
-            numseen_ever  = 9999;
-            numseen_today = 9999;
+            numseen_ever  = 999;
+            numseen_today = 999;
             return;
         }
         p = p->next;
@@ -251,10 +258,8 @@ void ParseData()
 legacy_packet_t* p = (legacy_packet_t *) fo.raw;
 Serial.printf("parsing packet: %X %06X\r\n", p->_unk0, p->addr);
 
-    if (ognrelay_time) {
-
-      if (time_sync_pkt(fo.raw)) {
-Serial.println("handling time-sync packet");
+    if (time_sync_pkt(fo.raw)) {
+//Serial.println("handling time-sync packet");
 
         if (ognrelay_base)
             set_our_clock(fo.raw);    /* may set time_synched */
@@ -263,7 +268,6 @@ Serial.println("handling time-sync packet");
             sync_alive_pkt(fo.raw);   /* may set time_synched */
 
         return;
-      }
     }
 
     if (ognrelay_enable) {
@@ -287,25 +291,7 @@ Serial.println("ignoring non-time-sync packet");
 
 //    ++traffic_packets_recvd;
 
-    /*
-
-    char buf[16];
-    String msg;
-
-    msg = "RXBuffer: ";
-
-    Serial.print("RxBuffer: ");
-    
-    for(int i=0;i<rx_size;i++){
-      Serial.print(RxBuffer[i], HEX); 
-      msg += String(RxBuffer[i], HEX);
-    }    
-
-    Serial.println();
-    Logger_send_udp(&msg);
-
-    */
-Serial.println("parse calling decode...");
+//Serial.println("parse calling decode...");
 
     if (protocol_decode && (*protocol_decode)((void *) fo.raw, &ThisAircraft, &fo))
     {
@@ -315,7 +301,7 @@ Serial.println("parse calling decode...");
 
         ++traffic_packets_recvd;
 
-Serial.println("parsing decoded packet...");
+//Serial.println("parsing decoded packet...");
 
         /* timenow = now(); */
         timenow = OurTime;
@@ -366,8 +352,8 @@ Serial.println("duplicate packet, rejected");
                   fo.timereported = cip->timereported;  /* last time it was reported to OGN */
                   fo.waiting = (timenow >= fo.timereported + report_interval());
 
-Serial.printf("[%d] recvd again, was reported at %d, timest %02d:%02d:%02d, now waiting: %d\r\n",
-   i, fo.timereported, fo.hour, fo.minute, fo.second, fo.waiting);
+//Serial.printf("[%d] recvd again, was reported at %d, timest %02d:%02d:%02d, now waiting: %d\r\n",
+//   i, fo.timereported, fo.hour, fo.minute, fo.second, fo.waiting);
 
                   fo.listed = cip->listed;
                   *cip = fo;         /* copy the whole struct, including new timestamp, etc */
@@ -403,7 +389,7 @@ Serial.printf("[%d] recvd again, was reported at %d, timest %02d:%02d:%02d, now 
             cip = &Container[i];
             if (cip->addr == 0) {                     /* empty slot */
                 *cip = fo;
-Serial.printf("[%d] was empty at %d, now waiting: %d\r\n", i, timenow, cip->waiting);
+//Serial.printf("[%d] was empty at %d, now waiting: %d\r\n", i, timenow, cip->waiting);
                 ++numtracked;
                 return;
             }
@@ -433,10 +419,10 @@ Serial.printf("[%d] was empty at %d, now waiting: %d\r\n", i, timenow, cip->wait
 
         if (oldest_age > 0) {
             Container[oldest] = fo;        /* overwrites older data */
-Serial.printf("[%d] overwritten at %d, now waiting: %d\r\n", i, timenow, Container[oldest].waiting);
+//Serial.printf("[%d] overwritten at %d, now waiting: %d\r\n", i, timenow, Container[oldest].waiting);
         }
     } else {
-Serial.println("decode returned false");
+//Serial.println("decode returned false");
     }
 }
 
@@ -468,18 +454,18 @@ void Traffic_Relay(ufo_t* fop)
         fop->waiting = false;
         fop->timereported = OurTime;
         ++traffic_packets_relayed;      /* pretend relaying - for testing */
-Serial.println("pretend relaying...");
+//Serial.println("pretend relaying...");
         return;
     }
 
     if (RF_Transmit(RF_Encode(fop), true)) {   /* success transmitting */
         fop->waiting = false;
-Serial.printf("... relayed at %d, prev report %d, timestamp %02d:%02d:%02d\r\n",
-   OurTime, fop->timereported, fop->hour, fop->minute, fop->second);
+//Serial.printf("... relayed at %d, prev report %d, timestamp %02d:%02d:%02d\r\n",
+//   OurTime, fop->timereported, fop->hour, fop->minute, fop->second);
         /* set time stamp for next update of same aircraft */
         fop->timereported = OurTime;
         ++traffic_packets_relayed;
-//Serial.println("... relayed");
+Serial.println("... relayed");
     }
 }
 
@@ -522,9 +508,6 @@ void Traffic_loop()
               traffic_packets_recvd, numtracked, waiting, oldest_age);
         traffic_msg_time = millis();
     }
-
-    if (! id_list_head)        /* woke up from deep sleep */
-        id_list_setup();
 
     if (! ognrelay_enable) {
         static uint32_t count_ids_time = 0;

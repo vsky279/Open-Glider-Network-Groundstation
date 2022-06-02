@@ -145,7 +145,7 @@ bool OGN_APRS_check_Wifi(void)
         return true;
     else
     {
-        Serial.println("more then 10 minutes in AP mode reset");
+        Serial.println("10 minutes in AP mode - resetting");
         SoC->reset();
     }
     return false;
@@ -164,8 +164,8 @@ int OGN_APRS_check_messages(void)
         if (recStatus < 0)    recStatus = 0; 
         if (recStatus > 511)  recStatus = 511; 
         RXbuffer[recStatus] = '\0';
-if (recStatus > 0)
-Serial.print(RXbuffer);
+        if (recStatus > 0)
+            Serial.print(RXbuffer);
         int reg = OGN_APRS_check_reg(RXbuffer);
         if (reg == 1)
             msg = "APRS login successful";
@@ -182,6 +182,7 @@ Serial.print(RXbuffer);
 
       if (reg == 1 && recStatus > 41) {
         if (strncmp(RXbuffer,"# logresp",9) == 0) {
+Serial.println("getting server name from logresp...");
             char *p;
             if (p = strstr(RXbuffer,"server GLIDERN")) {
                 if (strlen(p) > 14) {
@@ -206,8 +207,8 @@ Serial.println(ogn_server_name);
                         p[9] = '\0';
                     (void) strcpy(ogn_server_name_buf, p);
                     ogn_server_name = ogn_server_name_buf;
-Serial.print("server name from aprsc: ");
-Serial.println(ogn_server_name);
+//Serial.print("server name from aprsc: ");
+//Serial.println(ogn_server_name);
                 }
             }
         }

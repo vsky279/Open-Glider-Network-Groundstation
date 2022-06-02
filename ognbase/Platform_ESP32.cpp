@@ -289,7 +289,7 @@ Serial.flush();
                 {
                     down = true;
 #if 1
-                    Serial.println(F("Longt Press IRQ"));
+                    Serial.println(F("Long Press IRQ"));
                     Serial.flush();
 #endif
                 }
@@ -356,8 +356,6 @@ static void ESP32_fini()
     else if (hw_info.model == SOFTRF_MODEL_PRIME_MK2 &&
              hw_info.revision == 8)
     {
-
-Serial.println("ESP32_fini() turning LED off...");
         axp.setChgLEDMode(AXP20X_LED_OFF);
 
         delay(2000); /* Keep 'OFF' message on OLED for 2 seconds */
