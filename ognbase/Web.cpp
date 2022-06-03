@@ -89,6 +89,7 @@ static const char stats_templ[] PROGMEM =
  <p>&nbsp;\r\n Time-sync restarts: %d</p>\
  <p>&nbsp;\r\n Corrupt packets: %d</p>\
  <p>&nbsp;\r\n Other packets: %d</p>\
+ <p>&nbsp;\r\n Battery voltage: %.1f</p>\
  </html>";
                                   
 void onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data, size_t len)
@@ -175,7 +176,8 @@ void handleDoUpdate(AsyncWebServerRequest* request, const String& filename, size
     }
 }
 
-char stats_html[960];
+#define STATS_SIZE 1279
+char stats_html[STATS_SIZE+1];
 
 void update_stats()
 {
@@ -187,7 +189,7 @@ void update_stats()
         ognopmode = "Remote station, no precise time";
   }
   if (ognrelay_base && ognrelay_time) {
-     snprintf(stats_html, 959, stats_templ,
+     snprintf(stats_html, STATS_SIZE, stats_templ,
         ognopmode,
         traffic_packets_recvd,
         traffic_packets_reported,
@@ -204,9 +206,10 @@ void update_stats()
         (uint32_t) remote_ack,
         (uint32_t) remote_restarts,
         (uint32_t) remote_bad,
-        (uint32_t) remote_other);
+        (uint32_t) remote_other,
+        remote_voltage);
   } else if (ognrelay_base) {
-     snprintf(stats_html, 959, stats_templ,
+     snprintf(stats_html, STATS_SIZE, stats_templ,
         ognopmode,
         traffic_packets_recvd,
         traffic_packets_reported,
@@ -219,13 +222,10 @@ void update_stats()
         remote_traffic,
         (uint32_t) packets_per_minute,
         (uint32_t) remote_pctrel,
-        zero,
-        zero,
-        zero,
-        (uint32_t) remote_bad,
-        (uint32_t) remote_other);
+        zero, zero, zero, zero, zero,
+        (float) 0.0);
   } else if (ognrelay_enable) {
-     snprintf(stats_html, 959, stats_templ,
+     snprintf(stats_html, STATS_SIZE, stats_templ,
         ognopmode,
         zero, zero, zero, zero,
         zero, zero, zero, zero,
@@ -237,9 +237,10 @@ void update_stats()
         ((uint32_t) (100 * (ack_packets_recvd+1)) / (time_packets_sent+1)),
         (uint32_t) sync_restarts,
         (uint32_t) bad_packets_recvd,
-        (uint32_t) other_packets_recvd);
+        (uint32_t) other_packets_recvd,
+        (float) Battery_voltage());
   } else {  /* single standalone station */
-     snprintf(stats_html, 959, stats_templ,
+     snprintf(stats_html, STATS_SIZE, stats_templ,
         ognopmode,
         traffic_packets_recvd,
         traffic_packets_reported,
@@ -250,10 +251,10 @@ void update_stats()
         other_packets_recvd,
         zero, zero,
         (uint32_t) packets_per_minute,
-        zero, zero, zero, zero, zero,
-        (uint32_t) other_packets_recvd);
+        zero, zero, zero, zero, zero, zero,
+        (float) Battery_voltage());
   }
-  stats_html[959] = '\0';
+  stats_html[STATS_SIZE] = '\0';
 //Serial.println(stats_html);
 }
 
@@ -466,7 +467,7 @@ void Web_setup(ufo_t* this_aircraft)
         request->send(200, "text/html", upload_html);
     });
 
-    snprintf(stats_html, 959, "stats not available yet");
+    snprintf(stats_html, STATS_SIZE, "stats not available yet");
 
     wserver.on("/stats", HTTP_GET, [](AsyncWebServerRequest* request){
         update_stats();

@@ -24,6 +24,7 @@
 #include "RF.h"
 #include "Log.h"
 #include "OLED.h"
+#include "Battery.h"
 #include "global.h"
 
 #include <TimeLib.h>
@@ -60,6 +61,7 @@ uint8_t remote_uptime=0;
 uint32_t remote_traffic = 0, remote_other=0;
 uint16_t remote_timesent=0, remote_bad=0;
 uint8_t remote_pctrel=0, remote_ack=0, remote_restarts=0, remote_round=0;
+float remote_voltage=0.0;
 
 uint32_t traffic_packets_recvd = 0;
 uint32_t traffic_packets_relayed = 0;
@@ -144,7 +146,12 @@ Serial.printf("send_time: ref_time_ms %d << now %d ??\r\n", ref_time_ms, now_ms)
 
       /* send stats */
       p[2] |= (satellites << 12);
-      p[2] |= ((other_packets_recvd & 0x0FFFF) << 16);
+      p[2] |= ((other_packets_recvd & 0x01FFE0) << 11);
+      remote_voltage = Battery_voltage();
+      int volts = (int)(10.0 * remote_voltage + 0.5) - 28;
+      if (volts < 0)  volts = 0;
+      if (volts > 15) volts = 15;
+      p[2] |= ((volts & 0x0F) << 28);
       // pkt->addr_type = (((total_delays/(ack_packets_recvd+1)) >> 2) & 0x07);  /* 3 bits: avg roundtrip ms / 4 */
       pkt->addr_type = (uptime & 0x07);
       pkt->_unk1 = (uptime & 0x08) >> 3;
@@ -270,7 +277,8 @@ Serial.printf("set_our_clock: ms=%d, ourt=%d, ofst=%d, reft=%d\r\n",
     remote_timesent = (p[4] & 0x0000FFFF);
     remote_ack = (p[4]>>14) & 0x7C;
     remote_bad = (p[4]>>17) & 0x3F8;
-    remote_other = p[2]>>16;
+    remote_other = (p[2]>>11) & 0x01FFE0;
+    remote_voltage = (float)(((p[2]>>28) & 0x0F) + 28) * 0.1;
     remote_restarts = (p[4]>>27) & 0x1F;
     // remote_round = (pkt->addr_type <<2);
     remote_uptime = (pkt->addr_type & 0x07) | (pkt->_unk1 & 0x01) << 3;
@@ -652,10 +660,9 @@ void Time_loop()
           last_hour = OurTime;
       }
 
-      if (OurTime > last_hour + 60) {
-        static bool rounded = false;
-        if (oldmin != ThisAircraft.minute) {
+      if (oldmin != ThisAircraft.minute) {
           /* minute changed, gather per-minute traffic stats */
+          static bool rounded = false;
           uint32_t cumul_traffic, prev_traffic;
           if (ognrelay_base)
             cumul_traffic = remote_traffic;  /* cumulative count of traffic packets */
@@ -676,7 +683,6 @@ void Time_loop()
             packets_per_minute = (cumul_traffic - prev_traffic) / TRAFFIC_MINUTES;
           else   /* first minutes after waking from deep sleep, or no traffic, or rollover */
             packets_per_minute = 0;
-        }
       }
 
     }  /* done once-per-second chores */

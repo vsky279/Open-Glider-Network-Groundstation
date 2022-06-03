@@ -136,7 +136,7 @@
 #define TimeToSleep() (seconds() - ExportTimeSleep >= ogn_rxidle)
 
 //testing
-#define TIME_TO_DIS_WIFI  607
+#define TIME_TO_DIS_WIFI  666
 #define TimeToDisWifi() (seconds() - ExportTimeDisWifi >= TIME_TO_DIS_WIFI)
 
 //testing
@@ -682,18 +682,29 @@ void ground()
 
 //Serial.println("disable things check...");
 
-  if( TimeToDisWifi() && ognrelay_enable ){
-    if (WiFi.getMode() == WIFI_AP) {
-      WiFi.mode(WIFI_OFF);
+  if (TimeToDisWifi() && ognrelay_enable) {
+
+    if (ExportTimeDisWifi == 0) {
+
       ExportTimeDisWifi = seconds();
-      Serial.print("TimeToDisWifi - disabling Wifi");
+
+    } else if (WiFi.getMode() == WIFI_AP) {
+
+#ifdef TBEAM
+      turn_LED_off();   /* turn off bright blue LED to save power and signal end of WiFi */
+      OLED_disable();
+#endif
+      if (settings->nmea_p)
+          StdOut.println(F("$PSRFS,WIFI_OFF"));
+      Serial.println(F("[ino] shutting down WiFI & LED..."));
+
+      Web_fini();
+      WiFi_fini();
     }
   }
 
-  if( TimeToDisableOled() ){
-    if (oled_disable > 0){
+  if ( (oled_disable > 0 && TimeToDisableOled()) || WiFi.getMode() == WIFI_OFF ) {
      OLED_disable(); 
-    }
   }
 
 //Serial.println("check button...");

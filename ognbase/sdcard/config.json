@@ -67,7 +67,7 @@
       "enable":0
    },   
    "oled":{
-      "disable":0
+      "disable":700
    },
    "ognrelay":{
    		"enable":0,

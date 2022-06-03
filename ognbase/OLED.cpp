@@ -101,6 +101,7 @@ void OLED_enable()
 {
   display_enabled = true;
   OLED_blank = false;
+  display.displayOn();
 }
 
 void OLED_draw_Bitmap(int16_t x, int16_t y, uint8_t bm, bool clear)
@@ -171,8 +172,11 @@ void OLED_info(bool ntp)
             snprintf(buf, sizeof(buf), "ID: %06X", ThisAircraft.addr);
             display.drawString(0, 0, buf);
 
-            if (WiFi.getMode() == WIFI_AP)
-                snprintf(buf, sizeof(buf), "SSID: %s", WiFi.SSID().c_str());
+            if (WiFi.getMode() == WIFI_OFF)
+                snprintf(buf, sizeof(buf), "WIFI OFF");
+            else if (WiFi.getMode() == WIFI_AP)
+                // snprintf(buf, sizeof(buf), "SSID: %s", WiFi.SSID().c_str());
+                snprintf(buf, sizeof(buf), "IP: %s", WiFi.softAPIP().toString().c_str());
             else
                 snprintf(buf, sizeof(buf), "IP: %s", WiFi.localIP().toString().c_str());
             display.drawString(0, 9, buf);

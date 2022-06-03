@@ -245,7 +245,7 @@ void WiFi_loop()
 #endif
 
 #ifdef TBEAM
-    if (WiFi.getMode() != WIFI_AP) {
+    if (WiFi.getMode() == WIFI_STA) {
       static time_t prevtime = 0;
       if (ThisAircraft.timestamp != prevtime) {
         prevtime = ThisAircraft.timestamp;
@@ -267,7 +267,6 @@ void WiFi_loop()
 
 #ifdef TBEAM
               turn_LED_off();   /* turn off bright blue LED to save power and signal end of WiFi */
-              OLED_blank = true;
               OLED_disable();
 #endif
               if (settings->nmea_p)
@@ -275,7 +274,7 @@ void WiFi_loop()
               //NMEA_fini();
               Web_fini();
               WiFi_fini();
-              Serial.println(F("shutting down WiFI & LED..."));
+              Serial.println(F("[cpp] shutting down WiFI & LED..."));
           }
 
         } else if (ThisAircraft.timestamp != 0 && ThisAircraft.timestamp > WiFi_No_Clients_Time) {
