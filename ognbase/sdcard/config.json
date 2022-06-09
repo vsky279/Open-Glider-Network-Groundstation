@@ -1,6 +1,6 @@
 {
    "ognbase":{
-      "version":"MB08"
+      "version":"MB09"
    },
    "wifi":{
       "ssid":[
@@ -50,10 +50,14 @@
       "debugport":12000,
       "itrackbit":false,
       "istealthbit":false,
-      "sleepmode":false,
-      "rxidle":3600,
-      "wakeuptimer":3600,
       "range":200
+   },
+   "sleep":{
+      "mode":0,
+      "rxidle":1800,
+      "wakeuptimer":1800,
+      "morning":10,
+      "evening":17
    },
    "fanetservice":{
       "enable":0
@@ -70,11 +74,11 @@
       "disable":700
    },
    "ognrelay":{
-   		"enable":0,
-   		"basestation":0,
-   		"relaytime":0,
-   		"gnsstime":0,
-   		"relaykey":12345
+      "enable":0,
+      "basestation":0,
+      "relaytime":0,
+      "gnsstime":0,
+      "relaykey":12345
    },   
    "beers":{
       "show":0

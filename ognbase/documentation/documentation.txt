@@ -118,9 +118,6 @@ The "aprs" section is about the OGN server that OGNbase will send APRS data pack
       "debugport":12000,
       "itrackbit":false,
       "istealthbit":false,
-      "sleepmode":false,
-      "rxidle":3600,
-      "wakeuptimer":3600,
       "range":200
    },
 
@@ -140,7 +137,19 @@ You can leave the other entries as they are, except for the "band": it must be s
   RF_BAND_IL   = 9,  /* 916.2 MHz band */
   RF_BAND_KR   = 10  /* 920.9 MHz band */
 
-The example configuration above ("band":1) chose the European band.  The "protocol", at this time, is always 0 (FLARM protocol), and "protocol_2" is ignored.  This may change in future version of OGNbase.  The "sleepmode" flag, if set to true, allows OGNbase to put the processor into "sleep" mode, useful in a remote relay station to save power.  It will enter sleep mode after "rxidle" seconds of no traffic recieved, and will sleep for "wakeuptimer" seconds before waking up again.  If it was awake for at least 5 hours then when it goes to sleep it will sleep for 12 hours (43200 seconds) instead of "wakeuptimer", hopefully that will be during the night.  (Will change this algorithm in the future if necessary.)
+The example configuration above ("band":1) chose the European band.  The "protocol", at this time, is always 0 (FLARM protocol), and "protocol_2" is ignored.  This may change in future version of OGNbase.
+
+The "sleep" section configures the deep sleep options.  Here is an example of this section:
+
+   "sleep":{
+      "mode":1,
+      "rxidle":1800,
+      "wakeuptimer":1800,
+      "morning":10,
+      "evening":17
+   },
+
+If "mode" is set to 1, OGNbase will sometimes put the device into deep sleep.  That is especially useful in a remote relay station running on a small solar panel, to save power.  It will enter sleep mode after "rxidle" seconds of no traffic received, and will sleep for "wakeuptimer" seconds before waking up again.  If it is late in the day when it goes to sleep ("evening"), or if the battery voltage is low (<3.75), it will sleep until "morning", instead of "wakeuptimer" seconds.  Note that as long as there is traffic being received, the evening sleep will be postponed.  In this example "morning" is 10:00 in the morning, standard time (not daylight savings time), and "evening" is at 5 O'clock (17:00).  These times are local - approximately - they are simply computed based on the longitude of the station.  Adjust these times to fit your actual needs.
 
 The "ognrelay" section selects the operation mode of OGNbase.  See a later part of this document about relay modes.  The following example turns off all the relay settings, i.e., it selects single-station operation, without using GNSS (GPS):
 

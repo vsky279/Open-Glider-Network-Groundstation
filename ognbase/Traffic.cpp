@@ -133,13 +133,17 @@ void add_id(ufo_t *fop)
 void count_ids_seen()
 {
     if (!id_list_head)  return;       /* should not happen */
-    if (OurTime < 20*3600)  return;   /* should not happen */
     numseen_ever = 0;
     numseen_today = 0;
     numseen_1hr = 0;
     numvisible = 0;
+    int localtime = ThisAircraft.hour + ogn_timezone;
+    if (localtime > 23)  localtime -= 24;
+    if (localtime <  0)  localtime += 24;
+    time_t day_cutoff = (localtime+1)*3600;
+    if (OurTime < day_cutoff)  return;   /* should not happen */
+    day_cutoff = OurTime - day_cutoff;
     time_t hour_cutoff = OurTime - 3600;
-    time_t day_cutoff = OurTime - 20*3600;
     id_list_entry_t *p = id_list_head;
     while (p->addr) {
         ++numseen_ever;

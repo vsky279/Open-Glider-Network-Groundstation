@@ -168,6 +168,8 @@ hardware_info_t hw_info = {
   .gnss     = GNSS_MODULE_NONE,
 };
 
+bool slept = false;
+
 unsigned long LEDTimeMarker = 0;
 unsigned long ExportTimeMarker = 0;
 
@@ -266,6 +268,7 @@ void setup()
   Web_setup(&ThisAircraft);
 
   Time_setup();
+
   SoC->WDT_setup();
 
   if(private_network || remotelogs_enable){
@@ -346,7 +349,7 @@ delay(500);
 void ground()
 {
 
-   char *disp;
+   const char *disp;
    bool success;
    String msg;
    char buf[32];
@@ -359,12 +362,12 @@ void ground()
     OLED_write(buf, 0, 18, false);
     snprintf (buf, sizeof(buf), "ip: %s", "192.168.1.1");
     OLED_write(buf, 0, 27, false);
-    snprintf (buf, sizeof(buf), "reboot in %d seconds", 300 - seconds());
+    snprintf (buf, sizeof(buf), "reboot in %d seconds", 600 - seconds());
     OLED_write(buf, 0, 36, false);
     snprintf (buf, sizeof(buf), "Version: %s ", _VERSION);
     OLED_write(buf, 0, 45, false);    
     delay(1000);
-    if(300 < seconds()){
+    if(600 < seconds()){
       SoC->reset();
     }
   }
@@ -459,9 +462,14 @@ void ground()
 
    if (position_is_set && !groundstation) {
 
+    float lon = ThisAircraft.longitude;
+    if (lon < 0)   lon += 360.0;
+    ogn_timezone = (int)(lon / 15.0 + 0.5);   // 0...24
+    if (ogn_timezone > 12)  ogn_timezone -= 24;   // -11...12
+
     // RF_Transmit(RF_Encode(&ThisAircraft), true);  // is this necessary?
     groundstation = true;
- 
+
     msg = "good morning, startup esp32 groundstation ";
     msg += "version ";
     msg += String(_VERSION);
@@ -472,6 +480,8 @@ void ground()
     msg = "current time ";
     msg += OurTime;  // now();
     Logger_send_udp(&msg);
+
+    ExportTimeSleep = seconds();
   }
 
 //Serial.println("Time_loop...");
@@ -615,45 +625,86 @@ void ground()
   }
 
 //Serial.println("sleep check...");
-  
-  if ( TimeToSleep() && ogn_sleepmode )
-  {
-    int sleep_length = ogn_wakeuptimer;
-    if (uptime >= 5) {  /* hours */
-      if (ognrelay_enable)
-        sleep_length = 12 * 3600;
-      else
-        sleep_length = 11 * 3600 + 1800;
-    }
-    msg = "entering sleep mode for ";
-    msg += String(sleep_length); 
-    msg += " seconds - good night";
-    Logger_send_udp(&msg);
 
-    esp_sleep_enable_timer_wakeup(sleep_length*1000000LL);
-    esp_sleep_enable_ext0_wakeup(GPIO_NUM_26,1);
-    OLED_disable();
-    
-    if (ogn_sleepmode == 1){
+  if (ogn_sleepmode) {
+
+    if (slept) {
+      slept = false;
+      time_synced = false;
+      ground_registred = 0;
+      OurTime = 0;
+      Timesync_restart();
+      //id_list_clear();
+      uptime = 0;
+      last_hour = 0;
+      ExportTimeSleep = seconds();
+    }
+
+    if (ognrelay_time && ! time_synced)
+      ExportTimeSleep = seconds();      /* traffic not processed yet, don't sleep */
+
+    bool low_bat = false;
+#if defined(TBEAM)      
+    if (Battery_voltage() < 3.75)
+        low_bat = true;
+#endif
+
+    if ( TimeToSleep() || low_bat ) {
+
+      int sleep_length = ogn_wakeuptimer;
+
+      if (OurTime != 0
+            && ((ognrelay_base && ognrelay_time)? remote_sats>3 :
+                (ogn_gnsstime? gnss.satellites.value()>3 : true))) {
+
+        int sleephours;
+        int localtime = ThisAircraft.hour + ogn_timezone;
+        if (localtime > 23)  localtime -= 24;
+        if (localtime <  0)  localtime += 24;
+        int seconds_into_hour = ThisAircraft.minute * 60;
+
+        if (localtime >= ogn_evening || (low_bat && localtime >= ogn_evening - 4)) {
+          /* sleep until next morning */
+          sleephours = ogn_morning - localtime;
+          if (sleephours < 0)       /* not yet past midnight */
+              sleephours += 24;
+          if (low_bat && localtime >= ogn_evening - 2)
+              sleephours += 2;      /* no time to charge much today, sleep late tomorrow */
+          sleep_length = sleephours * 3600 - seconds_into_hour;
+
+        } else if (sleep_length + 600 > 3600 - seconds_into_hour) {
+          /* round to wake at top of the hour */
+          sleephours = (sleep_length + 1800) / 3600;
+          sleep_length = sleephours * 3600 - seconds_into_hour;
+        }
+
+      }
+
+      msg = "entering sleep mode for ";
+      msg += String(sleep_length); 
+      msg += " seconds - good night";
+      Logger_send_udp(&msg);
+
+      //if (ogn_sleepmode == 1) {
       
 #if defined(TBEAM)      
-      if (ogn_gnsstime)
-        GNSS_sleep();
+        turn_LED_off();
+        if (ogn_gnsstime)
+            GNSS_sleep();
 #endif 
+      // }
+
+      OLED_disable();
+
+      if(!ognrelay_enable)
+        SoC->WiFi_disconnect_TCP();
+
+      slept = true;
+
+      esp_sleep_enable_timer_wakeup(sleep_length*1000000LL);
+      esp_sleep_enable_ext0_wakeup(GPIO_NUM_26,1);           // what is this?
+      esp_deep_sleep_start();
     }
-
-    time_synced = false;
-    ground_registred = 0;
-    if(!ognrelay_enable)
-      SoC->WiFi_disconnect_TCP();
-
-    OurTime = 0;
-    Timesync_restart();
-    //id_list_clear();
-    uptime = 0;
-    last_hour = 0;
-
-    esp_deep_sleep_start();
   }
 
 //Serial.println("FANET check...");

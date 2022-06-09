@@ -21,10 +21,14 @@ extern bool     ogn_debug;
 extern uint16_t ogn_debugport;
 extern bool     ogn_itrackbit;
 extern bool     ogn_istealthbit;
-extern bool     ogn_sleepmode;
+extern uint16_t ogn_range;
+
+extern int8_t   ogn_sleepmode;
+extern int8_t   ogn_timezone;
+extern int8_t   ogn_morning;
+extern int8_t   ogn_evening;
 extern uint16_t ogn_rxidle;
 extern uint16_t ogn_wakeuptimer;
-extern uint16_t ogn_range;
 
 extern bool     fanet_enable;
 extern bool     zabbix_enable;

@@ -60,7 +60,10 @@ bool     ogn_istealthbit = false;
 uint16_t  ogn_range       = 100;
 
 //sleep mode
-bool     ogn_sleepmode   = false;
+int8_t   ogn_sleepmode   = 0;
+int8_t   ogn_timezone    = 0;
+int8_t   ogn_morning     = 10;     //  standard time, not daylight savings
+int8_t   ogn_evening     = 17;
 uint16_t ogn_rxidle      = 3600;
 uint16_t ogn_wakeuptimer = 3600;
 
@@ -333,22 +336,21 @@ ogn_protocol_1  = RF_PROTOCOL_LEGACY;  /* override - only protocol supported for
             ogn_debugport   = obj["aprs"]["debugport"];
             ogn_itrackbit   = obj["aprs"]["itrackbit"];
             ogn_istealthbit = obj["aprs"]["istealthbit"];
-            ogn_sleepmode   = obj["aprs"]["sleepmode"];
-            ogn_rxidle      = obj["aprs"]["rxidle"];
-            ogn_wakeuptimer = obj["aprs"]["wakeuptimer"];
             ogn_range       = obj["aprs"]["range"];
         }
     }
 
-    if (obj.containsKey(F("sleepmode")))
+    if (obj.containsKey(F("sleep")))
     {
-        //Serial.println(F("found aprs config!"));
+        //Serial.println(F("found sleep config!"));
         if (1)
         {
-            ogn_sleepmode   = obj["aprs"]["sleepmode"];
-            ogn_rxidle      = obj["aprs"]["rxidle"];
+            ogn_sleepmode   = obj["sleep"]["mode"];
+            ogn_morning     = obj["sleep"]["morning"];
+            ogn_evening     = obj["sleep"]["evening"];
+            ogn_rxidle      = obj["sleep"]["rxidle"];
             if(ogn_rxidle < 600){ogn_rxidle = 600;}
-            ogn_wakeuptimer = obj["aprs"]["wakeuptimer"];
+            ogn_wakeuptimer = obj["sleep"]["wakeuptimer"];
             if(ogn_wakeuptimer < 600){ogn_wakeuptimer = 600;}
         }
     }    
@@ -523,10 +525,14 @@ bool OGN_save_config(void)
     obj["aprs"]["debugport"]   = ogn_debugport;
     obj["aprs"]["itrackbit"]   = ogn_itrackbit;
     obj["aprs"]["istealthbit"] = ogn_istealthbit;
-    obj["aprs"]["sleepmode"]   = ogn_sleepmode;
-    obj["aprs"]["rxidle"]      = ogn_rxidle;
-    obj["aprs"]["wakeuptimer"] = ogn_wakeuptimer;
     obj["aprs"]["range"]       = ogn_range;
+
+    //sleep config
+    obj["sleep"]["mode"]        = ogn_sleepmode;
+    obj["sleep"]["morning"]     = ogn_morning;
+    obj["sleep"]["evening"]     = ogn_evening;
+    obj["sleep"]["rxidle"]      = ogn_rxidle;
+    obj["sleep"]["wakeuptimer"] = ogn_wakeuptimer;
 
     //wifi config
     obj["wifi"]["ssid"][0] =  ogn_ssid[0];

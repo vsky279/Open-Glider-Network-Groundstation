@@ -43,7 +43,7 @@ int  last_packet_time = 0; // seconds
 int  ap_uptime        = 0;
 
 char ogn_server_name_buf[12];
-char *ogn_server_name = "GLIDERN0";
+const char *ogn_server_name = "GLIDERN0";
 
 #define seconds() (millis() / 1000)
 

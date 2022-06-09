@@ -33,9 +33,9 @@
 
 #include "version.h"
 
-#define SOFTRF_FIRMWARE_VERSION "MB08d"   // _VERSION
+#define SOFTRF_FIRMWARE_VERSION "MB08g"   // _VERSION
 #define SOFTRF_IDENT            "OGNB-"
-#define OGNBASE_HTML_VERSION    "MB08"
+#define OGNBASE_HTML_VERSION    "MB09"
 
 #define ENTRY_EXPIRATION_TIME   41 /* seconds */
 #define LED_EXPIRATION_TIME     5  /* seconds */

@@ -308,6 +308,7 @@ void Web_setup(ufo_t* this_aircraft)
 
     file.close();
 
+    bool wrong_version = true;
     char *cp = strstr(index_html, "meta name=\"OGNbase-Version\"");
     if (cp != NULL) {
         cp += 37;
@@ -316,17 +317,19 @@ void Web_setup(ufo_t* this_aircraft)
         while (*cp != '\"' && *cp != '\0' && ii < 7)
             versionbuf[ii++] = *cp++;
         versionbuf[ii] = '\0';
-        if (strcmp(versionbuf,OGNBASE_HTML_VERSION)) {
-            Serial.println("Wrong version of index.html");
-            OLED_write("Wrong index.html version", 0, 27, true);
-            delay(500);
-            wserver.on("/", HTTP_GET, [](AsyncWebServerRequest* request){
-                request->send(200, "text/html", upload_html);
-            });
-            wserver.on("/doUpload", HTTP_POST, [](AsyncWebServerRequest* request) {}, handleUpload);
-            Web_start();
-            return;
-        }
+        if (strcmp(versionbuf,OGNBASE_HTML_VERSION) == 0)
+            wrong_version = false;
+    }
+    if (wrong_version) {
+        Serial.println("Wrong version of index.html");
+        OLED_write("Wrong index.html version", 0, 27, true);
+        delay(500);
+        wserver.on("/", HTTP_GET, [](AsyncWebServerRequest* request){
+            request->send(200, "text/html", upload_html);
+        });
+        wserver.on("/doUpload", HTTP_POST, [](AsyncWebServerRequest* request) {}, handleUpload);
+        Web_start();
+        return;
     }
 
     char*  offset;
@@ -589,13 +592,13 @@ void Web_setup(ufo_t* this_aircraft)
 
         if (request->hasParam("ogn_sleep_time"))
         {
-            if (request->getParam("ogn_sleep_time")->value().toInt() <= 60)
-                ogn_rxidle = 60;
-            else
-                ogn_rxidle = request->getParam("ogn_sleep_time")->value().toInt();
+            ogn_rxidle = request->getParam("ogn_sleep_time")->value().toInt();
+            if (ogn_rxidle <= 600)  ogn_rxidle = 600;
         }
-        if (request->hasParam("ogn_wakeup_time"))
+        if (request->hasParam("ogn_wakeup_time")) {
             ogn_wakeuptimer= request->getParam("ogn_wakeup_time")->value().toInt();
+            if (ogn_wakeuptimer <= 600)  ogn_wakeuptimer = 600;
+        }
 
         if (request->hasParam("zabbix_trap_en"))
             zabbix_enable = request->getParam("zabbix_trap_en")->value().toInt();

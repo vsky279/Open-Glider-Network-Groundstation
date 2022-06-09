@@ -149,7 +149,8 @@ void WiFi_setup()
             if (ogn_ssid[i] != "") {
                 snprintf(buf, sizeof(buf), "%d: %s", i, ogn_ssid[i].c_str());
                 OLED_write(buf, 0, i * 9, false);
-                wifiMulti->addAP(ogn_ssid[i].c_str(), ogn_wpass[i].c_str());
+                if (i == 0 || ogn_ssid[i] != "xxxxxxx")
+                  wifiMulti->addAP(ogn_ssid[i].c_str(), ogn_wpass[i].c_str());
             }
         }
         // Check connection

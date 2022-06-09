@@ -675,13 +675,14 @@ void Time_loop()
             traffic_minute_pointer = 0;
             rounded = true;
           }
-          if (! rounded)   /* cannot yet compute rolling average */
-            packets_per_minute = cumul_traffic
-                 / (traffic_minute_pointer > 0 ? traffic_minute_pointer : 1);
-          else if (OurTime > last_hour + 60*(TRAFFIC_MINUTES+1)
+          // if (! rounded)   /* cannot yet compute rolling average */
+          //  packets_per_minute = cumul_traffic
+          //       / (traffic_minute_pointer > 0 ? traffic_minute_pointer : 1);
+          // else
+          if (rounded && OurTime > last_hour + 60*(TRAFFIC_MINUTES+1)
                       && cumul_traffic > prev_traffic)
             packets_per_minute = (cumul_traffic - prev_traffic) / TRAFFIC_MINUTES;
-          else   /* first minutes after waking from deep sleep, or no traffic, or rollover */
+          else   /* first minutes after (re)start, or no traffic, or rollover */
             packets_per_minute = 0;
       }
 
