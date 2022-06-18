@@ -1,6 +1,6 @@
 {
    "ognbase":{
-      "version":"MB09"
+      "version":"MB10"
    },
    "wifi":{
       "ssid":[
@@ -71,7 +71,7 @@
       "enable":0
    },   
    "oled":{
-      "disable":700
+      "disable":0
    },
    "ognrelay":{
       "enable":0,

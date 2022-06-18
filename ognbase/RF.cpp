@@ -341,8 +341,8 @@ void RF_loop()
       txchan = rxchan;
     }
 
-Serial.printf("rxch %d, txch %d, Slot %d at %d s + %d ms, tx ok %d - %d, good to %d\r\n",
-rxchan, txchan, current_slot, OurTime, ms_since_pps, TxTimeMarker, TxEndMarker, RF_OK_until);
+//Serial.printf("rxch %d, txch %d, Slot %d at %d s + %d ms, tx ok %d - %d, good to %d\r\n",
+//rxchan, txchan, current_slot, OurTime, ms_since_pps, TxTimeMarker, TxEndMarker, RF_OK_until);
 }
 
 bool RF_TX_ready()

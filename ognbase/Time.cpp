@@ -45,7 +45,7 @@ uint32_t ref_time_ms = 0;      /* assumed local millis() at last PPS */
 #define ADJ_FOR_TRANSMISSION_DELAY 10
 #define TIME_TO_NTP_AGAIN 600000
 
-int uptime = 0;
+uint16_t uptime = 0;
 time_t last_hour = 0;
 
 uint32_t when_synched = 0;
@@ -56,11 +56,11 @@ bool time_synched = false;
 bool got_time_ack = false;
 bool reverse_time_sync = false;
 
-uint8_t remote_sats=0;
-uint8_t remote_uptime=0;
 uint32_t remote_traffic = 0, remote_other=0;
+uint16_t remote_uptime=0;
 uint16_t remote_timesent=0, remote_bad=0;
 uint8_t remote_pctrel=0, remote_ack=0, remote_restarts=0, remote_round=0;
+uint8_t remote_sats=0;
 float remote_voltage=0.0;
 
 uint32_t traffic_packets_recvd = 0;
@@ -153,8 +153,17 @@ Serial.printf("send_time: ref_time_ms %d << now %d ??\r\n", ref_time_ms, now_ms)
       if (volts > 15) volts = 15;
       p[2] |= ((volts & 0x0F) << 28);
       // pkt->addr_type = (((total_delays/(ack_packets_recvd+1)) >> 2) & 0x07);  /* 3 bits: avg roundtrip ms / 4 */
-      pkt->addr_type = (uptime & 0x07);
-      pkt->_unk1 = (uptime & 0x08) >> 3;
+      if (uptime < 60) {
+          pkt->addr_type = (uptime/10) & 0x07;
+          pkt->_unk1 = 0;
+      } else if (uptime < 300) {
+          pkt->addr_type = ((uptime-60)/60) & 0x03;
+          pkt->_unk1 = 1;
+      } else {
+          pkt->addr_type = (((uptime-300)/120) & 0x03) | 0x04;
+          pkt->_unk1 = 1;
+      }
+Serial.printf("send_time: uptime %d sent as %d %X\r\n", uptime, pkt->_unk1, pkt->addr_type);
       int pctrel = 100 * traffic_packets_relayed;
       if (traffic_packets_recvd > 0)
         pctrel /= traffic_packets_recvd;    /* percent relayed */
@@ -281,7 +290,16 @@ Serial.printf("set_our_clock: ms=%d, ourt=%d, ofst=%d, reft=%d\r\n",
     remote_voltage = (float)(((p[2]>>28) & 0x0F) + 28) * 0.1;
     remote_restarts = (p[4]>>27) & 0x1F;
     // remote_round = (pkt->addr_type <<2);
-    remote_uptime = (pkt->addr_type & 0x07) | (pkt->_unk1 & 0x01) << 3;
+    uint16_t rem_upt;
+    if (pkt->_unk1 == 0)
+        rem_upt = (pkt->addr_type & 0x07) * 10;
+    else if (pkt->addr_type & 0x04 == 0)
+        rem_upt = (pkt->addr_type & 0x03) * 60 + 60;
+    else
+        rem_upt = (pkt->addr_type & 0x03) * 120 + 300;
+    if (rem_upt > remote_uptime)
+        remote_uptime = rem_upt;
+
     Serial.println(F("Local Stats:"));
     Serial.printf("  traffic: %d,  reported: %d,  bad: %d,  other: %d,  restarts: %d\r\n",
         traffic_packets_recvd, traffic_packets_reported,
@@ -653,15 +671,14 @@ void Time_loop()
       ThisAircraft.second = second(OurTime);
 #endif
 
-      if (last_hour == 0) {
+      if (last_hour == 0)
           last_hour = OurTime;                   /* seconds */
-      } else if (OurTime > last_hour + 3600) {
-          ++uptime;                              /* hours */ 
+      else if (OurTime > last_hour + 3600)
           last_hour = OurTime;
-      }
 
       if (oldmin != ThisAircraft.minute) {
           /* minute changed, gather per-minute traffic stats */
+          ++uptime;                        /* minutes */ 
           static bool rounded = false;
           uint32_t cumul_traffic, prev_traffic;
           if (ognrelay_base)

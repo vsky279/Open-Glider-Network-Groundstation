@@ -73,6 +73,7 @@ static const char stats_templ[] PROGMEM =
  </head>\
  <p>\r\nOperation mode: %s</p>\
  <br><p>\r\nBase Station Stats:</p>\
+ <p>&nbsp;\r\n Uptime: %d minutes</p>\
  <p>&nbsp;\r\n Traffic packets received: %d</p>\
  <p>&nbsp;\r\n Traffic packets reported: %d</p>\
  <p>&nbsp;\r\n Aircraft seen ever: %d, today: %d</p>\
@@ -81,6 +82,7 @@ static const char stats_templ[] PROGMEM =
  <p>&nbsp;\r\n Other packets: %d</p>\
  <p>&nbsp;\r\n Time-sync restarts: %d</p>\
  <br><p>\r\nRemote Station Stats:</p>\
+ <p>&nbsp;\r\n Uptime: %d minutes</p>\
  <p>&nbsp;\r\n Traffic packets: %d</p>\
  <p>&nbsp; &nbsp; &nbsp;\r\n  per minute: %d</p>\
  <p>&nbsp; &nbsp; &nbsp;\r\n  pct relayed: %d</p>\
@@ -191,6 +193,7 @@ void update_stats()
   if (ognrelay_base && ognrelay_time) {
      snprintf(stats_html, STATS_SIZE, stats_templ,
         ognopmode,
+        uptime,
         traffic_packets_recvd,
         traffic_packets_reported,
         (uint32_t) numseen_ever,
@@ -199,6 +202,7 @@ void update_stats()
         (uint32_t) bad_packets_recvd,
         other_packets_recvd,
         (uint32_t) sync_restarts,
+        remote_uptime,
         remote_traffic,
         (uint32_t) packets_per_minute,
         (uint32_t) remote_pctrel,
@@ -211,6 +215,7 @@ void update_stats()
   } else if (ognrelay_base) {
      snprintf(stats_html, STATS_SIZE, stats_templ,
         ognopmode,
+        uptime,
         traffic_packets_recvd,
         traffic_packets_reported,
         (uint32_t) numseen_ever,
@@ -218,7 +223,7 @@ void update_stats()
         (uint32_t) largest_range,
         (uint32_t) bad_packets_recvd,
         other_packets_recvd,
-        zero,
+        zero, zero,
         remote_traffic,
         (uint32_t) packets_per_minute,
         (uint32_t) remote_pctrel,
@@ -227,8 +232,10 @@ void update_stats()
   } else if (ognrelay_enable) {
      snprintf(stats_html, STATS_SIZE, stats_templ,
         ognopmode,
+        zero,
         zero, zero, zero, zero,
         zero, zero, zero, zero,
+        uptime,
         traffic_packets_recvd,
         (uint32_t) packets_per_minute,
         (uint32_t) ((100 * traffic_packets_relayed)
@@ -242,6 +249,7 @@ void update_stats()
   } else {  /* single standalone station */
      snprintf(stats_html, STATS_SIZE, stats_templ,
         ognopmode,
+        uptime,
         traffic_packets_recvd,
         traffic_packets_reported,
         (uint32_t) numseen_ever,
@@ -249,7 +257,7 @@ void update_stats()
         (uint32_t) largest_range,
         (uint32_t) bad_packets_recvd,
         other_packets_recvd,
-        zero, zero,
+        zero, zero, zero,
         (uint32_t) packets_per_minute,
         zero, zero, zero, zero, zero, zero,
         (float) Battery_voltage());
@@ -333,7 +341,7 @@ void Web_setup(ufo_t* this_aircraft)
     }
 
     char*  offset;
-    size_t size = 9600;
+    size_t size = 11200;
     char*  Settings_temp = (char *) malloc(size);
 
     if (Settings_temp == NULL)
@@ -397,6 +405,7 @@ void Web_setup(ufo_t* this_aircraft)
              (ogn_band == RF_BAND_IN ? "selected" : ""), RF_BAND_IN,
              (ogn_band == RF_BAND_IL ? "selected" : ""), RF_BAND_IL,
              (ogn_band == RF_BAND_KR ? "selected" : ""), RF_BAND_KR,
+
              (ogn_protocol_1 == RF_PROTOCOL_LEGACY ? "selected" : ""),
              RF_PROTOCOL_LEGACY, legacy_proto_desc.name,
              (ogn_protocol_1 == RF_PROTOCOL_OGNTP ? "selected" : ""),
@@ -426,19 +435,35 @@ void Web_setup(ufo_t* this_aircraft)
              (ogn_istealthbit == false ? "selected" : ""), "False",
 
              ogn_ssid[0].c_str(),
-             
+
              /*Hide Wifi Password*/
              "hidepass",
 
              (ogn_sleepmode == 0 ? "selected" : ""), "Disabled",
              (ogn_sleepmode == 1 ? "selected" : ""), "Full",
-             (ogn_sleepmode == 2 ? "selected" : ""), "without GPS", //zabbix_trap_en
+             (ogn_sleepmode == 2 ? "selected" : ""), "without GPS",
+
+             (zabbix_enable == 0 ? "selected" : ""), "Disabled",
+             (zabbix_enable == 1 ? "selected" : ""), "Enabled",
 
              String(ogn_rxidle),
              String(ogn_wakeuptimer),
+             String(ogn_morning),
+             String(ogn_evening),
 
-             (zabbix_enable == 0 ? "selected" : ""), "Disabled",
-             (zabbix_enable == 1 ? "selected" : ""), "Enabled"
+             (ognrelay_enable == 0 ? "selected" : ""), "Disabled",
+             (ognrelay_enable == 1 ? "selected" : ""), "Enabled",
+             (ognrelay_base == 0 ? "selected" : ""), "Disabled",
+             (ognrelay_base == 1 ? "selected" : ""), "Enabled",
+             (ognrelay_time == 0 ? "selected" : ""), "Disabled",
+             (ognrelay_time == 1 ? "selected" : ""), "Enabled",
+             (ogn_gnsstime == 0 ? "selected" : ""), "Disabled",
+             (ogn_gnsstime == 1 ? "selected" : ""), "Enabled",
+             "hidekey",
+
+             (testmode_enable == 0 ? "selected" : ""), "Disabled",
+             (testmode_enable == 1 ? "selected" : ""), "Enabled"
+
              );
             
     size_t len  = strlen(offset);
@@ -590,19 +615,47 @@ void Web_setup(ufo_t* this_aircraft)
         if (request->hasParam("ogn_deep_sleep"))
             ogn_sleepmode = request->getParam("ogn_deep_sleep")->value().toInt();
 
-        if (request->hasParam("ogn_sleep_time"))
-        {
-            ogn_rxidle = request->getParam("ogn_sleep_time")->value().toInt();
-            if (ogn_rxidle <= 600)  ogn_rxidle = 600;
-        }
-        if (request->hasParam("ogn_wakeup_time")) {
-            ogn_wakeuptimer= request->getParam("ogn_wakeup_time")->value().toInt();
-            if (ogn_wakeuptimer <= 600)  ogn_wakeuptimer = 600;
-        }
-
         if (request->hasParam("zabbix_trap_en"))
             zabbix_enable = request->getParam("zabbix_trap_en")->value().toInt();
 
+        if (request->hasParam("ogn_sleep_time")) {
+            ogn_rxidle = request->getParam("ogn_sleep_time")->value().toInt();
+            if (ogn_rxidle < 600)  ogn_rxidle = 600;
+        }
+        if (request->hasParam("ogn_wakeup_time")) {
+            ogn_wakeuptimer = request->getParam("ogn_wakeup_time")->value().toInt();
+            if (ogn_wakeuptimer < 600)  ogn_wakeuptimer = 600;
+        }
+
+        if (request->hasParam("ogn_morning")) {
+            ogn_morning = request->getParam("ogn_morning")->value().toInt();
+            if (ogn_morning <  5)  ogn_morning =  5;
+            if (ogn_morning > 14)  ogn_morning = 14;
+        }
+        if (request->hasParam("ogn_evening")) {
+            ogn_evening = request->getParam("ogn_evening")->value().toInt();
+            if (ogn_evening < 15)  ogn_evening = 15;
+            if (ogn_evening > 22)  ogn_evening = 22;
+        }
+
+        if (request->hasParam("relay_enable"))
+            ognrelay_enable = request->getParam("relay_enable")->value().toInt();
+        if (request->hasParam("base_enable"))
+            ognrelay_base = request->getParam("base_enable")->value().toInt();
+        if (ognrelay_base)  ognrelay_enable = 0;
+        if (request->hasParam("relay_time"))
+            ognrelay_time = request->getParam("relay_time")->value().toInt();
+        if (request->hasParam("gnss_time"))
+            ogn_gnsstime = request->getParam("gnss_time")->value().toInt();
+
+        if (request->hasParam("ogn_relay_key")) {
+            if (request->getParam("ogn_relay_key")->value() != "hidekey") {
+              ognrelay_key = request->getParam("ogn_relay_key")->value().toInt();
+            }
+        }
+
+        if (request->hasParam("test_mode_en"))
+            testmode_enable = request->getParam("test_mode_en")->value().toInt();
 
         request->redirect("/");
 #if 0
@@ -647,7 +700,14 @@ void Web_loop(void)
         values += "_";
         values += numseen_1hr;     // was: RF_last_rssi
         values += "_";
-        values += (ognrelay_base && ognrelay_time) ? remote_uptime : uptime;
+        uint16_t reported_uptime = (ognrelay_base && ognrelay_time) ? remote_uptime : uptime;
+        if (reported_uptime < 60) {
+            values += reported_uptime;
+            values += "m";
+        } else {
+            values += reported_uptime/60;
+            values += "h";
+        }
         values += "_";
         values += traffic_packets_recvd;    // was satfix
         values += "_";

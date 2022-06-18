@@ -1,72 +1,72 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta name="OGNbase-Version" content="MB09">
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-  <title>OGN Groundstation</title>
-  <link rel="icon" href="data:,">
-  <link rel="stylesheet" type="text/css" href="style.css">
-  <script type = "text/javascript">
-  var ws = new WebSocket('ws://' + location.hostname + '/ws', ['arduino']);
+ <meta name="OGNbase-Version" content="MB10">
+ <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+ <title>OGN Groundstation</title>
+ <link rel="icon" href="data:,">
+ <link rel="stylesheet" type="text/css" href="style.css">
+ <script type = "text/javascript">
+ var ws = new WebSocket('ws://' + location.hostname + '/ws', ['arduino']);
 
-  ws.onopen = function() {
+ ws.onopen = function() {
+  };
+  ws.onmessage = function(evt) {
+     var daten = evt.data.split("_")
+     document.getElementById("power").innerHTML  = daten[0];
+     document.getElementById("rssi").innerHTML  = daten[1];
+     document.getElementById("hours").innerHTML  = daten[2];
+     document.getElementById("satfix").innerHTML  = daten[3];
+     document.getElementById("timestamp").innerHTML  = daten[4];
+     document.getElementById("largest_range").innerHTML  = daten[5];
    };
-   ws.onmessage = function(evt) {
-      var daten = evt.data.split("_")
-      document.getElementById("power").innerHTML  = daten[0];
-      document.getElementById("rssi").innerHTML  = daten[1];
-      document.getElementById("hours").innerHTML  = daten[2] + " h";
-      document.getElementById("satfix").innerHTML  = daten[3];
-      document.getElementById("timestamp").innerHTML  = daten[4];
-      document.getElementById("largest_range").innerHTML  = daten[5];
-    };
-  </script>
+ </script>
 </head>
 <body>
-  <h1>OGN Ground Station - %s</h1>
-  <h3>Version: %s</h3>
-  <h4>Mode: %s</h4>
-  <table cellspacing="4" align="center" cellpadding="5">
-  <class="circle-container">
-    <td>
-      <div class="power">
-          <div class="circle__content">
-            <p id = "power">connecting</p>
-          </div>
-          <div class="circle__lower-text">
-              GNSS
-          </div>
-      </div>
-    </td>
-    <td>
-      <div class="rssi">
-          <div class="circle__content">
-            <p id = "rssi">connecting</p>
-          </div>
-          <div class="circle__lower-text">
-              Acft(1h)
-          </div>
-      </div>
-    </td>
-    <td>
-      <div class="hours">
-          <div class="circle__content">
-            <p id = "hours">connecting</p>
-          </div>
-          <div class="circle__lower-text">
-              uptime
-          </div>
-      </div>
-  </td>
+<h1>OGN Ground Station - %s</h1>
+<h3>Version: %s</h3>
+<h4>Mode: %s</h4>
+<table cellspacing="4" align="center" cellpadding="5">
+<class="circle-container">
   <td>
-    <div class="satfix">
+    <div class="power">
         <div class="circle__content">
-          <p id = "satfix">connecting</p>
+          <p id = "power">connecting</p>
         </div>
         <div class="circle__lower-text">
-            rx pkts
+            GNSS
         </div>
     </div>
+  </td>
+  <td>
+    <div class="rssi">
+        <div class="circle__content">
+          <p id = "rssi">connecting</p>
+        </div>
+        <div class="circle__lower-text">
+            acft(1h)
+        </div>
+    </div>
+  </td>
+  <td>
+    <div class="hours">
+        <div class="circle__content">
+          <p id = "hours">connecting</p>
+        </div>
+        <div class="circle__lower-text">
+            uptime
+        </div>
+    </div>
+</td>
+<td>
+  <div class="satfix">
+      <div class="circle__content">
+        <p id = "satfix">connecting</p>
+      </div>
+      <div class="circle__lower-text">
+          rx pkts
+      </div>
+  </div>
 </td>
 <td>
   <div class="timestamp">
@@ -89,46 +89,47 @@
   </div>
 </td>
 </table>
-  <form action="/get" method="get">
-  <table cellspacing="4" align="center" cellpadding="5">
-    <colgroup>
-    <col width="250">
-    <col height="65">
-    </colgroup>
-   <tr>
-    <td>OGN Callsign</td>
-    <td><input id=callsign type="text" name="callsign" value="%s" size="8"></td>
-    <td>Lat</td>
-    <td><input id=lat type="number" name="ogn_lat" step="0.000001" value="%s" size="8"></td>
+ <form action="/get" method="get">
+ <table cellspacing="4" align="center" cellpadding="5">
+   <colgroup>
+   <col width="250">
+   <col height="65">
+   </colgroup>
+  <tr>
+   <td>OGN Callsign</td>
+   <td><input id=callsign type="text" name="callsign" value="%s" size="8"></td>
+   <td>Lat</td>
+   <td><input id=lat type="number" name="ogn_lat" step="0.000001" value="%s" size="8"></td>
+ </tr>
+ <tr>
+   <td>Lon</td>
+   <td><input id=lon type="number" name="ogn_lon" step="0.000001" value="%s" size="8"></td>
+   <td>Alt [m]</td>
+   <td><input id=alt type="number" name="ogn_alt" value="%s" size="8"></td>
   </tr>
   <tr>
-    <td>Lon</td>
-    <td><input id=lon type="number" name="ogn_lon" step="0.000001" value="%s" size="8"></td>
-    <td>Alt [m]</td>
-    <td><input id=alt type="number" name="ogn_alt" value="%s" size="8"></td>
-   </tr>
-   <tr>
-     <td>Geoid [m]</td>
-     <td><input id=geoid type="number" name="ogn_geoid" value="%s" size="8"></td>
-     <td>Range [km]</td>
-     <td><input id=range type="number" name="ogn_range" value="%s" size="8"></td>
-   </tr>
-   <tr>
-  <td>Band</td>
-  <td><select id="band" name="ogn_freq">
-    <option %s value='%d'>EU (868.2 MHz)</option>
-    <option %s value='%d'>US/CA (915 MHz)</option>
-    <option %s value='%d'>AU (921 MHz)</option>
-    <option %s value='%d'>NZ (869.25 MHz)</option>
-    <option %s value='%d'>RU (868.8 MHz)</option>
-    <option %s value='%d'>CN (470 MHz)</option>
-    <option %s value='%d'>UK (869.52 MHz)</option>
-    <option %s value='%d'>IN (866 MHz)</option>
-    <option %s value='%d'>IL (916.2 MHz)</option>
-    <option %s value='%d'>KR (920.9 MHz)</option>
-  </select>
+    <td>Geoid [m]</td>
+    <td><input id=geoid type="number" name="ogn_geoid" value="%s" size="8"></td>
+    <td>Range [km]</td>
+    <td><input id=range type="number" name="ogn_range" value="%s" size="8"></td>
+  </tr>
+ <tr>
+ <td>Band</td>
+ <td><select id="band" name="ogn_freq">
+   <option %s value='%d'>EU (868.2 MHz)</option>
+   <option %s value='%d'>US/CA (915 MHz)</option>
+   <option %s value='%d'>AU (921 MHz)</option>
+   <option %s value='%d'>NZ (869.25 MHz)</option>
+   <option %s value='%d'>RU (868.8 MHz)</option>
+   <option %s value='%d'>CN (470 MHz)</option>
+   <option %s value='%d'>UK (869.52 MHz)</option>
+   <option %s value='%d'>IN (866 MHz)</option>
+   <option %s value='%d'>IL (916.2 MHz)</option>
+   <option %s value='%d'>KR (920.9 MHz)</option>
+ </select>
  </td>
- </tr>
+</tr>
+<tr>
  <td>Protocol 1</td>
  <td><select id="protocol" name="ogn_proto">
    <option %s value='%d'>%s</option>
@@ -183,18 +184,62 @@
     <option %s value="2">%s</option>
   </select>
   </td>
-  <td>RX idle [sec]</td>
-  <td><INPUT type='number' name='ogn_sleep_time' placeholder="3600" value='%s' size="8" ></td>
-</tr>
-<tr>
-  <td>Wake up Timer [sec]</td>
-  <td><INPUT type='number' name='ogn_wakeup_time' placeholder="3600" value='%s' size="8" ></td>
   <td>Zabbix Trapper</td>
   <td><select id="zabbix_trap_en" name="zabbix_trap_en">
     <option %s value="0">%s</option>
     <option %s value="1">%s</option>
   </select>
   </td>
+</tr>
+<tr>
+  <td>RX idle [sec]</td>
+  <td><INPUT type='number' name='ogn_sleep_time' placeholder="3600" value='%s' size="8" ></td>
+  <td>Wake up Timer [sec]</td>
+  <td><INPUT type='number' name='ogn_wakeup_time' placeholder="3600" value='%s' size="8" ></td>
+</tr>
+<tr>
+  <td>Morning [hours local]</td>
+  <td><INPUT type='number' name='ogn_morning' placeholder="10" value='%s' size="3" ></td>
+  <td>Evening [hours local]</td>
+  <td><INPUT type='number' name='ogn_evening' placeholder="17" value='%s' size="3" ></td>
+</tr>
+<tr>
+  <td>Relay Station</td>
+  <td><select id="relay_enable" name="relay_enable">
+    <option %s value="0">%s</option>
+    <option %s value="1">%s</option>
+  </select>
+  </td>
+  <td>Base Station</td>
+  <td><select id="base_enable" name="base_enable">
+    <option %s value="0">%s</option>
+    <option %s value="1">%s</option>
+  </select>
+  </td>
+</tr>
+<tr>
+  <td>Relay Time</td>
+  <td><select id="relay_time" name="relay_time">
+    <option %s value="0">%s</option>
+    <option %s value="1">%s</option>
+  </select>
+  </td>
+  <td>Time from GNSS</td>
+  <td><select id="gnss_time" name="gnss_time">
+    <option %s value="0">%s</option>
+    <option %s value="1">%s</option>
+  </select>
+  </td>
+</tr>
+<tr>
+ <td>Relay Key (decimal number)</td>
+ <td><INPUT type='password' name='ogn_relay_key' value='%s' size="8"></td>
+ <td>Test Mode</td>
+ <td><select id="test_mode_en" name="test_mode_en">
+   <option %s value="0">%s</option>
+   <option %s value="1">%s</option>
+ </select>
+ </td>
 </tr>
 <tr>
 <td><p><button class="button_save">Save</button></a></p></td>

@@ -61,8 +61,8 @@ uint16_t  ogn_range       = 100;
 
 //sleep mode
 int8_t   ogn_sleepmode   = 0;
-int8_t   ogn_timezone    = 0;
-int8_t   ogn_morning     = 10;     //  standard time, not daylight savings
+int8_t   ogn_timezone    = 0;      // derived from longitude, not a user setting
+int8_t   ogn_morning     = 10;     // standard time, not daylight savings
 int8_t   ogn_evening     = 17;
 uint16_t ogn_rxidle      = 3600;
 uint16_t ogn_wakeuptimer = 3600;
@@ -486,19 +486,37 @@ bool OGN_save_config(void)
     }
 
     DeserializationError error = deserializeJson(baseConfig, configFile);
+    bool success = true;
+    if (error) {
+        Serial.println(F("Failed to read config.json file"));
+        success = false;
+    } else if (!obj.containsKey(F("ognbase"))) {
+        Serial.println("config.json not valid - version missing");
+        success = false;
+    } else {
+        String jsonversion = "wrong";
+        jsonversion = obj["ognbase"]["version"].as<String>();
+        if (jsonversion != OGNBASE_HTML_VERSION) {
+            Serial.println("Wrong version of config.json");
+            success = false;
+        }
+    }
 
-    if (error)
-    {
-        Serial.println(F("Failed to read file, using default configuration, format spiffs"));
-        configFile.close();
-        SPIFFS.format();
-        return false;
+    configFile.close();
+
+    obj = baseConfig.as<JsonObject>();
+
+    if (success) {
+        // obj = baseConfig.as<JsonObject>();
+    } else {
+        // Serial.println(F("- using default configuration, format spiffs"));
+        // SPIFFS.format();
+        // return false;
+        Serial.println(F("- using default configuration"));
+        /* try and write out a new config file */
+        obj["ognbase"]["version"] = OGNBASE_HTML_VERSION;
     }
-    else
-    {
-        obj = baseConfig.as<JsonObject>();
-        configFile.close();
-    }
+
 
     configFile = SPIFFS.open("/config.json", "w");
     if (!configFile)
@@ -546,6 +564,9 @@ bool OGN_save_config(void)
     obj["zabbix"]["server"] = zabbix_server;
     obj["zabbix"]["port"]   = zabbix_port;
     obj["zabbix"]["key"]    = zabbix_key;
+
+    // test mode
+    obj["testmode"]["enable"] = testmode_enable;
 
     // relay config
     obj["ognrelay"]["enable"]      = (int) ognrelay_enable;

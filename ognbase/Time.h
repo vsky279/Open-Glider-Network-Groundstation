@@ -36,11 +36,10 @@ extern uint16_t sync_restarts;
 
 extern uint32_t remote_traffic, remote_other;
 extern uint16_t remote_timesent, remote_bad;
-extern uint8_t remote_sats, remote_uptime, remote_pctrel, remote_ack, remote_restarts, remote_round;
-extern uint8_t remote_hours;
+extern uint8_t remote_sats, remote_pctrel, remote_ack, remote_restarts, remote_round;
+extern uint16_t uptime, remote_uptime;
 extern float remote_voltage;
 extern uint16_t packets_per_minute;
-extern int uptime;
 extern time_t last_hour;
 
 bool time_sync_pkt(uint8_t*);
