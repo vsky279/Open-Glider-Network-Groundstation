@@ -188,14 +188,15 @@ Serial.printf("send_time: uptime %d sent as %d %X\r\n", uptime, pkt->_unk1, pkt-
 
     } else if (ognrelay_base) {   /* base station sending ack - blank stats fields */
 
-      if (reverse_time_sync) {
-          /* send NTP time to remote station */
+      if (time_synched || reverse_time_sync) {
+          /* send base time to remote station (NTP time if reverse_time_sync) */
           p[1] = (uint32_t) OurTime;
+          p[2] = (offset & 0x0FFF);
       } else {
           /* base chooses when to switch to synched-time & tells the remote station */
           p[1] = (got_time_ack? (uint32_t) when_to_switch : 0);
+          p[2] = p[1];   /* marks it as a time-to-switch */
       }
-      p[2] = 0;
       p[3] = 0xACACACAC;
       p[4] = 0xACACACAC;
 
@@ -332,7 +333,7 @@ void sync_alive_pkt(uint8_t *raw)
     p[1] ^= 0xACACACAC;                         /* undo rudimentary whitening */
     p[2] ^= 0xACACACAC;
     if (p[5] != TimeHash((p[1] ^ p[2]) ^ ognrelay_key)) {
-Serial.println(F("received timesync ack failed check"));
+      Serial.println(F("received timesync ack failed check"));
       ++bad_packets_recvd;                      /* this statistic collected within remote */
       return;                                   /* failed security check */
     }
@@ -341,10 +342,33 @@ Serial.println(F("received timesync ack failed check"));
 
     /* if relay has no time source, base sends NTP time (only with 1 or 2 channels) */
     if (reverse_time_sync && pkt->_unk0 == 0xA) {
+
         OurTime = (time_t) p[1];
         have_approx_time = (TIME_TO_RE_SYNC/1000);  /* decrements once per second unless reset here */
-Serial.println(F("received NTP time from base"));
+        Serial.println(F("received NTP time from base"));
         return;
+
+    } else if (ognrelay_time && time_synched && p[1] != p[2]) {
+
+        time_t BaseTime = (time_t) p[1];
+        uint32_t BaseOffset = (p[2] & 0x0FFF);
+        BaseOffset += ADJ_FOR_TRANSMISSION_DELAY + 40;
+        if (BaseOffset > 1000) {
+          BaseTime += 1;
+          BaseOffset -= 1000;
+        }
+        uint32_t base_ref_time = when_synched - BaseOffset;
+        if (BaseTime == OurTime - 1) {
+            ++BaseTime;
+            base_ref_time += 1000;
+        }
+        if (BaseTime == OurTime) {
+            int32_t timediff = (int32_t)base_ref_time - (int32_t)ref_time_ms;
+            Serial.printf("base-remote timediff: %d ms\r\n", timediff);
+        } else if (when_synched - when_sync_sent < 1000) {
+            Serial.printf("base time: %d != remote time: %d ??\r\n", BaseTime, OurTime);
+        }
+
     }
 
     uint32_t delay = when_synched - when_sync_sent;
@@ -356,8 +380,9 @@ Serial.println(F("received NTP time from base"));
     }
 
     bool base_ack = (pkt->_unk0 == 0xE);        /* base says it got ack-ack */
-    if (base_ack && (p[1] > OurTime + 8) && (p[1] < OurTime + 34)) {
-        when_to_switch = p[1];                                /* base chose switch time */
+    if (! time_synched && base_ack && p[1]==p[2]
+          && (p[1] > OurTime + 8) && (p[1] < OurTime + 34)) {
+        when_to_switch = p[1];                  /* base chose switch time */
         Serial.printf(">>> time_synched switch base chose %d\r\n", when_to_switch);
     }
     if (when_to_switch == 0) {
@@ -433,6 +458,7 @@ void Timesync_restart()
     when_sync_tried = 0;
     when_sync_sent = 0;
     when_to_switch = 0;
+    remote_uptime = 0;
     ++sync_restarts;
 }
 
