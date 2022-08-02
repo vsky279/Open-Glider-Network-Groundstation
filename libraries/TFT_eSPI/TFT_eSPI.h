@@ -533,8 +533,8 @@ template <typename T> static inline void
 swap_coord(T& a, T& b) { T t = a; a = b; b = t; }
 
 #ifndef min
-  // Return minimum of two numbers, may already be defined
-  #define min(a,b) (((a) < (b)) ? (a) : (b))
+// Return minimum of two numbers, may already be defined
+//  #define min(a,b) (((a) < (b)) ? (a) : (b))
 #endif
 
 // This structure allows sketches to retrieve the user setup parameters at runtime

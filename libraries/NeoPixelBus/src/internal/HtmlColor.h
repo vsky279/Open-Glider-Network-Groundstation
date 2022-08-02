@@ -90,7 +90,7 @@ struct HtmlColor
     // ------------------------------------------------------------------------
     HtmlColor(const RgbColor& color)
     {
-        Color = (uint32_t)color.R << 16 | (uint32_t)color.G << 8 | (uint32_t)color.B;
+        Color = static_cast<uint32_t>(color.R) << 16 | static_cast<uint32_t>(color.G) << 8 | static_cast<uint32_t>(color.B);
     }
 
     // ------------------------------------------------------------------------
@@ -212,7 +212,7 @@ struct HtmlColor
                 for (uint8_t indexName = 0; indexName < T_HTMLCOLORNAMES::Count(); ++indexName)
                 {
                     const HtmlColorPair* colorPair = T_HTMLCOLORNAMES::Pair(indexName);
-                    PGM_P searchName = (PGM_P)pgm_read_ptr(&colorPair->Name);
+                    PGM_P searchName = reinterpret_cast<PGM_P>(pgm_read_ptr(&(colorPair->Name)));
                     size_t str1Size = nameSize;
                     const char* str1 = name;
                     const char* str2P = searchName;

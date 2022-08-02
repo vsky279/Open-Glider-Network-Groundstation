@@ -26,7 +26,7 @@ License along with NeoPixel.  If not, see
 
 #pragma once
 
-#ifdef ARDUINO_ARCH_AVR
+#if defined(NEOPIXEBUS_NO_STL)
 
 typedef float(*AnimEaseFunction)(float unitValue);
 
@@ -71,6 +71,20 @@ public:
         }
     }
 
+    static float QuadraticCenter(float unitValue)
+    {
+        unitValue *= 2.0f;
+        if (unitValue < 1.0f)
+        {
+            return (-0.5f * (unitValue * unitValue - 2.0f));
+        }
+        else
+        {
+            unitValue -= 1.0f;
+            return (0.5f * (unitValue * unitValue + 1.0f));
+        }
+    }
+
     static float CubicIn(float unitValue)
     {
         return (unitValue * unitValue * unitValue);
@@ -79,7 +93,7 @@ public:
     static float CubicOut(float unitValue)
     {
         unitValue -= 1.0f;
-        return (unitValue * unitValue * unitValue + 1);
+        return (unitValue * unitValue * unitValue + 1.0f);
     }
 
     static float CubicInOut(float unitValue)
@@ -96,6 +110,13 @@ public:
         }
     }
 
+    static float CubicCenter(float unitValue)
+    {
+        unitValue *= 2.0f;
+        unitValue -= 1.0f;
+        return (0.5f * (unitValue * unitValue * unitValue + 1.0f));
+    }
+
     static float QuarticIn(float unitValue)
     {
         return (unitValue * unitValue * unitValue * unitValue);
@@ -104,7 +125,7 @@ public:
     static float QuarticOut(float unitValue)
     {
         unitValue -= 1.0f;
-        return -(unitValue * unitValue * unitValue * unitValue - 1);
+        return -(unitValue * unitValue * unitValue * unitValue - 1.0f);
     }
 
     static float QuarticInOut(float unitValue)
@@ -118,6 +139,20 @@ public:
         {
             unitValue -= 2.0f;
             return (-0.5f * (unitValue * unitValue * unitValue * unitValue - 2.0f));
+        }
+    }
+
+    static float QuarticCenter(float unitValue)
+    {
+        unitValue *= 2.0f;
+        unitValue -= 1.0f;
+        if (unitValue < 0.0f)
+        {
+              return (-0.5f * (unitValue * unitValue * unitValue * unitValue - 1.0f));
+        }
+        else
+        {
+            return (0.5f * (unitValue * unitValue * unitValue * unitValue + 1.0f));
         }
     }
 
@@ -146,6 +181,13 @@ public:
         }
     }
 
+    static float QuinticCenter(float unitValue)
+    {
+        unitValue *= 2.0f;
+        unitValue -= 1.0f;
+        return (0.5f * (unitValue * unitValue * unitValue * unitValue * unitValue + 1.0f));
+    }
+
     static float SinusoidalIn(float unitValue)
     {
         return (-cos(unitValue * HALF_PI) + 1.0f);
@@ -158,7 +200,20 @@ public:
 
     static float SinusoidalInOut(float unitValue)
     {
-        return -0.5 * (cos(PI * unitValue) - 1.0f);
+        return -0.5f * (cos(PI * unitValue) - 1.0f);
+    }
+
+    static float SinusoidalCenter(float unitValue)
+    {
+        if (unitValue < 0.5f)
+        {
+            return (0.5f * sin(PI * unitValue));
+        }
+        else
+        {
+            return (-0.5f * (cos(PI * (unitValue-0.5f)) + 1.0f));
+        }
+        
     }
 
     static float ExponentialIn(float unitValue)
@@ -185,6 +240,20 @@ public:
         }
     }
 
+    static float ExponentialCenter(float unitValue)
+    {
+        unitValue *= 2.0f;
+        if (unitValue < 1.0f)
+        {
+            return (0.5f * (-pow(2, -10.0f * unitValue) + 1.0f));
+        }
+        else
+        {
+            unitValue -= 2.0f;
+            return (0.5f * (pow(2, 10.0f * unitValue) + 1.0f));
+        }
+    }
+
     static float CircularIn(float unitValue)
     {
         if (unitValue == 1.0f)
@@ -208,12 +277,32 @@ public:
         unitValue *= 2.0f;
         if (unitValue < 1.0f)
         {
-            return (-0.5f * (sqrt(1.0f - unitValue * unitValue) - 1));
+            return (-0.5f * (sqrt(1.0f - unitValue * unitValue) - 1.0f));
         }
         else
         {
             unitValue -= 2.0f;
             return (0.5f * (sqrt(1.0f - unitValue * unitValue) + 1.0f));
+        }
+    }
+
+    static float CircularCenter(float unitValue)
+    {
+        unitValue *= 2.0f;
+        unitValue -= 1.0f;
+
+        if (unitValue < 0.0f)
+        {
+            return (0.5f * sqrt(1.0f - unitValue * unitValue));
+        }
+        else if (unitValue > 0.0f)
+        {
+            unitValue -= 2.0f;
+            return (-0.5f * (sqrt(1.0f - unitValue * unitValue) - 1.0f ) + 0.5f);
+        }
+        else
+        {
+            return 1.0f;
         }
     }
 
