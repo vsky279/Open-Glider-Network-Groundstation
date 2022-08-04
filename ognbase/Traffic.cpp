@@ -285,7 +285,7 @@ Serial.println("got a reboot packet, but did not reboot");
     }
 
     /* until time-synched any received packets other than time-sync are ignored */
-    if (OurTime == 0 || ! time_synched) {
+    if (OurTime == 0 || (ognrelay_time && ! time_synched)) {
         // ++other_packets_recvd;
 Serial.println("ignoring non-time-sync packet");
         return;

@@ -679,6 +679,10 @@ void Time_loop()
 
     if (ThisAircraft.timestamp != OurTime) {      /* do this only once per second */
 
+      if (! time_synched && ! ognrelay_time && ogn_gnsstime && ref_time_ms > 0)
+            /* if using local (non-relay) GNSS time */
+            time_synched = true;
+
       ThisAircraft.timestamp = OurTime;
       int oldmin = ThisAircraft.minute;
 #if defined(TBEAM)
