@@ -90,8 +90,17 @@
 
 #include <TimeLib.h>
 
+//one of the following needs to be defined in build_opt.h (not here):
 //#define TBEAM
 //#define TTGO
+
+#if !defined(TBEAM) && !defined(TTGO)
+#error No board defined
+#endif
+
+#if defined(TBEAM) && defined(TTGO)
+#error Multiple boards defined
+#endif
 
 #if defined(ENABLE_AHRS)
 #include "AHRS.h"
@@ -106,48 +115,48 @@
 
 #define seconds() (millis()/1000)
 
-#define isTimeToExport() (millis() - ExportTimeMarker > 1000)
+#define isTimeToExport() (millis() > ExportTimeMarker + 1000)
 
 #define APRS_EXPORT_AIRCRAFT 6
-#define TimeToExportOGN() (seconds() - ExportTimeOGN >= APRS_EXPORT_AIRCRAFT)
+#define TimeToExportOGN() (seconds() >= ExportTimeOGN + APRS_EXPORT_AIRCRAFT)
 
 #define APRS_REGISTER_REC 299
-#define TimeToRegisterOGN() (seconds() - ExportTimeRegisterOGN >= APRS_REGISTER_REC)
+#define TimeToRegisterOGN() (seconds() >= ExportTimeRegisterOGN + APRS_REGISTER_REC)
 
 #define APRS_KEEPALIVE_TIME 239
-#define TimeToKeepAliveOGN() (seconds() - ExportTimeKeepAliveOGN >= APRS_KEEPALIVE_TIME)
+#define TimeToKeepAliveOGN() (seconds() >= ExportTimeKeepAliveOGN + APRS_KEEPALIVE_TIME)
 
 #define APRS_CHECK_KEEPALIVE_TIME 21
-#define TimeToCheckKeepAliveOGN() (seconds() - ExportTimeCheckKeepAliveOGN >= APRS_CHECK_KEEPALIVE_TIME)
+#define TimeToCheckKeepAliveOGN() (seconds() >= ExportTimeCheckKeepAliveOGN + APRS_CHECK_KEEPALIVE_TIME)
 
 #define APRS_CHECK_WIFI_TIME 602
-#define TimeToCheckWifi() (seconds() - ExportTimeCheckWifi >= APRS_CHECK_WIFI_TIME)
+#define TimeToCheckWifi() (seconds() >= ExportTimeCheckWifi + APRS_CHECK_WIFI_TIME)
 
 #define APRS_STATUS_REC 293
-#define TimeToStatusOGN() (seconds() - ExportTimeStatusOGN >= APRS_STATUS_REC)
+#define TimeToStatusOGN() (seconds() >= ExportTimeStatusOGN + APRS_STATUS_REC)
 
 #define APRS_PROTO_SWITCH 2
-#define TimeToswitchProto() (seconds() - ExportTimeSwitch >= APRS_PROTO_SWITCH)
+#define TimeToswitchProto() (seconds() >= ExportTimeSwitch + APRS_PROTO_SWITCH)
 
 #define TIME_TO_REFRESH_WEB 23
-#define TimeToRefreshWeb() (seconds() - ExportTimeWebRefresh >= TIME_TO_REFRESH_WEB)
+#define TimeToRefreshWeb() (seconds() >= ExportTimeWebRefresh + TIME_TO_REFRESH_WEB)
 
-#define TimeToSleep() (seconds() - ExportTimeSleep >= ogn_rxidle)
+#define TimeToSleep() (seconds() >= ExportTimeSleep + ogn_rxidle)
 
 //testing
 #define TIME_TO_DIS_WIFI  666
-#define TimeToDisWifi() (seconds() - ExportTimeDisWifi >= TIME_TO_DIS_WIFI)
+#define TimeToDisWifi() (seconds() >= ExportTimeDisWifi + TIME_TO_DIS_WIFI)
 
 //testing
-#define TimeToDisableOled() (seconds() - ExportTimeOledDisable >= oled_disable)
+#define TimeToDisableOled() (seconds() >= ExportTimeOledDisable + oled_disable)
 
 //time reregister if failed
 #define TIME_TO_REREG 29
-#define TimeToReRegisterOGN() (seconds() - ExportTimeReRegister >= TIME_TO_REREG)
+#define TimeToReRegisterOGN() (seconds() >= ExportTimeReRegister + TIME_TO_REREG)
 
 /*Testing FANET service messages*/
 #define TIME_TO_EXPORT_FANET_SERVICE 40 /*every 40 sec 10 for testing*/
-#define TimeToExportFanetService() (seconds() - ExportTimeFanetService >= TIME_TO_EXPORT_FANET_SERVICE)
+#define TimeToExportFanetService() (seconds() >= ExportTimeFanetService + TIME_TO_EXPORT_FANET_SERVICE)
 
 #define BUTTON 38
 
@@ -423,7 +432,7 @@ void ground()
 
     GNSS_loop();
 
-    if (!position_is_set && isValidFix()) {
+    if ((!position_is_set || ogn_mobile) && isValidFix()) {
     
     ThisAircraft.latitude = gnss.location.lat();
     ThisAircraft.longitude = gnss.location.lng();
@@ -438,15 +447,16 @@ void ground()
     ogn_alt = gnss.altitude.meters();
     ogn_geoid_separation = gnss.separation.meters();
 
-    msg = "GPS fix LAT: ";
-    msg += gnss.location.lat();
-    msg += " LON: ";
-    msg += gnss.location.lng();
-    msg += " ALT: ";
-    msg += gnss.altitude.meters();
-    Logger_send_udp(&msg);    
-
-    position_is_set = true;    
+    if (!position_is_set) {
+        msg = "GPS fix LAT: ";
+        msg += gnss.location.lat();
+        msg += " LON: ";
+        msg += gnss.location.lng();
+        msg += " ALT: ";
+        msg += gnss.altitude.meters();
+        Logger_send_udp(&msg);    
+        position_is_set = true;    
+    }
 
     if (! ogn_gnsstime)
       GNSS_sleep();
@@ -717,12 +727,25 @@ sleep_check()
     }
 
     bool low_bat = false;
+    static uint32_t low_bat_time = 0;
 #if defined(TBEAM)      
     if (Battery_voltage() < 3.75) {
-        low_bat = true;
+        if (! low_bat) {
+            low_bat_time = millis();
+            low_bat = true;
+        }
 Serial.println("battery voltage < 3.75");
     }
 #endif
+    if (ognrelay_base && ognrelay_time) {
+        if (remote_voltage > 0.0 && remote_voltage < 3.75) {
+            if (! low_bat) {
+                low_bat_time = millis();
+                low_bat = true;
+            }
+Serial.println("remote battery voltage < 3.75");
+        }
+    }
 
 static uint32_t oldsecs = 0;
 if (seconds() > oldsecs+30) {
@@ -730,12 +753,14 @@ oldsecs = seconds();
 Serial.printf("ExportTimeSleep=%d, seconds=%d\r\n", ExportTimeSleep, seconds());
 }
 
-    if ( ! TimeToSleep() && ! low_bat )
+    /* even if remote battery is low, stay awake long enough to ensure */
+    /*  base station has learned about it, so will sleep at same time. */
+    if ( ! TimeToSleep() && ! (low_bat && millis() > low_bat_time + 42000))
         return;
 
     int sleep_length = ogn_wakeuptimer;
 
-    /* if low battery, wait longer to allow more charging */
+    /* if low battery, sleep for longer to allow more charging */
     if (low_bat && sleep_length < 5400)
        sleep_length += ogn_rxidle + ogn_wakeuptimer;
 

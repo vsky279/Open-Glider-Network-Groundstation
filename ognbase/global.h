@@ -9,6 +9,7 @@ extern float   ogn_lon;
 extern int     ogn_alt;
 extern int16_t ogn_geoid_separation;
 extern uint8_t largest_range;
+extern bool    ogn_mobile;
 
 extern String   ogn_callsign;
 extern String   ogn_server;

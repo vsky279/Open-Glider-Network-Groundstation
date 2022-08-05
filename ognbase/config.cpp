@@ -58,6 +58,7 @@ uint16_t ogn_debugport   = 12000;
 bool     ogn_itrackbit   = false;
 bool     ogn_istealthbit = false;
 uint16_t  ogn_range       = 100;
+bool     ogn_mobile      = false;
 
 //sleep mode
 int8_t   ogn_sleepmode   = 0;
@@ -308,6 +309,10 @@ bool OGN_read_config(void)
             ogn_lon              = obj["coordinates"]["lon"];
             ogn_alt              = obj["coordinates"]["alt"];
             ogn_geoid_separation = obj["coordinates"]["geoidsep"];
+#if defined(TBEAM)
+            if (ogn_gnsstime)
+                ogn_mobile       = obj["coordinates"]["mobile"];
+#endif
         }
     }
 
@@ -530,6 +535,7 @@ bool OGN_save_config(void)
     obj["coordinates"]["lon"]      = ogn_lon;
     obj["coordinates"]["alt"]      = ogn_alt;
     obj["coordinates"]["geoidsep"] = ogn_geoid_separation;
+    obj["coordinates"]["mobile"]   = ogn_mobile;
 
     //aprs config
     obj["aprs"]["callsign"] = ogn_callsign;

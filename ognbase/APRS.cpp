@@ -480,7 +480,7 @@ int OGN_APRS_Register(ufo_t* this_aircraft)
 
         String RegisterPacket = "";
         RegisterPacket += APRS_REG.origin;
-        RegisterPacket += ">OGFLR,TCPIP*,qAC,";
+        RegisterPacket += ">OGNSDR,TCPIP*,qAC,";
         RegisterPacket += APRS_REG.callsign;
         RegisterPacket += ":/";
         RegisterPacket += APRS_REG.timestamp;
@@ -522,30 +522,37 @@ void OGN_APRS_KeepAlive(void)
 
 void OGN_APRS_Status(ufo_t* this_aircraft)
 {
-    if (OurTime == 0)  /* no GNSS time available yet */
-      return;
+    if (OurTime == 0) {      /* no GNSS time available yet */
+      // return;
+      Serial.println("sending status packet without time stamp");
+    }
 
     // time_t APRStime = OurTime; // - seventyYears;
     struct aprs_stat_packet APRS_STAT;
     APRS_STAT.origin   = ogn_callsign;
     APRS_STAT.callsign = String(ogn_server_name);    // String(this_aircraft->addr, HEX);
     //APRS_STAT.callsign.toUpperCase();
-    APRS_STAT.timestamp      = zeroPadding(String(this_aircraft->hour), 2)
-                             + zeroPadding(String(this_aircraft->minute), 2)
-                             + zeroPadding(String(this_aircraft->second), 2) + "h";
+    if (OurTime == 0) {
+        APRS_STAT.timestamp = "000000h";
+    } else {
+        APRS_STAT.timestamp = zeroPadding(String(this_aircraft->hour), 2)
+                            + zeroPadding(String(this_aircraft->minute), 2)
+                            + zeroPadding(String(this_aircraft->second), 2) + "h";
+    }
 
     /*issue17*/ /*v0.1.0.20-ESP32*/
     APRS_STAT.platform      = "v";
     APRS_STAT.platform      += SOFTRF_FIRMWARE_VERSION;
     APRS_STAT.platform      += "-ESP32";
-    
+
     //APRS_STAT.realtime_clock = String(0.0);
 
     int v = (int)(10.0 * remote_voltage + 0.5);
     APRS_STAT.board_voltage  = String(v/10) + "." + String(v%10) + "V";
+    /* remote_voltage may be wrong if time not synched yet */
 
     String StatusPacket = APRS_STAT.origin;
-    StatusPacket += ">OGFLR,TCPIP*,qAC,";
+    StatusPacket += ">OGNSDR,TCPIP*,qAC,";
     StatusPacket += APRS_STAT.callsign;
     StatusPacket += ":>";
     StatusPacket += APRS_STAT.timestamp;

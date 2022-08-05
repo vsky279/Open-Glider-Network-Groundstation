@@ -406,6 +406,9 @@ void Web_setup(ufo_t* this_aircraft)
              (ogn_band == RF_BAND_IL ? "selected" : ""), RF_BAND_IL,
              (ogn_band == RF_BAND_KR ? "selected" : ""), RF_BAND_KR,
 
+             (ogn_mobile ? "selected" : ""),
+             (ogn_mobile ? "" : "selected"),
+
              (ogn_protocol_1 == RF_PROTOCOL_LEGACY ? "selected" : ""),
              RF_PROTOCOL_LEGACY, legacy_proto_desc.name,
              (ogn_protocol_1 == RF_PROTOCOL_OGNTP ? "selected" : ""),
@@ -555,6 +558,13 @@ void Web_setup(ufo_t* this_aircraft)
         if (request->hasParam("ogn_alt"))
             ogn_alt = request->getParam("ogn_alt")->value().toInt();
 
+        //geoid_separation
+        if (request->hasParam("ogn_geoid"))
+            ogn_geoid_separation = request->getParam("ogn_geoid")->value().toInt();
+
+        if (request->hasParam("ogn_mobile"))
+            ogn_geoid_separation = request->getParam("ogn_mobile")->value().toInt();
+
         if (request->hasParam("ogn_freq"))
             ogn_band = request->getParam("ogn_freq")->value().toInt();
 
@@ -601,10 +611,6 @@ void Web_setup(ufo_t* this_aircraft)
               ogn_wpass[0] = request->getParam("ogn_wifi_password")->value().c_str();
             }
         }
-            
-        //geoid_separation
-        if (request->hasParam("ogn_geoid"))
-            ogn_geoid_separation = request->getParam("ogn_geoid")->value().toInt();
 
         if (request->hasParam("ogn_ignore_track"))
             ogn_itrackbit= request->getParam("ogn_ignore_track")->value().toInt();

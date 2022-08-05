@@ -1,6 +1,6 @@
 {
    "ognbase":{
-      "version":"MB10"
+      "version":"MB11"
    },
    "wifi":{
       "ssid":[
@@ -23,7 +23,8 @@
       "lat":43.78917,
       "lon":-72.35194,
       "alt":582,
-      "geoidsep":-28
+      "geoidsep":-28,
+      "mobile":false
    },
    "zabbix":{
       "enable":false,

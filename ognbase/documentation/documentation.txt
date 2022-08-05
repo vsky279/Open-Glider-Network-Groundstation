@@ -102,8 +102,11 @@ The "coordinates" section states the location of the station, using lat/lon (in 
       "lat":43.78917,
       "lon":-72.35194,
       "alt":582,
-      "geoidsep":-28
+      "geoidsep":-28,
+      "mobile":false
    },
+
+If "mobile" is set to true, then the position is not fixed, rather, the station can move, and the location will continuously be updated using GNSS.  Of course the hardware device used in that case must include GNSS, and "gnsstime" must be set to 1 (see below in the relay section).  If you want to automatically set the station location when you turn it on, but not move it while operating, then remove the "coordinates" section altogether from the config file.
 
 The "aprs" section is about the OGN server that OGNbase will send APRS data packets to, how it will identify itself, and some options on the messaging.  Here is an example of this section:
 

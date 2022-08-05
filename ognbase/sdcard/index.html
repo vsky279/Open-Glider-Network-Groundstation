@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
- <meta name="OGNbase-Version" content="MB10">
+ <meta name="OGNbase-Version" content="MB11">
  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
  <title>OGN Groundstation</title>
  <link rel="icon" href="data:,">
@@ -128,7 +128,12 @@
    <option %s value='%d'>KR (920.9 MHz)</option>
  </select>
  </td>
-</tr>
+ <td>Station is</td>
+ <td><select id="mobile" name="ogn_mobile">
+  <option %s value="1">Mobile</option>
+  <option %s value="0">Static</option>
+ </select>
+ </td></tr>
 <tr>
  <td>Protocol 1</td>
  <td><select id="protocol" name="ogn_proto">
