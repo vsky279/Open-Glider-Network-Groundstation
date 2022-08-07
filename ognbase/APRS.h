@@ -103,7 +103,8 @@ void OGN_APRS_KeepAlive();
 
 bool OGN_APRS_check_Wifi();
 
-void OGN_APRS_Status(ufo_t* this_aircraft);
+bool OGN_APRS_Location(ufo_t* this_aircraft);
+bool OGN_APRS_Status(ufo_t* this_aircraft);
 
 static int OGN_APRS_check_reg(char*);
 

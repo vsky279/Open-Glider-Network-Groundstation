@@ -120,7 +120,7 @@
 #define APRS_EXPORT_AIRCRAFT 6
 #define TimeToExportOGN() (seconds() >= ExportTimeOGN + APRS_EXPORT_AIRCRAFT)
 
-#define APRS_REGISTER_REC 299
+#define APRS_REGISTER_REC 689
 #define TimeToRegisterOGN() (seconds() >= ExportTimeRegisterOGN + APRS_REGISTER_REC)
 
 #define APRS_KEEPALIVE_TIME 239
@@ -132,7 +132,7 @@
 #define APRS_CHECK_WIFI_TIME 602
 #define TimeToCheckWifi() (seconds() >= ExportTimeCheckWifi + APRS_CHECK_WIFI_TIME)
 
-#define APRS_STATUS_REC 293
+#define APRS_STATUS_REC 233
 #define TimeToStatusOGN() (seconds() >= ExportTimeStatusOGN + APRS_STATUS_REC)
 
 #define APRS_PROTO_SWITCH 2
@@ -430,45 +430,44 @@ void ground()
 
 //Serial.println("GNSS_loop...");
 
-    GNSS_loop();
-
-    if ((!position_is_set || ogn_mobile) && isValidFix()) {
+    if (GNSS_loop() && (!position_is_set || ogn_mobile) && isValidFix()) {
     
-    ThisAircraft.latitude = gnss.location.lat();
-    ThisAircraft.longitude = gnss.location.lng();
-    ThisAircraft.altitude = gnss.altitude.meters();
-    ThisAircraft.course = gnss.course.deg();
-    ThisAircraft.speed = gnss.speed.knots();
-    ThisAircraft.hdop = (uint16_t) gnss.hdop.value();
-    ThisAircraft.geoid_separation = gnss.separation.meters();
+      ThisAircraft.latitude = gnss.location.lat();
+      ThisAircraft.longitude = gnss.location.lng();
+      ThisAircraft.altitude = gnss.altitude.meters();
+      //ThisAircraft.course = gnss.course.deg();
+      //ThisAircraft.speed = gnss.speed.knots();
+      ThisAircraft.hdop = (uint16_t) gnss.hdop.value();
+      ThisAircraft.geoid_separation = gnss.separation.meters();
 
-    ogn_lat = gnss.location.lat();
-    ogn_lon = gnss.location.lng();
-    ogn_alt = gnss.altitude.meters();
-    ogn_geoid_separation = gnss.separation.meters();
+      ogn_lat = gnss.location.lat();
+      ogn_lon = gnss.location.lng();
+      ogn_alt = gnss.altitude.meters();
+      ogn_geoid_separation = gnss.separation.meters();
 
-    if (!position_is_set) {
-        msg = "GPS fix LAT: ";
-        msg += gnss.location.lat();
-        msg += " LON: ";
-        msg += gnss.location.lng();
-        msg += " ALT: ";
-        msg += gnss.altitude.meters();
-        Logger_send_udp(&msg);    
-        position_is_set = true;    
-    }
+      if (!position_is_set) {
+          msg = "GPS fix LAT: ";
+          msg += gnss.location.lat();
+          msg += " LON: ";
+          msg += gnss.location.lng();
+          msg += " ALT: ";
+          msg += gnss.altitude.meters();
+          Logger_send_udp(&msg);    
+          position_is_set = true;    
+      }
 
-    if (! ogn_gnsstime)
-      GNSS_sleep();
+      if (! ogn_gnsstime)
+        GNSS_sleep();
 
     }
 
   if(!position_is_set){
     Serial.println("still no position...");
     OLED_write("no position data found", 0, 18, true);
-    delay(1000);
+    delay(300);
     OLED_write("waiting for GPS fix", 0, 18, true);
-    delay(1000);
+    delay(300);
+    OLED_info(false);
   }
 
   }
@@ -478,7 +477,7 @@ void ground()
   if(!position_is_set){
     Serial.println("TTGO - no position");
     OLED_write("no position data found", 0, 18, true);
-    delay(2000);
+    delay(500);
   }
 
 #endif
@@ -597,25 +596,31 @@ void ground()
       ExportTimeKeepAliveOGN = seconds();
     }
   
-    if (TimeToStatusOGN() && ground_registred == 1 && (position_is_set ))
-    {
-//Serial.println("status OGN...");
-
-      disp = "status OGN...";
-      OLED_write(disp, 0, 24, true);
+    if ((TimeToStatusOGN() || (ExportTimeStatusOGN==0 && millis()>50000))
+        && ground_registred == 1 && position_is_set) {
       
-      OGN_APRS_Status(&ThisAircraft);
-  
-      msg = "Version: ";
-      msg += String(_VERSION);
-      msg += " Power: ";
-      msg += String(SoC->Battery_voltage());
-      msg += String(" Uptime: ");
-      msg += String(millis() / 3600000);
-      msg += String(" GNSS: ");
-      msg += String(gnss.satellites.value());
-      Logger_send_udp(&msg);
-      ExportTimeStatusOGN = seconds();
+      if (OGN_APRS_Location(&ThisAircraft) && OGN_APRS_Status(&ThisAircraft)) {
+
+        //Serial.println("status OGN...");
+
+        ExportTimeStatusOGN = seconds();
+        disp = "status OGN...";
+        OLED_write(disp, 0, 24, true);
+
+        msg = "Version: ";
+        msg += String(_VERSION);
+        msg += " Power: ";
+        msg += String(SoC->Battery_voltage());
+        msg += String(" Uptime: ");
+        msg += String(millis() / 3600000);
+        msg += String(" GNSS: ");
+        msg += String(gnss.satellites.value());
+        Logger_send_udp(&msg);
+
+      } else {
+        Serial.println("OGN status postponed...");
+      }
+
     }
 
     if(TimeToCheckKeepAliveOGN() && ground_registred == 1){
@@ -729,21 +734,21 @@ sleep_check()
     bool low_bat = false;
     static uint32_t low_bat_time = 0;
 #if defined(TBEAM)      
-    if (Battery_voltage() < 3.75) {
+    if (Battery_voltage() < 3.65) {
         if (! low_bat) {
             low_bat_time = millis();
             low_bat = true;
         }
-Serial.println("battery voltage < 3.75");
+Serial.println("battery voltage < 3.65");
     }
 #endif
     if (ognrelay_base && ognrelay_time) {
-        if (remote_voltage > 0.0 && remote_voltage < 3.75) {
+        if (remote_voltage > 0.0 && remote_voltage < 3.65) {
             if (! low_bat) {
                 low_bat_time = millis();
                 low_bat = true;
             }
-Serial.println("remote battery voltage < 3.75");
+Serial.println("remote battery voltage < 3.65");
         }
     }
 
@@ -826,6 +831,14 @@ Serial.printf("hourcounter=%d, sleep_length=%d\r\n", hourcounter, sleep_length);
         return;
     }
 
+#if defined(TBEAM)      
+    turn_LED_off();
+    if (ogn_gnsstime)
+        GNSS_sleep();
+#endif 
+
+    OLED_disable();
+
     String msg = "----> entering sleep mode for ";
     msg += String(hourcounter); 
     msg += " hours + ";
@@ -834,19 +847,10 @@ Serial.printf("hourcounter=%d, sleep_length=%d\r\n", hourcounter, sleep_length);
     Serial.println(msg.c_str());
     Logger_send_udp(&msg);
 
-    // if (ogn_sleepmode == 1) {
-      
-#if defined(TBEAM)      
-      turn_LED_off();
-      if (ogn_gnsstime)
-          GNSS_sleep();
-#endif 
-    // }
-
-    OLED_disable();
-
     if(!ognrelay_enable)
       SoC->WiFi_disconnect_TCP();
+
+    delay(1500);
 
     deep_sleep_counter = hourcounter;             /* stored in RTC memory */
     esp_sleep_enable_timer_wakeup(sleep_length*1000000ULL);

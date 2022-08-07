@@ -63,11 +63,11 @@ typedef struct gnss_chip_ops_struct {
 
 byte GNSS_setup(void);
 
-void GNSS_loop();
+bool GNSS_loop();
 
 void GNSS_fini(void);
 
-void GNSSTimeSync(void);
+bool GNSSTimeSync(void);
 
 void PickGNSSFix(void);
 

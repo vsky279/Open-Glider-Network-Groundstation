@@ -44,6 +44,7 @@ int  ap_uptime        = 0;
 
 char ogn_server_name_buf[12];
 const char *ogn_server_name = "GLIDERN0";
+bool got_ogn_server_name = false;
 
 #define seconds() (millis() / 1000)
 
@@ -192,7 +193,8 @@ Serial.println("getting server name from logresp...");
                     p += 7;
                     p[9] = '\0';
                     (void) strcpy(ogn_server_name_buf, p);
-                    ogn_server_name = ogn_server_name_buf;
+                    //ogn_server_name = ogn_server_name_buf;  - uncomment when we know how to get non-GLIDERN0 packets through
+                    got_ogn_server_name = true;
 //Serial.print("server name from logresp: ");
 //Serial.println(ogn_server_name);
                 }
@@ -209,7 +211,8 @@ Serial.println("getting server name from logresp...");
                     else
                         p[9] = '\0';
                     (void) strcpy(ogn_server_name_buf, p);
-                    ogn_server_name = ogn_server_name_buf;
+                    //ogn_server_name = ogn_server_name_buf;  - uncomment when we know how to get non-GLIDERN0 packets through
+                    got_ogn_server_name = true;
 //Serial.print("server name from aprsc: ");
 //Serial.println(ogn_server_name);
                 }
@@ -420,19 +423,18 @@ int OGN_APRS_Register(ufo_t* this_aircraft)
 
         APRS_LOGIN.user    = String(this_aircraft->addr, HEX);
         APRS_LOGIN.pass    = String(AprsPasscode(APRS_LOGIN.user.c_str()));
-        APRS_LOGIN.appname = "ESP32";
+        APRS_LOGIN.appname = "OGNbase";
         APRS_LOGIN.version = SOFTRF_FIRMWARE_VERSION;
 
         String LoginPacket = "user ";
         LoginPacket += APRS_LOGIN.user;
         LoginPacket += " pass ";
         LoginPacket += APRS_LOGIN.pass;
-        LoginPacket += " vers ";
+        LoginPacket += " vers ESP32-";
         LoginPacket += APRS_LOGIN.appname;
         LoginPacket += " ";
         LoginPacket += APRS_LOGIN.version;
-        LoginPacket += " ";
-        LoginPacket += "m/";
+        LoginPacket += " filter m/";
         LoginPacket += String(ogn_range);
         LoginPacket += "\n";
 
@@ -444,6 +446,7 @@ int OGN_APRS_Register(ufo_t* this_aircraft)
         SoC->WiFi_transmit_TCP(LoginPacket);
 
         aprs_registred = 1;
+        return 1;
     }
 
     else
@@ -455,8 +458,13 @@ int OGN_APRS_Register(ufo_t* this_aircraft)
         return -1;
     }
 
-    if (aprs_registred == 1)
-    {
+}
+
+bool OGN_APRS_Location(ufo_t* this_aircraft)
+{
+    if (aprs_registred != 1 || ! got_ogn_server_name)
+        return false;
+
         /* RUSSIA>APRS,TCPIP*,qAC,GLIDERN2:/220757h626.56NI09353.92E&/A=000446 */
 
         struct  aprs_reg_packet APRS_REG;
@@ -465,13 +473,16 @@ int OGN_APRS_Register(ufo_t* this_aircraft)
         // time_t  APRStime = OurTime; // - seventyYears;
 
         APRS_REG.origin   = ogn_callsign;
-        APRS_REG.callsign = String(ogn_server_name);    // String(this_aircraft->addr, HEX);
+        APRS_REG.callsign = String(ogn_server_name);
         //APRS_REG.callsign.toUpperCase();
         APRS_REG.alt       = zeroPadding(String(int(this_aircraft->altitude * 3.28084)), 6);
-        APRS_REG.timestamp = zeroPadding(String(this_aircraft->hour), 2)
-                             + zeroPadding(String(this_aircraft->minute), 2)
-                             + zeroPadding(String(this_aircraft->second), 2) + "h";
-
+        if (OurTime == 0) {
+            APRS_REG.timestamp = "000000h";
+        } else {
+            APRS_REG.timestamp = zeroPadding(String(this_aircraft->hour), 2)
+                                 + zeroPadding(String(this_aircraft->minute), 2)
+                                 + zeroPadding(String(this_aircraft->second), 2) + "h";
+        }
         APRS_REG.lat_deg = zeroPadding(String(int(LAT)), 2);
         APRS_REG.lat_min = zeroPadding(String((LAT - int(LAT)) * 60, 3), 5);
 
@@ -506,8 +517,8 @@ int OGN_APRS_Register(ufo_t* this_aircraft)
         Logger_send_udp(&RegisterPacket);
 
         SoC->WiFi_transmit_TCP(RegisterPacket);
-    }
-    return aprs_registred;
+
+        return true;
 }
 
 void OGN_APRS_KeepAlive(void)
@@ -520,17 +531,19 @@ void OGN_APRS_KeepAlive(void)
 
 // LKHS>APRS,TCPIP*,qAC,GLIDERN2:>211635h v0.2.6.ARM CPU:0.2 RAM:777.7/972.2MB NTP:3.1ms/-3.8ppm 4.902V 0.583A +33.6C
 
-void OGN_APRS_Status(ufo_t* this_aircraft)
+bool OGN_APRS_Status(ufo_t* this_aircraft)
 {
     if (OurTime == 0) {      /* no GNSS time available yet */
-      // return;
+      // return false;
       Serial.println("sending status packet without time stamp");
     }
 
     // time_t APRStime = OurTime; // - seventyYears;
     struct aprs_stat_packet APRS_STAT;
     APRS_STAT.origin   = ogn_callsign;
-    APRS_STAT.callsign = String(ogn_server_name);    // String(this_aircraft->addr, HEX);
+    if (! got_ogn_server_name)
+        return false;
+    APRS_STAT.callsign = String(ogn_server_name);
     //APRS_STAT.callsign.toUpperCase();
     if (OurTime == 0) {
         APRS_STAT.timestamp = "000000h";
@@ -543,10 +556,14 @@ void OGN_APRS_Status(ufo_t* this_aircraft)
     /*issue17*/ /*v0.1.0.20-ESP32*/
     APRS_STAT.platform      = "v";
     APRS_STAT.platform      += SOFTRF_FIRMWARE_VERSION;
-    APRS_STAT.platform      += "-ESP32";
+    APRS_STAT.platform      += "-ESP32-OGNbase";
 
     //APRS_STAT.realtime_clock = String(0.0);
 
+    // standalone station reports local voltage
+    if (!ognrelay_time)
+        remote_voltage = Battery_voltage();
+    // else remote_voltage is already holding voltage reported from remote station
     int v = (int)(10.0 * remote_voltage + 0.5);
     APRS_STAT.board_voltage  = String(v/10) + "." + String(v%10) + "V";
     /* remote_voltage may be wrong if time not synched yet */
@@ -565,11 +582,23 @@ void OGN_APRS_Status(ufo_t* this_aircraft)
     StatusPacket += String(packets_per_minute) + "/min";
     StatusPacket += " ";
     StatusPacket += String(numvisible) + "/" + String(numseen_1hr) + "Acfts[1h]";
-    StatusPacket += "\r\n";
+    StatusPacket += " ";
+    if (ognrelay_time) {
+        StatusPacket += String(remote_sats);
+        StatusPacket += "sat ";
+        StatusPacket += time_synched? "time_synched " : "time_not_synched ";
+#if defined(TBEAM)
+    } else if (ogn_gnsstime) {
+        StatusPacket += String(gnss.satellites.value());
+        StatusPacket += "sat ";
+#endif
+    }
+    StatusPacket += String(ognrelay_time ? remote_uptime : uptime);
+    StatusPacket += "_m_uptime\r\n";
     Serial.println("");
     Serial.println(StatusPacket.c_str());
     Serial.println("");
     Logger_send_udp(&StatusPacket);
     SoC->WiFi_transmit_TCP(StatusPacket);
-    return;
+    return true;
 }

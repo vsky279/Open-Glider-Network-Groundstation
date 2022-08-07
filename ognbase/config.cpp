@@ -309,10 +309,7 @@ bool OGN_read_config(void)
             ogn_lon              = obj["coordinates"]["lon"];
             ogn_alt              = obj["coordinates"]["alt"];
             ogn_geoid_separation = obj["coordinates"]["geoidsep"];
-#if defined(TBEAM)
-            if (ogn_gnsstime)
-                ogn_mobile       = obj["coordinates"]["mobile"];
-#endif
+            ogn_mobile           = obj["coordinates"]["mobile"];
         }
     }
 
@@ -421,8 +418,11 @@ ogn_protocol_1  = RF_PROTOCOL_LEGACY;  /* override - only protocol supported for
             ogn_gnsstime = true;                                /* must use GNSS time */
         else
             ogn_gnsstime = obj["ognrelay"]["gnsstime"];
+        if (ognrelay_enable || ognrelay_base || (! ogn_gnsstime))
+            ogn_mobile = false;
 #else
         ogn_gnsstime = false;                                /* no GNSS hardware */
+        ogn_mobile = false;
         if (ogn_band==RF_BAND_AU || ogn_band==RF_BAND_US) {  /* if more than 2 channels */
             ognrelay_enable = false;               /* remote station must use GNSS time */
             if(ognrelay_base)
