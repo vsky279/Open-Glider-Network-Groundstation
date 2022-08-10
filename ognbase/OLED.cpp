@@ -228,42 +228,40 @@ void OLED_info(bool ntp)
         }
         if (oled_site == 1)
         {
+            //version
+            // snprintf(buf, sizeof(buf), "Version: %s", _VERSION);
+            snprintf(buf, sizeof(buf), "Version: %s", SOFTRF_FIRMWARE_VERSION);
+            display.drawString(0, 0, buf);
+
+            // RSSI
             disp_value = RF_last_rssi;
             snprintf(buf, sizeof(buf), "RSSI: %d", disp_value);
-            display.drawString(0, 0, buf);
+            display.drawString(0, 9, buf);
 
             //ogndebug
             disp_value = ogn_debug;
             snprintf(buf, sizeof(buf), "Debug: %d", disp_value);
-            display.drawString(0, 9, buf);
+            display.drawString(0, 18, buf);
 
             //ogndebugp
             disp_value = ogn_debug;
             snprintf(buf, sizeof(buf), "DebugP: %d", disp_value);
-            display.drawString(0, 18, buf);
+            display.drawString(0, 27, buf);
 
             //bool ignore_stealth;
             disp_value = ogn_istealthbit;
             snprintf(buf, sizeof(buf), "IStealth: %d", disp_value);
-            display.drawString(0, 27, buf);
-
+            display.drawString(0, 36, buf);
 
             //bool ignore_no_track;
             disp_value = ogn_itrackbit;
             snprintf(buf, sizeof(buf), "ITrack: %d", disp_value);
-            display.drawString(0, 36, buf);
-
+            display.drawString(0, 45, buf);
 
             //zabbix_en
             disp_value = zabbix_enable;
             snprintf(buf, sizeof(buf), "Zabbix: %d", disp_value);
-            display.drawString(0, 45, buf);
-
-            //version
-            // snprintf(buf, sizeof(buf), "Version: %s", _VERSION);
-            snprintf(buf, sizeof(buf), "Version: %s", SOFTRF_FIRMWARE_VERSION);
             display.drawString(0, 54, buf);
-
 
             display.display();
             if(!ognrelay_enable )
@@ -321,9 +319,9 @@ void OLED_info(bool ntp)
             display.drawString(0, 45, buf);       
 
             if (ognrelay_base)
-              snprintf(buf, sizeof(buf), "RELAY-Base");
+              snprintf(buf, sizeof(buf), "RELAY-Base R:%.1fV", remote_voltage);
             else if (ognrelay_enable)
-              snprintf(buf, sizeof(buf), "RELAY-Remote");              
+              snprintf(buf, sizeof(buf), "RELAY-Remote %.1fV", Battery_voltage());
             else
               snprintf(buf, sizeof(buf), "Single-Station");
             display.drawString(0, 54, buf);                                                                           

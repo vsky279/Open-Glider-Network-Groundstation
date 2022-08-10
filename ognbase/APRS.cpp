@@ -188,12 +188,14 @@ int OGN_APRS_check_messages(void)
         if (strncmp(RXbuffer,"# logresp",9) == 0) {
 Serial.println("getting server name from logresp...");
             char *p;
-            if (p = strstr(RXbuffer,"server GLIDERN")) {
-                if (strlen(p) > 14) {
-                    p += 7;
-                    p[9] = '\0';
-                    (void) strcpy(ogn_server_name_buf, p);
-                    //ogn_server_name = ogn_server_name_buf;  - uncomment when we know how to get non-GLIDERN0 packets through
+            if ((p=strstr(RXbuffer,"server GLIDERN")) != NULL) {
+                if (strlen(p) > 14 && p[14] >= '0' && p[14] <= '9') {
+//                    p += 7;
+//                    p[9] = '\0';
+//                    (void) strcpy(ogn_server_name_buf, p);
+                    (void) strcpy(ogn_server_name_buf, "GLIDERN0");
+                    //ogn_server_name_buf[7] = p[14];
+                    ogn_server_name = ogn_server_name_buf;
                     got_ogn_server_name = true;
 //Serial.print("server name from logresp: ");
 //Serial.println(ogn_server_name);
@@ -203,15 +205,17 @@ Serial.println("getting server name from logresp...");
       } else if (reg < 0 && recStatus > 57) {   /* not a registration message */
         if (strncmp(RXbuffer,"# aprsc",7) == 0) {
             char *p;
-            if (p = strstr(RXbuffer,"GMT GLIDERN")) {
-                if (strlen(p) > 11) {
-                    p += 4;
-                    if (p[8] == ' ')
-                        p[8] = '\0';
-                    else
-                        p[9] = '\0';
-                    (void) strcpy(ogn_server_name_buf, p);
-                    //ogn_server_name = ogn_server_name_buf;  - uncomment when we know how to get non-GLIDERN0 packets through
+            if ((p=strstr(RXbuffer,"GMT GLIDERN")) != NULL) {
+                if (strlen(p) > 11 && p[11] >= '0' && p[11] <= '9') {
+//                    p += 4;
+//                    if (p[8] == ' ')
+//                        p[8] = '\0';
+//                    else
+//                        p[9] = '\0';
+//                    (void) strcpy(ogn_server_name_buf, p);
+                    (void) strcpy(ogn_server_name_buf, "GLIDERN0");
+                    //ogn_server_name_buf[7] = p[11];
+                    ogn_server_name = ogn_server_name_buf;
                     got_ogn_server_name = true;
 //Serial.print("server name from aprsc: ");
 //Serial.println(ogn_server_name);
@@ -436,7 +440,7 @@ int OGN_APRS_Register(ufo_t* this_aircraft)
         LoginPacket += APRS_LOGIN.version;
         LoginPacket += " filter m/";
         LoginPacket += String(ogn_range);
-        LoginPacket += "\n";
+        LoginPacket += "\r\n";
 
         Serial.println("");
         Serial.println(LoginPacket.c_str());
@@ -523,7 +527,7 @@ bool OGN_APRS_Location(ufo_t* this_aircraft)
 
 void OGN_APRS_KeepAlive(void)
 {
-    String KeepAlivePacket = "#keepalive\n";
+    String KeepAlivePacket = "#keepalive\r\n";
     Serial.println(KeepAlivePacket.c_str());
     Logger_send_udp(&KeepAlivePacket);
     SoC->WiFi_transmit_TCP(KeepAlivePacket);

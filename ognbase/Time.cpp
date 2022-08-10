@@ -170,17 +170,17 @@ Serial.printf("send_time: uptime %d sent as %d %X\r\n", uptime, pkt->_unk1, pkt-
       p[3] = (traffic_packets_recvd & 0x01FFFFFF) | ((pctrel & 0x7F) << 25);
 /* p[4]:
       0000 0000 0000 0000 0000 0000 0000 0000
-           |       |    | ^^^^ ^^^^ ^^^^ ^^^^ - time_packets_sent
-           |       | ^^^^ 00 - %acked
-           |^^^ ^^^^ 000 - bad packets
+           |      |     | ^^^^ ^^^^ ^^^^ ^^^^ - time_packets_sent
+           |      |^ ^^^^ 00 - %acked
+           |^^^ ^^^0 00 - bad packets
       ^^^^ ^ - restarts
 */
       int pctack = 100 * ack_packets_recvd;
       if (time_packets_sent > 0)
-        pctack /= time_packets_sent;               /* percent not acked */
+        pctack /= time_packets_sent;               /* percent acked */
       p[4] = (time_packets_sent & 0x0000FFFF)      /* 16 bits */
             | ((pctack & 0x7C) << 14)              /* 5 bits: %acked/4 */
-            | ((bad_packets_recvd & 0x3F8) << 17)  /* 7 bits: bad packets / 8 */
+            | ((bad_packets_recvd & 0x1F8) << 18)  /* 6 bits: bad packets / 8 */
             | ((sync_restarts & 0x01F) << 27);
 
       p[3] ^= 0xACACACAC;                          /* rudimentary whitening */
@@ -286,7 +286,7 @@ Serial.printf("set_our_clock: ms=%d, ourt=%d, ofst=%d, reft=%d\r\n",
     remote_pctrel = (p[3]>>25) & 0x7F;
     remote_timesent = (p[4] & 0x0000FFFF);
     remote_ack = (p[4]>>14) & 0x7C;
-    remote_bad = (p[4]>>17) & 0x3F8;
+    remote_bad = (p[4]>>18) & 0x1F8;
     remote_other = (p[2]>>11) & 0x01FFE0;
     remote_voltage = (float)(((p[2]>>28) & 0x0F) + 28) * 0.1;
     remote_restarts = (p[4]>>27) & 0x1F;
@@ -294,12 +294,15 @@ Serial.printf("set_our_clock: ms=%d, ourt=%d, ofst=%d, reft=%d\r\n",
     uint16_t rem_upt;
     if (pkt->_unk1 == 0)
         rem_upt = (pkt->addr_type & 0x07) * 10;
-    else if (pkt->addr_type & 0x04 == 0)
-        rem_upt = (pkt->addr_type & 0x03) * 60 + 60;
+    else if (pkt->addr_type < 4)   // (& 0x04 == 0)
+        rem_upt = pkt->addr_type * 60 + 60;
     else
-        rem_upt = (pkt->addr_type & 0x03) * 120 + 300;
+        rem_upt = (pkt->addr_type - 4) * 120 + 300;  // (& 0x03) * 120 + 300;
     if (rem_upt > remote_uptime)
         remote_uptime = rem_upt;
+    else if (rem_upt < remote_uptime)
+        Serial.printf("reported uptime %d (%d %d) but stored uptime %d?\r\n",
+            rem_upt, pkt->_unk1, pkt->addr_type, remote_uptime);
 
     Serial.println(F("Local Stats:"));
     Serial.printf("  traffic: %d,  reported: %d,  bad: %d,  other: %d,  restarts: %d\r\n",
@@ -307,9 +310,13 @@ Serial.printf("set_our_clock: ms=%d, ourt=%d, ofst=%d, reft=%d\r\n",
         bad_packets_recvd, other_packets_recvd, sync_restarts);
     Serial.println(F("Remote Stats:"));
     Serial.printf(
-    "  traffic %d, pct rlyed %d, timesent %d, pct ack %d, bad %d, other %d, restarts %d, uptime %d\r\n",
+    "  traffic %d, pct rlyed %d, timesent %d, pct ack %d, bad %d, other %d, restarts %d, uptime %d (%d %d)\r\n",
         remote_traffic, remote_pctrel, remote_timesent, remote_ack,
-        remote_bad, remote_other, remote_restarts, remote_uptime);
+        remote_bad, remote_other, remote_restarts, remote_uptime, pkt->_unk1, pkt->addr_type);
+    if (remote_voltage > 0.0 && remote_voltage < 3.65)
+        Serial.printf("Remote battery voltage: %.1f < 3.65\r\n", remote_voltage);
+    else
+        Serial.printf("Remote battery voltage: %.1f\r\n", remote_voltage);
     /* these stats also displayed in the statistics web page */
     // should also send these stats out via UDP.
 
@@ -769,6 +776,7 @@ void Time_loop()
           Timesync_restart();
           if (ognrelay_base) {
             remote_sats = 0;
+            remote_voltage = 0;
             String msg = "restarting time sync";
             Logger_send_udp(&msg);
           }

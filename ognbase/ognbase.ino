@@ -617,8 +617,6 @@ void ground()
         msg += String(gnss.satellites.value());
         Logger_send_udp(&msg);
 
-      } else {
-        Serial.println("OGN status postponed...");
       }
 
     }
@@ -735,20 +733,18 @@ sleep_check()
     static uint32_t low_bat_time = 0;
 #if defined(TBEAM)      
     if (Battery_voltage() < 3.65) {
-        if (! low_bat) {
+        low_bat = true;
+        if (low_bat_time == 0) {
+            Serial.println("local battery voltage < 3.65");
             low_bat_time = millis();
-            low_bat = true;
         }
-Serial.println("battery voltage < 3.65");
     }
 #endif
     if (ognrelay_base && ognrelay_time) {
         if (remote_voltage > 0.0 && remote_voltage < 3.65) {
-            if (! low_bat) {
+            low_bat = true;
+            if (low_bat_time == 0)
                 low_bat_time = millis();
-                low_bat = true;
-            }
-Serial.println("remote battery voltage < 3.65");
         }
     }
 
@@ -760,7 +756,7 @@ Serial.printf("ExportTimeSleep=%d, seconds=%d\r\n", ExportTimeSleep, seconds());
 
     /* even if remote battery is low, stay awake long enough to ensure */
     /*  base station has learned about it, so will sleep at same time. */
-    if ( ! TimeToSleep() && ! (low_bat && millis() > low_bat_time + 42000))
+    if ( ! TimeToSleep() && ! (low_bat && low_bat_time > 0 && millis() > low_bat_time + 42000))
         return;
 
     int sleep_length = ogn_wakeuptimer;
