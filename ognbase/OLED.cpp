@@ -318,8 +318,12 @@ void OLED_info(bool ntp)
             snprintf(buf, sizeof(buf), "GPS-FIX: %s", isValidFix() ? "true" : "false");
             display.drawString(0, 45, buf);       
 
-            if (ognrelay_base)
-              snprintf(buf, sizeof(buf), "RELAY-Base R:%.1fV", remote_voltage);
+            if (ognrelay_base) {
+              if (remote_voltage == 0.0)
+                snprintf(buf, sizeof(buf), "RELAY-Base R:---V");
+              else
+                snprintf(buf, sizeof(buf), "RELAY-Base R:%.1fV", remote_voltage);
+            }
             else if (ognrelay_enable)
               snprintf(buf, sizeof(buf), "RELAY-Remote %.1fV", Battery_voltage());
             else

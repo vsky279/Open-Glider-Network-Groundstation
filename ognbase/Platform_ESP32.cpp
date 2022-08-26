@@ -334,6 +334,25 @@ void turn_LED_off()
         axp.setChgLEDMode(AXP20X_LED_OFF);
 }
 
+void turn_GNSS_on()
+{
+  if (hw_info.model == SOFTRF_MODEL_PRIME_MK2 && hw_info.revision == 8) {
+    axp.setPowerOutPut(AXP192_LDO3, AXP202_ON);
+    axp.setLDO3Voltage(3000);  // GPS,  AXP192 power-on value: 2800
+  }
+}
+
+void turn_GNSS_off()
+{
+  if (hw_info.model == SOFTRF_MODEL_PRIME_MK2 && hw_info.revision == 8) {
+    if(axp.setPowerOutPut(AXP192_LDO3, AXP202_OFF) == AXP_PASS) {
+      Serial.println(F("turned off GPS module"));
+    } else {
+      Serial.println(F("failed to turn off GPS module"));
+    }
+  }
+}
+
 static void ESP32_fini()
 {
     SPI.end();

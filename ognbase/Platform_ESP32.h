@@ -193,6 +193,9 @@ extern WebServer server;
 void turn_LED_on(void);
 void turn_LED_off(void);
 
+void turn_GNSS_on(void);
+void turn_GNSS_off(void);
+
 enum rst_reason
 {
     REASON_DEFAULT_RST = 0,      /* normal startup by power on */

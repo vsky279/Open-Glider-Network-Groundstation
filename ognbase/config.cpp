@@ -351,9 +351,9 @@ ogn_protocol_1  = RF_PROTOCOL_LEGACY;  /* override - only protocol supported for
             ogn_morning     = obj["sleep"]["morning"];
             ogn_evening     = obj["sleep"]["evening"];
             ogn_rxidle      = obj["sleep"]["rxidle"];
-            if(ogn_rxidle < 600){ogn_rxidle = 600;}
+            if(ogn_rxidle != 0 && ogn_rxidle < 600) {ogn_rxidle = 600;}
             ogn_wakeuptimer = obj["sleep"]["wakeuptimer"];
-            if(ogn_wakeuptimer < 600){ogn_wakeuptimer = 600;}
+            if(ogn_wakeuptimer != 0 && ogn_wakeuptimer < 600) {ogn_wakeuptimer = 600;}
         }
     }    
 

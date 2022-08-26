@@ -315,6 +315,8 @@ Serial.printf("set_our_clock: ms=%d, ourt=%d, ofst=%d, reft=%d\r\n",
         remote_bad, remote_other, remote_restarts, remote_uptime, pkt->_unk1, pkt->addr_type);
     if (remote_voltage > 0.0 && remote_voltage < 3.65)
         Serial.printf("Remote battery voltage: %.1f < 3.65\r\n", remote_voltage);
+    else if (remote_voltage == 0.0)
+        Serial.printf("Remote battery voltage: ----\r\n");
     else
         Serial.printf("Remote battery voltage: %.1f\r\n", remote_voltage);
     /* these stats also displayed in the statistics web page */
