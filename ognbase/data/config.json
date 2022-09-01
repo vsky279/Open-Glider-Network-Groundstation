@@ -1,6 +1,6 @@
 {
    "ognbase":{
-      "version":"MB11"
+      "version":"MB100"
    },
    "wifi":{
       "ssid":[
@@ -41,7 +41,7 @@
       "port":12014
    },      
    "aprs":{
-      "callsign":"GileMtn",
+      "callsign":"MyCallSign",
       "server":"aprs.glidernet.org",
       "port":14580,
       "band":2,
@@ -55,8 +55,8 @@
    },
    "sleep":{
       "mode":0,
-      "rxidle":1800,
-      "wakeuptimer":1800,
+      "rxidle":180,
+      "wakeuptimer":0,
       "morning":10,
       "evening":17
    },

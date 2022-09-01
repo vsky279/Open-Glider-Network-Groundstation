@@ -65,7 +65,7 @@ int8_t   ogn_sleepmode   = 0;
 int8_t   ogn_timezone    = 0;      // derived from longitude, not a user setting
 int8_t   ogn_morning     = 10;     // standard time, not daylight savings
 int8_t   ogn_evening     = 17;
-uint16_t ogn_rxidle      = 3600;
+uint16_t ogn_rxidle      = 3600;   // seconds
 uint16_t ogn_wakeuptimer = 3600;
 
 //position
@@ -350,9 +350,11 @@ ogn_protocol_1  = RF_PROTOCOL_LEGACY;  /* override - only protocol supported for
             ogn_sleepmode   = obj["sleep"]["mode"];
             ogn_morning     = obj["sleep"]["morning"];
             ogn_evening     = obj["sleep"]["evening"];
-            ogn_rxidle      = obj["sleep"]["rxidle"];
+            ogn_rxidle      = obj["sleep"]["rxidle"];   // minutes
+            ogn_rxidle *= 60;                           // seconds
             if(ogn_rxidle != 0 && ogn_rxidle < 600) {ogn_rxidle = 600;}
             ogn_wakeuptimer = obj["sleep"]["wakeuptimer"];
+            ogn_wakeuptimer *= 60;
             if(ogn_wakeuptimer != 0 && ogn_wakeuptimer < 600) {ogn_wakeuptimer = 600;}
         }
     }    
@@ -430,6 +432,9 @@ ogn_protocol_1  = RF_PROTOCOL_LEGACY;  /* override - only protocol supported for
         }
 #endif
     }
+
+    if (ogn_sleepmode==2 && (! ognrelay_base || ! ognrelay_time))
+        ogn_sleepmode = 0;
 
     if (obj.containsKey(F("fanetservice")))
     {
@@ -555,8 +560,8 @@ bool OGN_save_config(void)
     obj["sleep"]["mode"]        = ogn_sleepmode;
     obj["sleep"]["morning"]     = ogn_morning;
     obj["sleep"]["evening"]     = ogn_evening;
-    obj["sleep"]["rxidle"]      = ogn_rxidle;
-    obj["sleep"]["wakeuptimer"] = ogn_wakeuptimer;
+    obj["sleep"]["rxidle"]      = ogn_rxidle / 60;
+    obj["sleep"]["wakeuptimer"] = ogn_wakeuptimer / 60;
 
     //wifi config
     obj["wifi"]["ssid"][0] =  ogn_ssid[0];

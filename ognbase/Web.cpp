@@ -443,14 +443,14 @@ void Web_setup(ufo_t* this_aircraft)
              "hidepass",
 
              (ogn_sleepmode == 0 ? "selected" : ""), "Disabled",
-             (ogn_sleepmode == 1 ? "selected" : ""), "Full",
-             (ogn_sleepmode == 2 ? "selected" : ""), "without GPS",
+             (ogn_sleepmode == 1 ? "selected" : ""), "Enabled",
+             (ogn_sleepmode == 2 ? "selected" : ""), "Follow Remote",
 
              (zabbix_enable == 0 ? "selected" : ""), "Disabled",
              (zabbix_enable == 1 ? "selected" : ""), "Enabled",
 
-             String(ogn_rxidle),
-             String(ogn_wakeuptimer),
+             String(ogn_rxidle/60),
+             String(ogn_wakeuptimer/60),
              String(ogn_morning),
              String(ogn_evening),
 
@@ -625,12 +625,12 @@ void Web_setup(ufo_t* this_aircraft)
             zabbix_enable = request->getParam("zabbix_trap_en")->value().toInt();
 
         if (request->hasParam("ogn_sleep_time")) {
-            ogn_rxidle = request->getParam("ogn_sleep_time")->value().toInt();
-            if (ogn_rxidle < 600)  ogn_rxidle = 600;
+            ogn_rxidle = 60 * request->getParam("ogn_sleep_time")->value().toInt();
+            if (ogn_rxidle != 0 && ogn_rxidle < 600)  ogn_rxidle = 600;
         }
         if (request->hasParam("ogn_wakeup_time")) {
-            ogn_wakeuptimer = request->getParam("ogn_wakeup_time")->value().toInt();
-            if (ogn_wakeuptimer < 600)  ogn_wakeuptimer = 600;
+            ogn_wakeuptimer = 60 * request->getParam("ogn_wakeup_time")->value().toInt();
+            if (ogn_wakeuptimer != 0 && ogn_wakeuptimer < 600)  ogn_wakeuptimer = 600;
         }
 
         if (request->hasParam("ogn_morning")) {
@@ -704,9 +704,13 @@ void Web_loop(void)
         values = remote_sats;   // was: power
 #endif
         values += "_";
-        values += numseen_1hr;     // was: RF_last_rssi
+        if (ognrelay_base)
+            values += numseen_1hr;     // was: RF_last_rssi
+        else
+            values += "--";
         values += "_";
-        uint16_t reported_uptime = (ognrelay_base && ognrelay_time) ? remote_uptime : uptime;
+        uint16_t reported_uptime =
+            (ognrelay_base && ognrelay_time && time_synched) ? remote_uptime : uptime;
         if (reported_uptime < 60) {
             values += reported_uptime;
             values += "m";

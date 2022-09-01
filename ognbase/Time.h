@@ -33,11 +33,12 @@ extern uint16_t bad_packets_recvd;
 extern uint16_t time_packets_sent;
 extern uint16_t ack_packets_recvd;
 extern uint16_t sync_restarts;
+extern uint32_t sleep_when, sleep_length;
 
 extern uint32_t remote_traffic, remote_other;
 extern uint16_t remote_timesent, remote_bad;
 extern uint8_t remote_sats, remote_pctrel, remote_ack, remote_restarts, remote_round;
-extern uint16_t uptime, remote_uptime;
+extern uint16_t uptime, remote_uptime, remote_sleep_length;
 extern float remote_voltage;
 extern uint16_t packets_per_minute;
 extern time_t last_hour;

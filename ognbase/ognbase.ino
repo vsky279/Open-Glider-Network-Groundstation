@@ -229,11 +229,15 @@ void setup()
   if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER
       && deep_sleep_counter > 0 && deep_sleep_counter < 24) {
       /* yet more hour(s) to sleep */
-      delay(500);
       Serial.print(F("----> ")); Serial.print(deep_sleep_counter); Serial.println(F(" more hours to sleep"));
+      delay(600);
 #ifdef TBEAM
+      GNSS_sleep();
+      delay(600);
+      turn_GNSS_off();   // because GNSS_sleep() didn't always work
       turn_LED_off();
 #endif
+      delay(600);
       --deep_sleep_counter;
       esp_sleep_enable_timer_wakeup(3600*1000000ULL);
 //      esp_sleep_enable_ext0_wakeup(GPIO_NUM_26,1);           // which button is this?
@@ -580,8 +584,8 @@ void ground()
           RSM_ExportAircraftPosition();
         }
         //Serial.println("Calling APRS_Export...");
-        disp = "Calling APRS_Export...";
-        OLED_write(disp, 0, 24, true);
+        //disp = "Calling APRS_Export...";
+        //OLED_write(disp, 0, 24, true);
         OGN_APRS_Export();
       }
       // OLED_info(position_is_set);
@@ -593,8 +597,8 @@ void ground()
     if (TimeToKeepAliveOGN() && ground_registred == 1)
     {
       //Serial.println("keepalive...");
-      disp = "keepalive OGN...";
-      OLED_write(disp, 0, 24, true);
+      //disp = "keepalive OGN...";
+      //OLED_write(disp, 0, 24, true);
       OGN_APRS_KeepAlive();
       ExportTimeKeepAliveOGN = seconds();
     }
@@ -657,7 +661,7 @@ void ground()
 
 //Serial.println("sleep check...");
 
-  if (ogn_sleepmode)
+  if (ogn_sleepmode > 0)
       sleep_check();
 
 //Serial.println("FANET check...");
@@ -732,31 +736,6 @@ sleep_check()
             ever_synched = true;
     }
 
-    bool low_bat = false;
-    static uint32_t low_bat_time = 0;
-#if defined(TBEAM)
-    if (Battery_voltage() < 3.65)
-    {
-        low_bat = true;
-        if (low_bat_time == 0) {
-            Serial.println("local battery voltage < 3.65");
-            low_bat_time = millis();
-        }
-//        bool gnss_ready = true;
-//        if (ogn_gnsstime)
-//            gnss_ready = isValidFix();
-//        if (! gnss_ready)      // UBLOX NEO-6M refuses to sleep until it has a fix
-//            low_bat = false;
-    }
-#endif
-    if (ognrelay_base && ognrelay_time) {
-        if (remote_voltage > 0.0 && remote_voltage < 3.65) {
-            low_bat = true;
-            if (low_bat_time == 0)
-                low_bat_time = millis();
-        }
-    }
-
 static uint32_t oldsecs = 0;
 if (seconds() > oldsecs+30) {
 oldsecs = seconds();
@@ -776,66 +755,125 @@ Serial.printf("ExportTimeSleep=%d, seconds=%d\r\n", ExportTimeSleep, seconds());
         seconds_into_hour = ThisAircraft.minute * 60;
     }
 
-    bool time_to_sleep = false;
-    if (ogn_rxidle > 0 && TimeToSleep())
-        time_to_sleep = true;
-    else if (ogn_rxidle == 0 && havetime && localtime >= ogn_evening)
-        time_to_sleep = true;
-    /* even if remote battery is low, stay awake long enough to ensure */
-    /*  base station has learned about it, so will sleep at same time. */
-    else if (low_bat && low_bat_time > 0 && millis() > low_bat_time + 42000)
-        time_to_sleep = true;
+    bool low_bat = false;
+    static uint32_t low_bat_time = 0;
+#if defined(TBEAM)
+    if (Battery_voltage() < 3.65) {
+        low_bat = true;
+        if (low_bat_time == 0) {
+            Serial.println("local battery voltage < 3.65");
+            low_bat_time = millis();
+        }
+//        bool gnss_ready = true;
+//        if (ogn_gnsstime)
+//            gnss_ready = isValidFix();
+//        if (! gnss_ready)      // UBLOX NEO-6M refuses to sleep until it has a fix
+//            low_bat = false;
+    }
+#endif
 
-    if (! time_to_sleep)
+    bool will_sleep = false;
+
+    if (ognrelay_base && ognrelay_time && ogn_sleepmode == 2) {
+
+        /* base follows remote */
+        if (remote_sleep_length > 0) {
+            will_sleep = true;
+            sleep_length = 60 * remote_sleep_length;
+Serial.printf("follow remote_sleep_length=%d\r\n", remote_sleep_length);
+        }
+
+    } else {
+
+        /* sleep if no traffic */
+        if (ogn_rxidle > 0 && TimeToSleep())
+            will_sleep = true;
+
+        /* sleep if evening has come */
+        if (ogn_rxidle == 0 && havetime && localtime >= ogn_evening)
+            will_sleep = true;
+    }
+
+    /* sleep if battery is low, and has been low */
+    if (low_bat && millis() > low_bat_time + 15000)
+        will_sleep = true;
+
+    if (! will_sleep)
         return;
+
+    if (sleep_when == 0)
+        sleep_when = millis();
 
 if (havetime)
 Serial.printf("localtime=%d, ThisAircraft.minute=%d, seconds_into_hour=%d\r\n",
 localtime, ThisAircraft.minute, seconds_into_hour);
 
-    int sleep_length = ogn_wakeuptimer;
-    int sleephours = 0;
+    if (sleep_length == 0) {
 
-    /* if low battery, sleep for longer to allow more charging */
-    if (low_bat && sleep_length < 5400)
-       sleep_length += ogn_rxidle + ogn_wakeuptimer;
+        sleep_length = ogn_wakeuptimer;
+        int sleephours = 0;
+
+        /* if low battery, sleep for longer to allow more charging */
+        if (low_bat && sleep_length < 5400)
+           sleep_length += ogn_rxidle + ogn_wakeuptimer;
 
 Serial.printf("provisional sleep_length=%d\r\n", sleep_length);
 
-    /* if clock is valid, tie wakeup time to clock time */
-    if (havetime) {
+        /* if clock is valid, tie wakeup time to clock time */
+        if (havetime) {
 
-      if (ogn_wakeuptimer == 0    /* always sleep until next morning */
-           || (localtime >= ogn_evening || (low_bat && localtime >= ogn_evening - 4))) {
+          if (ogn_wakeuptimer == 0    /* always sleep until next morning */
+               || (localtime >= ogn_evening || (low_bat && localtime >= ogn_evening - 4))) {
 
-        /* sleep until next morning */
-        sleephours = ogn_morning - localtime;
-        if (sleephours < 0)       /* not yet past midnight */
-            sleephours += 24;
-        if (low_bat && localtime >= ogn_evening - 2)
-            sleephours += 2;      /* no time to charge much today, sleep late tomorrow */
-        sleep_length = sleephours * 3600 - seconds_into_hour;
+            /* sleep until next morning */
+            sleephours = ogn_morning - localtime;
+            if (sleephours < 0)       /* not yet past midnight */
+                sleephours += 24;
+            if (low_bat && localtime >= ogn_evening - 2)
+                sleephours += 2;      /* no time to charge much today, sleep late tomorrow */
+            sleep_length = sleephours * 3600 - seconds_into_hour;
 
-      } else {   /* round up, to top of hour or half-past */
+          } else {   /* round up, to top of hour or half-past */
 
-        sleep_length += 1800;
-        sleep_length -= (seconds_into_hour + sleep_length) % 1800;
+            sleep_length += 1800;
+            sleep_length -= (seconds_into_hour + sleep_length) % 1800;
 
-      }
+          }
 
-      if (sleep_length < 600)     /* shouldn't happen */
-          sleep_length += 1800;
+          if (sleep_length < 600)     /* shouldn't happen */
+              sleep_length += 1800;
 
-      /* try and arrange so both stations will wake up somewhat _before_ top
-         of the hour thus will later both start sleep within the same half-hour */
-      if (ogn_rxidle % 1800 == 0)
-          sleep_length -= 180;
+          /* try and arrange so both stations will wake up somewhat _before_ top
+             of the hour thus will later both start sleep within the same half-hour */
+          if (ogn_rxidle % 1800 == 0)
+              sleep_length -= 180;
 
-Serial.printf("sleephours=%d, sleep_length=%d\r\n", sleephours, sleep_length);
+    Serial.printf("sleephours=%d, sleep_length=%d\r\n", sleephours, sleep_length);
+        }
+
+    }
+
+    /* delay sleep long enough to report intention to OGN */
+    int min_delay = 2*APRS_STATUS_REC + 42;
+    if (ognrelay_base && ognrelay_time)
+        min_delay *= 2;
+    int sleep_delay = (millis() - sleep_when) / 1000;
+    if (sleep_delay < min_delay)
+        return;
+
+    /* adjust sleep length for the delay */
+    if (sleep_length > sleep_delay)
+        sleep_length -= sleep_delay;
+
+    if (sleep_length < 240) {
+        /* don't bother to sleep less than 4 minutes */
+        sleep_when = 0;
+        sleep_length = 0;
+        ExportTimeSleep = seconds();
+        return;
     }
 
     /* split into hour-long naps since ESP32 has problems sleeping for much longer */
-
     uint32_t hourcounter = 0;
     if (sleep_length > 3839) {
         hourcounter = sleep_length / 3600;      /* hours */
@@ -847,12 +885,6 @@ Serial.printf("sleephours=%d, sleep_length=%d\r\n", sleephours, sleep_length);
     }
 Serial.printf("hourcounter=%d, sleep_length=%d\r\n", hourcounter, sleep_length);
 
-    if (sleep_length < 240) {
-        /* don't bother to sleep less than 4 minutes */
-        ExportTimeSleep = seconds();
-        return;
-    }
-
     OLED_enable();
 
     OLED_write("SLEEP...", 0, 24, true);
@@ -862,7 +894,7 @@ Serial.printf("hourcounter=%d, sleep_length=%d\r\n", hourcounter, sleep_length);
     if (ogn_gnsstime) {
         GNSS_sleep();
         delay(600);
-        turn_GNSS_off(); // may be necessary if GNSS_sleep() doesn't work
+        turn_GNSS_off();   // because GNSS_sleep() didn't always work
     }
 #endif 
 

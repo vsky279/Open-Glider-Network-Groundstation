@@ -194,6 +194,7 @@ Serial.println("getting server name from logresp...");
 //                    p[9] = '\0';
 //                    (void) strcpy(ogn_server_name_buf, p);
                     (void) strcpy(ogn_server_name_buf, "GLIDERN0");
+                    // other server names seem to cause the packet to not be reported by OGN to clients!
                     //ogn_server_name_buf[7] = p[14];
                     ogn_server_name = ogn_server_name_buf;
                     got_ogn_server_name = true;
@@ -565,12 +566,12 @@ bool OGN_APRS_Status(ufo_t* this_aircraft)
     //APRS_STAT.realtime_clock = String(0.0);
 
     // standalone station reports local voltage
-    if (!ognrelay_time)
-        remote_voltage = Battery_voltage();
-    // else remote_voltage is already holding voltage reported from remote station
-    int v = (int)(10.0 * remote_voltage + 0.5);
+    int v;
+    if (ognrelay_time)
+        v = (int)(10.0 * remote_voltage + 0.5);  /* may be wrong if time not synched yet */
+    else
+        v = (int)(10.0 * Battery_voltage() + 0.5);
     APRS_STAT.board_voltage  = String(v/10) + "." + String(v%10) + "V";
-    /* remote_voltage may be wrong if time not synched yet */
 
     String StatusPacket = APRS_STAT.origin;
     StatusPacket += ">OGNSDR,TCPIP*,qAC,";
@@ -579,26 +580,47 @@ bool OGN_APRS_Status(ufo_t* this_aircraft)
     StatusPacket += APRS_STAT.timestamp;
     StatusPacket += " ";
     StatusPacket += APRS_STAT.platform;
-    StatusPacket += " ";
-    StatusPacket += APRS_STAT.board_voltage;
-    // added packets per minute and IDs seen in last hour
-    StatusPacket += " ";
-    StatusPacket += String(packets_per_minute) + "/min";
-    StatusPacket += " ";
-    StatusPacket += String(numvisible) + "/" + String(numseen_1hr) + "Acfts[1h]";
+    if ((! ognrelay_time) || time_synched) {
+        StatusPacket += " ";
+        StatusPacket += APRS_STAT.board_voltage;
+        if (sleep_length == 0 && remote_sleep_length == 0) {
+            StatusPacket += " ";
+            // added packets per minute and IDs seen in last hour
+            StatusPacket += String(packets_per_minute) + "/min ";
+            StatusPacket += String(numvisible) + "/" + String(numseen_1hr) + "Acfts[1h]";
+        }
+    }
     StatusPacket += " ";
     if (ognrelay_time) {
-        StatusPacket += String(remote_sats);
-        StatusPacket += "sat ";
-        StatusPacket += time_synched? "time_synched " : "time_not_synched ";
+        if (time_synched) {
+            StatusPacket += String(remote_sats);
+            StatusPacket += "sat time_synched ";
+        } else {
+            StatusPacket += "time_not_synched ";
+        }
 #if defined(TBEAM)
     } else if (ogn_gnsstime) {
         StatusPacket += String(gnss.satellites.value());
         StatusPacket += "sat ";
 #endif
     }
-    StatusPacket += String(ognrelay_time ? remote_uptime : uptime);
-    StatusPacket += "_m_uptime\r\n";
+    if (ognrelay_time && time_synched) {
+        if (remote_sleep_length == 0) {
+            StatusPacket += String(remote_uptime);
+            StatusPacket += "_m_r_uptime\r\n";
+        } else {
+            StatusPacket += String(remote_sleep_length);
+            StatusPacket += "_m_r_sleep\r\n";
+        }
+    } else {
+        if (sleep_length == 0) {
+            StatusPacket += String(uptime);
+            StatusPacket += "_m_uptime\r\n";
+        } else {
+            StatusPacket += String(sleep_length/60);
+            StatusPacket += "_m_sleep\r\n";
+        }
+    }
     Serial.println("");
     Serial.println(StatusPacket.c_str());
     Serial.println("");
