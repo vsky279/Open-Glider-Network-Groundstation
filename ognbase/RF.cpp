@@ -61,7 +61,11 @@ size_t (* protocol_encode)(void *, ufo_t *);
 bool   (* protocol_decode)(void *, ufo_t *, ufo_t *);
 
 static Slots_descr_t Time_Slots, *ts;
+#ifndef USE_BASICMAC
 static uint8_t       RF_timing = RF_TIMING_INTERVAL;   // default but we won't use it
+#else
+static uint8_t       RF_timing = 0;  // default but we won't use it
+#endif
 
 #if defined(TBEAM)
 extern const gnss_chip_ops_t *gnss_chip;
@@ -171,10 +175,14 @@ byte RF_setup(void)
 
 // >>> the new time slots code currently does NOT use these values.
 
+#ifndef USE_BASICMAC
         RF_timing         = p->tm_type;
+#endif
 
         ts                = &Time_Slots;
+#ifndef USE_BASICMAC
         ts->air_time      = p->air_time;
+#endif
         ts->interval_min  = p->tx_interval_min;
         ts->interval_max  = p->tx_interval_max;
         ts->interval_mid  = (p->tx_interval_max + p->tx_interval_min) / 2;

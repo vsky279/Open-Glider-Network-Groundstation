@@ -53,8 +53,10 @@ const rf_proto_desc_t legacy_proto_desc = {
     .whitening = RF_WHITENING_MANCHESTER,
     .bandwidth = RF_RX_BANDWIDTH_SS_125KHZ,
 
+#ifndef USE_BASICMAC
   .air_time        = 5,   // LEGACY_AIR_TIME,
   .tm_type         = RF_TIMING_2SLOTS_PPS_SYNC,  
+#endif
     .tx_interval_min = LEGACY_TX_INTERVAL_MIN,
     .tx_interval_max = LEGACY_TX_INTERVAL_MAX
 //  .slot0           = {400,  800},
