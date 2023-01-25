@@ -408,7 +408,7 @@ bool RF_Transmit(size_t size, bool wait)
             rf_chip->channel(rxchan);
 
 // Serial.println(">");
-Serial.printf("tx on ch %d at %d s + %d ms\r\n", txchan, OurTime, txms-ref_time_ms);
+//Serial.printf("tx on ch %d at %d s + %d ms\r\n", txchan, OurTime, txms-ref_time_ms);
 
             return true;
         }
@@ -438,8 +438,8 @@ bool RF_Receive(void)
 
         rval = rf_chip->receive();
 
-if (rval)
-Serial.printf("rx on ch %d at %d s + %d ms\r\n", rxchan, OurTime, millis()-ref_time_ms);
+//if (rval)
+//Serial.printf("rx on ch %d at %d s + %d ms\r\n", rxchan, OurTime, millis()-ref_time_ms);
 
     }
 

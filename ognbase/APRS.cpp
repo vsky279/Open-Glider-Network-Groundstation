@@ -43,7 +43,7 @@ int  last_packet_time = 0; // seconds
 int  ap_uptime        = 0;
 
 char ogn_server_name_buf[12];
-const char *ogn_server_name = "GLIDERN0";
+const char *ogn_server_name = "GLIDERNx";
 bool got_ogn_server_name = false;
 
 #define seconds() (millis() / 1000)
@@ -185,47 +185,59 @@ int OGN_APRS_check_messages(void)
         }
 
       if (reg == 1 && recStatus > 41) {
-        if (strncmp(RXbuffer,"# logresp",9) == 0) {
-Serial.println("getting server name from logresp...");
+        if (use_glidern) {
+          if (strncmp(RXbuffer,"# logresp",9) == 0) {
+//Serial.println("getting server name from logresp...");
             char *p;
             if ((p=strstr(RXbuffer,"server GLIDERN")) != NULL) {
                 if (strlen(p) > 14 && p[14] >= '0' && p[14] <= '9') {
-//                    p += 7;
-//                    p[9] = '\0';
-//                    (void) strcpy(ogn_server_name_buf, p);
-                    (void) strcpy(ogn_server_name_buf, "GLIDERN0");
-                    // other server names seem to cause the packet to not be reported by OGN to clients!
+                    p += 7;
+                    p[9] = '\0';
+                    (void) strcpy(ogn_server_name_buf, p);
                     //ogn_server_name_buf[7] = p[14];
                     ogn_server_name = ogn_server_name_buf;
                     got_ogn_server_name = true;
-//Serial.print("server name from logresp: ");
-//Serial.println(ogn_server_name);
+Serial.print("server name from logresp: ");
+Serial.println(ogn_server_name);
                 }
             }
+          }
+        } else {  // not use_glidern
+          // other server names seem to cause the packet to not be reported by OGN to clients!
+          (void) strcpy(ogn_server_name_buf, "GLIDERN0");
+          ogn_server_name = ogn_server_name_buf;
+          got_ogn_server_name = true;
         }
       } else if (reg < 0 && recStatus > 57) {   /* not a registration message */
-        if (strncmp(RXbuffer,"# aprsc",7) == 0) {
+        if (use_glidern) {
+          if (strncmp(RXbuffer,"# aprsc",7) == 0) {
+//Serial.println("getting server name from aprsc...");
             char *p;
             if ((p=strstr(RXbuffer,"GMT GLIDERN")) != NULL) {
                 if (strlen(p) > 11 && p[11] >= '0' && p[11] <= '9') {
-//                    p += 4;
-//                    if (p[8] == ' ')
-//                        p[8] = '\0';
-//                    else
-//                        p[9] = '\0';
-//                    (void) strcpy(ogn_server_name_buf, p);
-                    (void) strcpy(ogn_server_name_buf, "GLIDERN0");
+                    p += 4;
+                    if (p[8] == ' ')
+                        p[8] = '\0';
+                    else
+                        p[9] = '\0';
+                    (void) strcpy(ogn_server_name_buf, p);
                     //ogn_server_name_buf[7] = p[11];
                     ogn_server_name = ogn_server_name_buf;
                     got_ogn_server_name = true;
-//Serial.print("server name from aprsc: ");
-//Serial.println(ogn_server_name);
+Serial.print("server name from aprsc: ");
+Serial.println(ogn_server_name);
                 }
             }
+          }
+        } else {  // not use_glidern
+          // other server names seem to cause the packet to not be reported by OGN to clients!
+          (void) strcpy(ogn_server_name_buf, "GLIDERN0");
+          ogn_server_name = ogn_server_name_buf;
+          got_ogn_server_name = true;
         }
       }
 
-    }
+    }  // if (recStatus > 0)
 
     if (seconds() - last_packet_time > 60)
     {
@@ -264,10 +276,11 @@ void OGN_APRS_Export(void)
                 continue;
             }
 
-            if ((Container[i].stealth && !ogn_istealthbit) || (Container[i].no_track && !ogn_itrackbit)) {
+            // if ((Container[i].stealth && !ogn_istealthbit) || (Container[i].no_track && !ogn_itrackbit)) {
+            if (Container[i].no_track && !ogn_itrackbit) {
                 Container[i].waiting = false;
                 Container[i].timereported = OurTime;
-                Serial.println("... skipping stealth packet");
+                Serial.println("... skipping no-track packet");
                 continue;
             }
 
@@ -322,12 +335,6 @@ void OGN_APRS_Export(void)
             APRS_AIRC.heading      = zeroPadding(String(int(Container[i].course)), 3);
             APRS_AIRC.ground_speed = zeroPadding(String(int(Container[i].speed)), 3);
 
-
-            APRS_AIRC.sender_details = zeroPadding(String((Container[i].aircraft_type << 2)
-                                                     | (Container[i].stealth << 7)
-                                                     | (Container[i].no_track << 6)
-                                                     | (Container[i].addr_type), HEX), 2);
-
             APRS_AIRC.symbol_table = String(symbol_table[Container[i].aircraft_type]);
             APRS_AIRC.symbol       = String(symbol[Container[i].aircraft_type]);
 
@@ -346,22 +353,52 @@ void OGN_APRS_Export(void)
                 APRS_AIRC.climbrate = zeroPadding(String(int(Container[i].vs)), 3);
 
             String AircraftPacket;
+            uint8_t addr_type = Container[i].addr_type;
 
-            if (Container[i].addr_type == 1)
+            if (addr_type == 1)
                 AircraftPacket = "ICA";
-            else if (Container[i].addr_type == 2)
+            else if (addr_type == 2)
                 AircraftPacket = "FLR";
-            else if (Container[i].addr_type == 3)
+            else if (addr_type == 3)
                 AircraftPacket = "OGN";
-            else if (Container[i].addr_type == 4)
-                AircraftPacket = "P3I";
-            else if (Container[i].addr_type == 5)
-                AircraftPacket = "FNT";
-            else // (Container[i].addr_type == 0 || Container[i].addr_type > 5)
-                AircraftPacket = "RANDOM";
+#if 1
+            else if (Container[i].protocol == RF_PROTOCOL_LEGACY) {
+                // assume these mark FLARM messages relayed by SoftRF:
+                if (addr_type == 4) {
+                    AircraftPacket = "ICZ";             // was ICAO
+                    addr_type = 1;
+                } else if (addr_type == 7) {
+                    AircraftPacket = "FLZ";             // was FLARM
+                    addr_type = 2;
+                } else if (addr_type == 5) {
+                    AircraftPacket = "RNZ";             // was random
+                    addr_type = 0;
+                } else if (addr_type == 6) {
+                    AircraftPacket = "ANZ";             // was anonymous
+                    addr_type = 3;
+                } else {                                // shouldn't happen
+                    AircraftPacket = "RND";
+                    addr_type = 0;
+                }
+            }
+#endif
+            else {
+                if (addr_type == 4)
+                    AircraftPacket = "P3I";
+                else if (addr_type == 5)
+                    AircraftPacket = "FNT";
+                else
+                    AircraftPacket = "RND";
+                addr_type = 0;
+            }
+
+            APRS_AIRC.sender_details = zeroPadding(String((Container[i].aircraft_type << 2)
+                                                     | (Container[i].stealth << 7)
+                                                     | (Container[i].no_track << 6)
+                                                     | (addr_type & 0x3), HEX), 2);
+            APRS_AIRC.sender_details.toUpperCase();
 
             AircraftPacket += APRS_AIRC.callsign;
-            APRS_AIRC.sender_details.toUpperCase();
 
             AircraftPacket += ">OGFLR,qAS,";
             AircraftPacket += APRS_AIRC.rec_callsign;
@@ -496,7 +533,9 @@ bool OGN_APRS_Location(ufo_t* this_aircraft)
 
         String RegisterPacket = "";
         RegisterPacket += APRS_REG.origin;
-        RegisterPacket += ">OGNSDR,TCPIP*,qAC,";
+        RegisterPacket += ">";
+        RegisterPacket += TOCALL;
+        RegisterPacket += ",TCPIP*,qAC,";
         RegisterPacket += APRS_REG.callsign;
         RegisterPacket += ":/";
         RegisterPacket += APRS_REG.timestamp;
@@ -535,6 +574,7 @@ void OGN_APRS_KeepAlive(void)
 }
 
 // LKHS>APRS,TCPIP*,qAC,GLIDERN2:>211635h v0.2.6.ARM CPU:0.2 RAM:777.7/972.2MB NTP:3.1ms/-3.8ppm 4.902V 0.583A +33.6C
+// LKHS>OGNSXR,TCPIP*,qAC,GLIDERN0:>211635h vMB101-ESP32-OGNbase 3.9V 55/min 2/2Acfts[1h] 8sat time_synched 120_m_r_uptime
 
 bool OGN_APRS_Status(ufo_t* this_aircraft)
 {
@@ -559,9 +599,14 @@ bool OGN_APRS_Status(ufo_t* this_aircraft)
     }
 
     /*issue17*/ /*v0.1.0.20-ESP32*/
-    APRS_STAT.platform      = "v";
-    APRS_STAT.platform      += SOFTRF_FIRMWARE_VERSION;
-    APRS_STAT.platform      += "-ESP32-OGNbase";
+    APRS_STAT.platform = "v";
+    APRS_STAT.platform += SOFTRF_FIRMWARE_VERSION;
+#if defined(ESP32)
+    APRS_STAT.platform += "-ESP32";
+#endif
+//  APRS_STAT.platform += rf_chip->name;
+//   - not useful, should report the RF chip in REMOTE station.
+    APRS_STAT.platform += "-OGNbase";
 
     //APRS_STAT.realtime_clock = String(0.0);
 
@@ -571,18 +616,23 @@ bool OGN_APRS_Status(ufo_t* this_aircraft)
         v = (int)(10.0 * remote_voltage + 0.5);  /* may be wrong if time not synched yet */
     else
         v = (int)(10.0 * Battery_voltage() + 0.5);
-    APRS_STAT.board_voltage  = String(v/10) + "." + String(v%10) + "V";
+    if (v > 0)
+        APRS_STAT.board_voltage  = String(v/10) + "." + String(v%10) + "V";
 
     String StatusPacket = APRS_STAT.origin;
-    StatusPacket += ">OGNSDR,TCPIP*,qAC,";
+    StatusPacket += ">";
+    StatusPacket += TOCALL;
+    StatusPacket += ",TCPIP*,qAC,";
     StatusPacket += APRS_STAT.callsign;
     StatusPacket += ":>";
     StatusPacket += APRS_STAT.timestamp;
     StatusPacket += " ";
     StatusPacket += APRS_STAT.platform;
     if ((! ognrelay_time) || time_synched) {
-        StatusPacket += " ";
-        StatusPacket += APRS_STAT.board_voltage;
+        if (v > 0) {
+            StatusPacket += " ";
+            StatusPacket += APRS_STAT.board_voltage;
+        }
         if (sleep_length == 0 && remote_sleep_length == 0) {
             StatusPacket += " ";
             // added packets per minute and IDs seen in last hour

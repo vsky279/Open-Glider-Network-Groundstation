@@ -93,7 +93,7 @@ void refresh_id(ufo_t *fop)
     if (p->addr != fop->addr)   /* should not happen */
         return;
     p->timestamp = fop->timestamp;
-    p->invisible = (fop->stealth || fop->no_track);
+    p->invisible = (/* fop->stealth || */ fop->no_track);
     if (p == id_list_head)      /* already at top of list */
         return;
     // de-link from list
@@ -120,7 +120,7 @@ void add_id(ufo_t *fop)
     fop->listed = p;
     p->addr = fop->addr;
     p->timestamp = fop->timestamp;
-    p->invisible = (fop->stealth || fop->no_track);
+    p->invisible = (/* fop->stealth || */ fop->no_track);
 }
 
 /* count how many aircraft were seen in the last hour */
@@ -259,8 +259,8 @@ void ParseData()
     // memset(fo.raw, 0, sizeof(fo.raw));
     memcpy(fo.raw, RxBuffer, rx_size);
 
-legacy_packet_t* p = (legacy_packet_t *) fo.raw;
-Serial.printf("parsing packet: %X %06X\r\n", p->_unk0, p->addr);
+//legacy_packet_t* p = (legacy_packet_t *) fo.raw;
+//Serial.printf("parsing packet: %X %06X\r\n", p->_unk0, p->addr);
 
     if (time_sync_pkt(fo.raw)) {
 //Serial.println("handling time-sync packet");

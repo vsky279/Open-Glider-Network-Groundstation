@@ -14,6 +14,7 @@ extern bool    ogn_mobile;
 extern String   ogn_callsign;
 extern String   ogn_server;
 extern uint16_t ogn_port;
+extern bool     use_glidern;
 
 extern uint8_t  ogn_band;
 extern uint8_t  ogn_protocol_1;

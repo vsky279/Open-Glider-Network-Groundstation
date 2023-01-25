@@ -3,8 +3,7 @@ Preliminary Documentation for OGNbase
 
 By Moshe Braner
 
-This version last updated April 25, 2022
-to fit software version MB06 based on V0.1.0-28
+This version last updated Jan 25 2023 to fit software version MB101
 
 
 HISTORY
@@ -55,7 +54,7 @@ Note: One needs to install different binaries on the two hardware models, due to
 
 Other hardware models could potentially be used, but have not been tested at this point.  See the long list of models that SoftRF runs on:  https://github.com/lyusupov/SoftRF#models
 
-The remote station of a relay setup can run on solar power.  It needs a (lithium ion) battery, and the T-Beam or Paxcounter include a circuit for regulating the charging of the battery from a 5V source via the USB jack.  A step-down module from the voltage of the solar panel to 5 volts should be placed between the solar panel and the USB jack.  A solar charging current of only 100 mA or so during sunlight hours should suffice, especially if the software is set up to put the processor into sleep mode at night or when there is no glider traffic.
+The remote station of a relay setup can run on solar power.  The T-Beam needs an 18650 lithium ion battery, and includes a circuit for regulating the charging of the battery from a 5V source via the USB jack. Alternatively, can power the T-Beam or Paxcounter using a 5V USB "power bank", which in turn is charged from the solar panel, but then the OGNbase software cannot detect a medium-low-battery situation.  A step-down module from the voltage of the solar panel to 5 volts should be placed between the solar panel and the USB charging jack.  A solar charging current of only 100 mA or so during sunlight hours should suffice, especially if the software is set up to put the processor into sleep mode at night or when there is no glider traffic.
 
 A better antenna is needed than the tiny whip that is included with these boards.  See OGN guide pages for recommendations.  For example:  https://www.amazon.com/Signalplus-Omni-Directional-Antenna-824-960MHZ-Outdoor-Verizon/dp/B0917CPP84
 For a standalone station, or the remote station of a relay setup, an omnidirectional antenna is needed, to be able to receive signals from gliders in any direction.  For a base station with one remote station, a directional antenna pointed towards the remote station may work better than an omnidirectional once.  Either way, the antenna is much more expensive than the circuit board!  Maybe if the "Helium mining" craze dies out, there will be used antennas on the market.
@@ -320,7 +319,7 @@ OGNbase receives FLARM signals as they arrive, and keeps a list of aircraft alre
 
 The following aircraft are NOT reported to OGN:
 * those who have been last heard from more than 60 seconds ago ("expired")
-* those who have the stealth or no-track flag set, subject to the OGNbase setting to ignore the flag
+* those who have the no-track flag set, subject to the OGNbase setting to ignore the flag
 * those who are farther away from the station than the "range" setting
 * FLARM packets that look like GNSS noise or corrupted transmission - location shifted too far too fast
 
@@ -368,3 +367,35 @@ Once the base station gets the time from the remote station, it can keep its own
 Time packets are distinguished from traffic reports by a specific "aircraft ID", and by a few other bits in the first (unencrypted) word of the FLARM-protocol radio packet set to a specific value (0xC), different from FLARM traffic packets (where those bits are all zeros) and from relayed traffic packets (where they hold one of two other values, as mentioned above).  Time packets are also validated using a hash based on the "relay key" known to both the remote and base stations.
 
 Be patient, it may take a minute or even several for the time-relay to be established.  During that time traffic packets are not relayed.  Once time-synch is achieved, the base station will display the correct UTC time on the OLED display, and report on its web page the number of GNSS satellites received by the remote station.
+
+
+Status messages sent to OGN
+
+You can monitor the operation of your station remotely via the internet.  Every few minutes the base station sends a "status" message to the OGN servers.  These messages are passed to clients that request them.  For example, if you use gliderradar.com, zoom in enough, select your station, and click on "raw packets", you can see the recent status (and position) messages from that station.  You can bookmark the final URL, for example:  https://www.gliderradar.com/views/raw.php?id=3342&imperialUnits=1
+
+The status messages from OGNbase include the following information:  For example:
+K2B9>OGNSXR,TCPIP*,qAC,GLIDERN0:>235055h vMB101-ESP32-OGNbase 3.7V 0/min 0/0Acfts[1h] 8sat time_synched 120_m_r_uptime
+Where the fields are:
+   235055h              time stamp
+   vMB101-ESP32-OGNbase software version and type of hardware
+   3.7V                 battery voltage (in remote relay station if used)
+   0/min                traffic packets received in the last minute
+   0/0Acfts[1h]         number of unique aircraft heard from in the last hour
+   8sat                 number of GNSS satellites received (in remote relay station)
+   time_synched         the base station is receiving GNSS time from the remote relay station
+   120_m_r_uptime       the remote relay station has been "up" for (approximately) 120 minutes
+Data fields may also include:
+   0_m_r_uptime         the remote relay station has been "up" for less than 10 minutes
+   331_m_uptime         the base station has been "up" for 331 minutes
+   time_not_synched     the base station is not receiving GNSS time from the remote relay station
+   1325_m_sleep         the base station will soon go to sleep for 1325 minutes
+   1325_m_r_sleep       the remote relay station will soon go to sleep for 1325 minutes
+
+Radio packets relayed by SoftRF
+
+SoftRF (from version MB09k) relays radio packets from landed aircraft.  To avoid recursive relaying, it changes the address (ID) type in the packet, to values not otherwise used by FLARM.  OGNbase restores the original address types when it reports the traffic to OGN, but for the callsign prefix it uses ICZ and FLZ instead of ICA and FLR, to mark this traffic.
+
+Compiling OGNbase
+
+At this time I compile it under Ubuntu 20.04 using the Arduino IDE verion 1.8.16, and the ESP32 board support version 2.0.3.  If you use any other versions, especially of the ESP32 support, expect to spend some time fixing library incompatibilities.
+

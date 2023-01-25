@@ -25,6 +25,9 @@
 
 //LKHS>APRS,TCPIP*,qAC,GLIDERN2:/211635h4902.45NI01429.51E&000/000/A=001689
 
+// use something different from OGNSDR - maybe OGNBASE? OGNSFR? OGNSXR?
+#define TOCALL "OGNSXR"
+
 struct aprs_reg_packet
 {
     String origin;

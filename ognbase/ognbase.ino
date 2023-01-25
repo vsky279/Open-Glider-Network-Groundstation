@@ -758,7 +758,7 @@ Serial.printf("ExportTimeSleep=%d, seconds=%d\r\n", ExportTimeSleep, seconds());
     bool low_bat = false;
     static uint32_t low_bat_time = 0;
 #if defined(TBEAM)
-    if (Battery_voltage() < 3.65) {
+    if (Battery_voltage() < 3.65 && Battery_voltage() > 2.0) {
         low_bat = true;
         if (low_bat_time == 0) {
             Serial.println("local battery voltage < 3.65");
@@ -798,15 +798,14 @@ Serial.printf("follow remote_sleep_length=%d\r\n", remote_sleep_length);
     if (low_bat && millis() > low_bat_time + 15000)
         will_sleep = true;
 
-    if (! will_sleep)
+    if ((! will_sleep) && (! low_bat_time)) {  // expect some voltage fluctuations
+        sleep_length = 0;
+        sleep_when = 0;
         return;
+    }
 
     if (sleep_when == 0)
         sleep_when = millis();
-
-if (havetime)
-Serial.printf("localtime=%d, ThisAircraft.minute=%d, seconds_into_hour=%d\r\n",
-localtime, ThisAircraft.minute, seconds_into_hour);
 
     if (sleep_length == 0) {
 
@@ -821,6 +820,9 @@ Serial.printf("provisional sleep_length=%d\r\n", sleep_length);
 
         /* if clock is valid, tie wakeup time to clock time */
         if (havetime) {
+
+Serial.printf("localtime=%d, ThisAircraft.minute=%d, seconds_into_hour=%d\r\n",
+localtime, ThisAircraft.minute, seconds_into_hour);
 
           if (ogn_wakeuptimer == 0    /* always sleep until next morning */
                || (localtime >= ogn_evening || (low_bat && localtime >= ogn_evening - 4))) {

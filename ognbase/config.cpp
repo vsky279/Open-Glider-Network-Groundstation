@@ -57,8 +57,9 @@ bool     ogn_debug       = false;
 uint16_t ogn_debugport   = 12000;
 bool     ogn_itrackbit   = false;
 bool     ogn_istealthbit = false;
-uint16_t  ogn_range       = 100;
+uint16_t  ogn_range      = 100;
 bool     ogn_mobile      = false;
+bool     use_glidern     = false;
 
 //sleep mode
 int8_t   ogn_sleepmode   = 0;
@@ -339,6 +340,8 @@ ogn_protocol_1  = RF_PROTOCOL_LEGACY;  /* override - only protocol supported for
             ogn_itrackbit   = obj["aprs"]["itrackbit"];
             ogn_istealthbit = obj["aprs"]["istealthbit"];
             ogn_range       = obj["aprs"]["range"];
+            if (obj["aprs"]["glidern"])
+                use_glidern     = obj["aprs"]["glidern"];
         }
     }
 
@@ -555,6 +558,7 @@ bool OGN_save_config(void)
     obj["aprs"]["itrackbit"]   = ogn_itrackbit;
     obj["aprs"]["istealthbit"] = ogn_istealthbit;
     obj["aprs"]["range"]       = ogn_range;
+    obj["aprs"]["glidern"]     = use_glidern;
 
     //sleep config
     obj["sleep"]["mode"]        = ogn_sleepmode;
