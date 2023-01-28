@@ -33,7 +33,7 @@
 #include "SoftRF.h"
 #include "logos.h"
 
-SSD1306Wire display(SSD1306_OLED_I2C_ADDR, SDA, SCL, GEOMETRY_128_64, I2C_TWO, 400000);  // ADDRESS, SDA, SCL
+SSD1306Wire display(SSD1306_OLED_I2C_ADDR, HELTEC_OLED_PIN_SDA, HELTEC_OLED_PIN_SCL, GEOMETRY_128_64, I2C_TWO, 400000);  // ADDRESS, SDA, SCL
 
 bool display_init = false;
 bool display_enabled = true;
@@ -72,6 +72,16 @@ const char* ISO3166_CC[] = {
 
 void OLED_setup()
 {
+    Serial.println("Setting up HELTEC OLED display");
+
+    pinMode(HELTEC_OLED_PIN_RST, OUTPUT);
+    digitalWrite(HELTEC_OLED_PIN_RST, HIGH);
+    delay(50);
+    digitalWrite(HELTEC_OLED_PIN_RST, LOW);
+    delay(200);
+    digitalWrite(HELTEC_OLED_PIN_RST, HIGH);
+    delay(50);
+    
     display_init = display.init();
     display.flipScreenVertically();
 }

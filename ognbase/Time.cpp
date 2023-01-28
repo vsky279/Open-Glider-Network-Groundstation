@@ -839,7 +839,8 @@ unsigned int localPort = 2390;      // local port to listen for UDP packets
 //IPAddress timeServer(129, 6, 15, 28); // time.nist.gov NTP server
 IPAddress timeServerIP; // time.nist.gov NTP server address
 //const char* ntpServerName = "time.nist.gov";
-const String ntpServerName_suffix = ".pool.ntp.org";
+// const String ntpServerName_suffix = ".pool.ntp.org";
+const String ntpServerName_suffix = ".cz.pool.ntp.org";
 
 const int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of the message
 

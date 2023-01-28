@@ -336,7 +336,7 @@ void shutdown(const char *msg)
 void loop()
 {
 
-//Serial.println("RF_loop...");
+// Serial.println("RF_loop...");
 
   // Do common RF stuff first
   RF_loop();
@@ -370,8 +370,6 @@ void loop()
 
   // Handle DNS
   WiFi_loop();
-
-//Serial.println("Web_loop...");
 
   // Handle Web
   /*MANU add timer to refresh values*/
@@ -763,15 +761,15 @@ void ground()
      OLED_disable(); 
   }
 
-//Serial.println("check button...");
+// Serial.println("check button...");
 
-#if defined(TBEAM)
-  if (!digitalRead(BUTTON)){
-    while(!digitalRead(BUTTON)){delay(100);}
-    OLED_enable();
-    ExportTimeOledDisable = seconds();
-  }
-#endif
+// #if defined(TBEAM)
+  // if (!digitalRead(BUTTON)){
+    // while(!digitalRead(BUTTON)){delay(100);}
+    // OLED_enable();
+    // ExportTimeOledDisable = seconds();
+  // }
+// #endif
 }
 
 void

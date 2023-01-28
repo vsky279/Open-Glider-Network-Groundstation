@@ -184,9 +184,9 @@ extern Adafruit_NeoPixel strip;
 #define TTGO_V2_PIN_GNSS_PPS    39
 
 // Hardware pin definitions for Heltec and TTGO-V1 LoRa-32 Boards with OLED SSD1306 I2C Display
-#define HELTEC_OLED_PIN_RST     U8X8_PIN_NONE // 16
-#define HELTEC_OLED_PIN_SDA     4
-#define HELTEC_OLED_PIN_SCL     15
+#define HELTEC_OLED_PIN_RST             16
+#define HELTEC_OLED_PIN_SDA             4
+#define HELTEC_OLED_PIN_SCL             15
 
 extern WebServer server;
 

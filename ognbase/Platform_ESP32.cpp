@@ -24,6 +24,7 @@
 #include <soc/rtc_cntl_reg.h>
 #include <soc/adc_channel.h>   /* >>> added */
 #include <soc/efuse_reg.h>
+#include <soc/rtc_wdt.h>
 #include <rom/rtc.h>
 #include <rom/spi_flash.h>
 #include <flashchips.h>
@@ -335,12 +336,12 @@ bool on_ext_power()
 
 void turn_LED_on()
 {
-        axp.setChgLEDMode(AXP20X_LED_LOW_LEVEL);
+        // axp.setChgLEDMode(AXP20X_LED_LOW_LEVEL);
 }
 
 void turn_LED_off()
 {
-        axp.setChgLEDMode(AXP20X_LED_OFF);
+        // axp.setChgLEDMode(AXP20X_LED_OFF);
 }
 
 void turn_GNSS_on()

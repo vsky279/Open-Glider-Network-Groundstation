@@ -76,7 +76,7 @@ void aes_init() {
 void PNETencrypt(unsigned char msg[],size_t msgLen, char **arr, size_t *arr_len) {
   if(1){
     char *encrypted = (char*)malloc(64);
-    uint16_t enclen = aesLib.encrypt(msg, msgLen, encrypted , aes_key, sizeof(aes_key), aes_iv);
+    uint16_t enclen = aesLib.encrypt(msg, msgLen, (byte *)encrypted , aes_key, sizeof(aes_key), aes_iv);
     *arr = encrypted;
     *arr_len = enclen;
   }
@@ -88,7 +88,7 @@ void PNETencrypt(unsigned char msg[],size_t msgLen, char **arr, size_t *arr_len)
 void PNETdecrypt(unsigned char msg[],size_t msgLen, char **arr, size_t *arr_len) {
   if(1){
   char *decrypted = (char*)malloc(64);
-  uint16_t declen = aesLib.decrypt(msg, msgLen, decrypted , aes_key, sizeof(aes_key), aes_iv);
+  uint16_t declen = aesLib.decrypt(msg, msgLen, (byte *)decrypted , aes_key, sizeof(aes_key), aes_iv);
   *arr = decrypted;
   *arr_len = declen;
   }
