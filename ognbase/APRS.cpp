@@ -42,10 +42,6 @@ bool aprs_connected   = false;
 int  last_packet_time = 0; // seconds
 int  ap_uptime        = 0;
 
-char ogn_server_name_buf[12];
-const char *ogn_server_name = "GLIDERNx";
-bool got_ogn_server_name = false;
-
 #define seconds() (millis() / 1000)
 
 // const unsigned long seventyYears = 2208988800UL;
@@ -183,61 +179,7 @@ int OGN_APRS_check_messages(void)
           Serial.println("");
           Logger_send_udp(&msg);
         }
-
-      if (reg == 1 && recStatus > 41) {
-        if (use_glidern) {
-          if (strncmp(RXbuffer,"# logresp",9) == 0) {
-//Serial.println("getting server name from logresp...");
-            char *p;
-            if ((p=strstr(RXbuffer,"server GLIDERN")) != NULL) {
-                if (strlen(p) > 14 && p[14] >= '0' && p[14] <= '9') {
-                    p += 7;
-                    p[9] = '\0';
-                    (void) strcpy(ogn_server_name_buf, p);
-                    //ogn_server_name_buf[7] = p[14];
-                    ogn_server_name = ogn_server_name_buf;
-                    got_ogn_server_name = true;
-Serial.print("server name from logresp: ");
-Serial.println(ogn_server_name);
-                }
-            }
-          }
-        } else {  // not use_glidern
-          // other server names seem to cause the packet to not be reported by OGN to clients!
-          (void) strcpy(ogn_server_name_buf, "GLIDERN0");
-          ogn_server_name = ogn_server_name_buf;
-          got_ogn_server_name = true;
-        }
-      } else if (reg < 0 && recStatus > 57) {   /* not a registration message */
-        if (use_glidern) {
-          if (strncmp(RXbuffer,"# aprsc",7) == 0) {
-//Serial.println("getting server name from aprsc...");
-            char *p;
-            if ((p=strstr(RXbuffer,"GMT GLIDERN")) != NULL) {
-                if (strlen(p) > 11 && p[11] >= '0' && p[11] <= '9') {
-                    p += 4;
-                    if (p[8] == ' ')
-                        p[8] = '\0';
-                    else
-                        p[9] = '\0';
-                    (void) strcpy(ogn_server_name_buf, p);
-                    //ogn_server_name_buf[7] = p[11];
-                    ogn_server_name = ogn_server_name_buf;
-                    got_ogn_server_name = true;
-Serial.print("server name from aprsc: ");
-Serial.println(ogn_server_name);
-                }
-            }
-          }
-        } else {  // not use_glidern
-          // other server names seem to cause the packet to not be reported by OGN to clients!
-          (void) strcpy(ogn_server_name_buf, "GLIDERN0");
-          ogn_server_name = ogn_server_name_buf;
-          got_ogn_server_name = true;
-        }
-      }
-
-    }  // if (recStatus > 0)
+    }
 
     if (seconds() - last_packet_time > 60)
     {
@@ -361,7 +303,6 @@ void OGN_APRS_Export(void)
                 AircraftPacket = "FLR";
             else if (addr_type == 3)
                 AircraftPacket = "OGN";
-#if 1
             else if (Container[i].protocol == RF_PROTOCOL_LEGACY) {
                 // assume these mark FLARM messages relayed by SoftRF:
                 if (addr_type == 4) {
@@ -380,9 +321,7 @@ void OGN_APRS_Export(void)
                     AircraftPacket = "RND";
                     addr_type = 0;
                 }
-            }
-#endif
-            else {
+            } else {
                 if (addr_type == 4)
                     AircraftPacket = "P3I";
                 else if (addr_type == 5)
@@ -399,10 +338,7 @@ void OGN_APRS_Export(void)
             APRS_AIRC.sender_details.toUpperCase();
 
             AircraftPacket += APRS_AIRC.callsign;
-
-            AircraftPacket += ">OGFLR,qAS,";
-            AircraftPacket += APRS_AIRC.rec_callsign;
-            AircraftPacket += ":/";
+            AircraftPacket += ">OGFLR,qOR:/";
             AircraftPacket += APRS_AIRC.timestamp;
             AircraftPacket += APRS_AIRC.lat_deg;
             AircraftPacket += APRS_AIRC.lat_min;
@@ -430,10 +366,12 @@ void OGN_APRS_Export(void)
             AircraftPacket += APRS_AIRC.callsign;
             AircraftPacket += " ";
             AircraftPacket += APRS_AIRC.climbrate;
-            AircraftPacket += "fpm +0.0rot ";
+            // AircraftPacket += "fpm +0.0rot ";
+            AircraftPacket += "fpm ";
             AircraftPacket += APRS_AIRC.snr;
-            AircraftPacket += "dB 0e -0.0kHz";
-            AircraftPacket += "\r\n";
+            // AircraftPacket += "dB 0e -0.0kHz";
+            // AircraftPacket += "\r\n";
+            AircraftPacket += "dB\r\n";
 
             Serial.println("");
             Serial.println(AircraftPacket.c_str());
@@ -504,10 +442,11 @@ int OGN_APRS_Register(ufo_t* this_aircraft)
 
 bool OGN_APRS_Location(ufo_t* this_aircraft)
 {
-    if (aprs_registred != 1 || ! got_ogn_server_name)
+    if (aprs_registred != 1)
         return false;
 
-        /* RUSSIA>APRS,TCPIP*,qAC,GLIDERN2:/220757h626.56NI09353.92E&/A=000446 */
+        /* RUSSIA>APRS,TCPIP*,qAC,GLIDERN2:/220757h626.56NI09353.92E&/A=000446 - wrong format */
+        // should be:  K2B9>OGNSXR,qOR:/220757h626.56NI09353.92E&/A=000446
 
         struct  aprs_reg_packet APRS_REG;
         float   LAT = fabs(this_aircraft->latitude);
@@ -515,8 +454,6 @@ bool OGN_APRS_Location(ufo_t* this_aircraft)
         // time_t  APRStime = OurTime; // - seventyYears;
 
         APRS_REG.origin   = ogn_callsign;
-        APRS_REG.callsign = String(ogn_server_name);
-        //APRS_REG.callsign.toUpperCase();
         APRS_REG.alt       = zeroPadding(String(int(this_aircraft->altitude * 3.28084)), 6);
         if (OurTime == 0) {
             APRS_REG.timestamp = "000000h";
@@ -535,9 +472,7 @@ bool OGN_APRS_Location(ufo_t* this_aircraft)
         RegisterPacket += APRS_REG.origin;
         RegisterPacket += ">";
         RegisterPacket += TOCALL;
-        RegisterPacket += ",TCPIP*,qAC,";
-        RegisterPacket += APRS_REG.callsign;
-        RegisterPacket += ":/";
+        RegisterPacket += ",qOR:/";
         RegisterPacket += APRS_REG.timestamp;
         RegisterPacket += APRS_REG.lat_deg + APRS_REG.lat_min;
 
@@ -576,6 +511,9 @@ void OGN_APRS_KeepAlive(void)
 // LKHS>APRS,TCPIP*,qAC,GLIDERN2:>211635h v0.2.6.ARM CPU:0.2 RAM:777.7/972.2MB NTP:3.1ms/-3.8ppm 4.902V 0.583A +33.6C
 // LKHS>OGNSXR,TCPIP*,qAC,GLIDERN0:>211635h vMB101-ESP32-OGNbase 3.9V 55/min 2/2Acfts[1h] 8sat time_synched 120_m_r_uptime
 
+// correct format:
+// K2B9>OGNSXR,qOR:>183602h vMB101-ESP32-OGNbase 3.8V 55/min 2/3Acfts[1h] 10sat time_synched 180_m_r_uptime
+
 bool OGN_APRS_Status(ufo_t* this_aircraft)
 {
     if (OurTime == 0) {      /* no GNSS time available yet */
@@ -586,10 +524,6 @@ bool OGN_APRS_Status(ufo_t* this_aircraft)
     // time_t APRStime = OurTime; // - seventyYears;
     struct aprs_stat_packet APRS_STAT;
     APRS_STAT.origin   = ogn_callsign;
-    if (! got_ogn_server_name)
-        return false;
-    APRS_STAT.callsign = String(ogn_server_name);
-    //APRS_STAT.callsign.toUpperCase();
     if (OurTime == 0) {
         APRS_STAT.timestamp = "000000h";
     } else {
@@ -606,6 +540,7 @@ bool OGN_APRS_Status(ufo_t* this_aircraft)
 #endif
 //  APRS_STAT.platform += rf_chip->name;
 //   - not useful, should report the RF chip in REMOTE station.
+//     - but no bits left in radio packet to send that info.
     APRS_STAT.platform += "-OGNbase";
 
     //APRS_STAT.realtime_clock = String(0.0);
@@ -622,9 +557,7 @@ bool OGN_APRS_Status(ufo_t* this_aircraft)
     String StatusPacket = APRS_STAT.origin;
     StatusPacket += ">";
     StatusPacket += TOCALL;
-    StatusPacket += ",TCPIP*,qAC,";
-    StatusPacket += APRS_STAT.callsign;
-    StatusPacket += ":>";
+    StatusPacket += ",qOR:>";
     StatusPacket += APRS_STAT.timestamp;
     StatusPacket += " ";
     StatusPacket += APRS_STAT.platform;
