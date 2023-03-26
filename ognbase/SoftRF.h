@@ -33,7 +33,7 @@
 
 #include "version.h"
 
-#define SOFTRF_FIRMWARE_VERSION "MB102"   // _VERSION
+#define SOFTRF_FIRMWARE_VERSION "MB103"   // _VERSION
 #define SOFTRF_IDENT            "OGNB-"
 #define OGNBASE_HTML_VERSION    "MB100"
 

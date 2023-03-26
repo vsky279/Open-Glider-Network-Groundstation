@@ -193,12 +193,41 @@ int OGN_APRS_check_messages(void)
     return aprs_registred;
 }
 
+/* original OGNbase code, not correct
 static const char* symbol_table[16] =
     {"/", "/", "\\", "/", "\\", "\\", "/", "/",
      "\\", "J", "/", "/", "M", "/", "\\", "\\"};
     // 0x79 -> aircraft type 1110 dec 14 & 0x51 -> aircraft type 4
 static const char* symbol[16] =
     {"z", "^", "^", "X", " ", "^", "g", "g", "^", "^", "^", "O", "^", "\'", " ", "n"};
+*/
+
+/*
+From http://wiki.glidernet.org/wiki:ogn-flavoured-aprs
+  "/z",  //  0 = ?
+  "/'",  //  1 = (moto-)glider    (most frequent)
+  "/'",  //  2 = tow plane        (often)
+  "/X",  //  3 = helicopter       (often)
+  "/g" , //  4 = parachute        (rare but seen - often mixed with drop plane)
+  "\\^", //  5 = drop plane       (seen)
+  "/g" , //  6 = hang-glider      (rare but seen)  <<< Angel's code had "/_"
+  "/g" , //  7 = para-glider      (rare but seen)
+  "\\^", //  8 = powered aircraft (often)
+  "/^",  //  9 = jet aircraft     (rare but seen)
+  "/z",  //  A = UFO              (people set for fun)
+  "/O",  //  B = balloon          (seen once)
+  "/O",  //  C = airship          (seen once)
+  "/'",  //  D = UAV              (drones, can become very common)
+  "/z",  //  E = ground support   (ground vehicles at airfields)
+  "\\n"  //  F = static object    (ground relay ?)
+*/
+
+static const char* symbol_table[16] =
+    {"/", "/", "/", "/",   "/", "\\", "/", "/",
+     "\\", "/", "/", "/",  "/", "/", "/", "\\"};
+static const char* symbol[16] =
+    {"z", "'", "'", "X",   "g", "^", "_", "g",
+     "^", "^", "z", "O",   "O", "'", "z", "n"};
 
 void OGN_APRS_Export(void)
 {
@@ -401,7 +430,8 @@ int OGN_APRS_Register(ufo_t* this_aircraft)
 
         struct aprs_login_packet APRS_LOGIN;
 
-        APRS_LOGIN.user    = String(this_aircraft->addr, HEX);
+        //APRS_LOGIN.user  = String(this_aircraft->addr, HEX);
+        APRS_LOGIN.user    = ogn_callsign;
         APRS_LOGIN.pass    = String(AprsPasscode(APRS_LOGIN.user.c_str()));
         APRS_LOGIN.appname = "OGNbase";
         APRS_LOGIN.version = SOFTRF_FIRMWARE_VERSION;
@@ -440,64 +470,67 @@ int OGN_APRS_Register(ufo_t* this_aircraft)
 
 }
 
+
+/* RUSSIA>APRS,TCPIP*,qAC,GLIDERN2:/220757h626.56NI09353.92E&/A=000446 - wrong format */
+// correct format: K2B9>OGNSXR:/220757h626.56NI09353.92E&/A=000446
+
 bool OGN_APRS_Location(ufo_t* this_aircraft)
 {
     if (aprs_registred != 1)
         return false;
 
-        /* RUSSIA>APRS,TCPIP*,qAC,GLIDERN2:/220757h626.56NI09353.92E&/A=000446 - wrong format */
-        // should be:  K2B9>OGNSXR,qOR:/220757h626.56NI09353.92E&/A=000446
+    struct  aprs_reg_packet APRS_REG;
+    float   LAT = fabs(this_aircraft->latitude);
+    float   LON = fabs(this_aircraft->longitude);
+    // time_t  APRStime = OurTime; // - seventyYears;
 
-        struct  aprs_reg_packet APRS_REG;
-        float   LAT = fabs(this_aircraft->latitude);
-        float   LON = fabs(this_aircraft->longitude);
-        // time_t  APRStime = OurTime; // - seventyYears;
+    APRS_REG.origin   = ogn_callsign;
+    APRS_REG.alt       = zeroPadding(String(int(this_aircraft->altitude * 3.28084)), 6);
+    if (OurTime == 0) {
+        APRS_REG.timestamp = "000000h";
+    } else {
+        APRS_REG.timestamp = zeroPadding(String(this_aircraft->hour), 2)
+                             + zeroPadding(String(this_aircraft->minute), 2)
+                             + zeroPadding(String(this_aircraft->second), 2) + "h";
+    }
+    APRS_REG.lat_deg = zeroPadding(String(int(LAT)), 2);
+    APRS_REG.lat_min = zeroPadding(String((LAT - int(LAT)) * 60, 3), 5);
 
-        APRS_REG.origin   = ogn_callsign;
-        APRS_REG.alt       = zeroPadding(String(int(this_aircraft->altitude * 3.28084)), 6);
-        if (OurTime == 0) {
-            APRS_REG.timestamp = "000000h";
-        } else {
-            APRS_REG.timestamp = zeroPadding(String(this_aircraft->hour), 2)
-                                 + zeroPadding(String(this_aircraft->minute), 2)
-                                 + zeroPadding(String(this_aircraft->second), 2) + "h";
-        }
-        APRS_REG.lat_deg = zeroPadding(String(int(LAT)), 2);
-        APRS_REG.lat_min = zeroPadding(String((LAT - int(LAT)) * 60, 3), 5);
+    APRS_REG.lon_deg = zeroPadding(String(int(LON)), 3);
+    APRS_REG.lon_min = zeroPadding(String((LON - int(LON)) * 60, 3), 5);
 
-        APRS_REG.lon_deg = zeroPadding(String(int(LON)), 3);
-        APRS_REG.lon_min = zeroPadding(String((LON - int(LON)) * 60, 3), 5);
+    String RegisterPacket = "";
+    RegisterPacket += APRS_REG.origin;
+    RegisterPacket += ">";
+    RegisterPacket += TOCALL;
+    RegisterPacket += ":/";
 
-        String RegisterPacket = "";
-        RegisterPacket += APRS_REG.origin;
-        RegisterPacket += ">";
-        RegisterPacket += TOCALL;
-        RegisterPacket += ",qOR:/";
-        RegisterPacket += APRS_REG.timestamp;
-        RegisterPacket += APRS_REG.lat_deg + APRS_REG.lat_min;
+    RegisterPacket += APRS_REG.timestamp;
 
-        if (this_aircraft->latitude < 0)
-            RegisterPacket += "S";
-        else
-            RegisterPacket += "N";
-        RegisterPacket += "I";
-        RegisterPacket += APRS_REG.lon_deg + APRS_REG.lon_min;
-        if (this_aircraft->longitude < 0)
-            RegisterPacket += "W";
-        else
-            RegisterPacket += "E";
-        RegisterPacket += "&/A=";
-        RegisterPacket += APRS_REG.alt;
-        RegisterPacket += "\r\n";
+    RegisterPacket += APRS_REG.lat_deg + APRS_REG.lat_min;
 
-        Serial.println("");
-        Serial.println(RegisterPacket.c_str());
-        Serial.println("");
-        Logger_send_udp(&RegisterPacket);
+    if (this_aircraft->latitude < 0)
+        RegisterPacket += "S";
+    else
+        RegisterPacket += "N";
+    RegisterPacket += "I";
+    RegisterPacket += APRS_REG.lon_deg + APRS_REG.lon_min;
+    if (this_aircraft->longitude < 0)
+        RegisterPacket += "W";
+    else
+        RegisterPacket += "E";
+    RegisterPacket += "&/A=";
+    RegisterPacket += APRS_REG.alt;
+    RegisterPacket += "\r\n";
 
-        SoC->WiFi_transmit_TCP(RegisterPacket);
+    Serial.println("");
+    Serial.println(RegisterPacket.c_str());
+    Serial.println("");
+    Logger_send_udp(&RegisterPacket);
 
-        return true;
+    SoC->WiFi_transmit_TCP(RegisterPacket);
+
+    return true;
 }
 
 void OGN_APRS_KeepAlive(void)
@@ -512,7 +545,7 @@ void OGN_APRS_KeepAlive(void)
 // LKHS>OGNSXR,TCPIP*,qAC,GLIDERN0:>211635h vMB101-ESP32-OGNbase 3.9V 55/min 2/2Acfts[1h] 8sat time_synched 120_m_r_uptime
 
 // correct format:
-// K2B9>OGNSXR,qOR:>183602h vMB101-ESP32-OGNbase 3.8V 55/min 2/3Acfts[1h] 10sat time_synched 180_m_r_uptime
+// K2B9>OGNSXR:>183602h vMB101-ESP32-OGNbase 3.8V 55/min 2/3Acfts[1h] 10sat time_synched 180_m_r_uptime
 
 bool OGN_APRS_Status(ufo_t* this_aircraft)
 {
@@ -557,7 +590,7 @@ bool OGN_APRS_Status(ufo_t* this_aircraft)
     String StatusPacket = APRS_STAT.origin;
     StatusPacket += ">";
     StatusPacket += TOCALL;
-    StatusPacket += ",qOR:>";
+    StatusPacket += ":>";
     StatusPacket += APRS_STAT.timestamp;
     StatusPacket += " ";
     StatusPacket += APRS_STAT.platform;
