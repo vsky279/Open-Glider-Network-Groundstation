@@ -5,6 +5,13 @@
 Besides the binary here, download the files in the "data" folder: config.json (template), index.html, style.css.
 
 
+## revision MB105
+
+### Major improvements
+
+Show on upload or status page whether the config.json file was found and parsed OK.
+
+
 ## revision MB104
 
 ### Major improvements

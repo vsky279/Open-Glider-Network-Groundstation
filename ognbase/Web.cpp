@@ -58,6 +58,7 @@ static const char upload_templ[] PROGMEM =
  <meta http-equiv='Content-Type' content='text/html; charset=utf-8'>\
  <meta http-equiv='cache-control' content='no-cache'>\
  </head>\
+ <p>%s</p>\
  Files on device:<br>%s<br>\
  <div class = 'upload'>\
  <form method = 'POST' action = '/doUpload' enctype='multipart/form-data'>\
@@ -65,6 +66,7 @@ static const char upload_templ[] PROGMEM =
  </form></div>\
  <p><a href='dnload' class='upload'>Download Config</a></p>\
  <p><a href='clear' class='clear'>Clear All Files</a></p>\
+ <p><a href='reboot' class='clear'>Reboot</a></p>\
  </html>";
 
 const char *ognopmode = "OGNbase";
@@ -129,6 +131,20 @@ void handleUpload(AsyncWebServerRequest* request)
 {
   char *upload_html = (char *) malloc(1150);
   char *filelist = (char *) malloc(600);
+  const char *msg;
+  msg = "success parsing config.json at boot";
+  if (config_done == -5)
+      msg = "could not open SPIFFS file system";
+  else if (config_done == -4)
+      msg = "config.json did not exist at boot";
+  else if (config_done == -3)
+      msg = "could not open config.json at boot";
+  else if (config_done == -2)
+      msg = "error parsing config.json at boot";
+  else if (config_done == -1)
+      msg = "config.json version not valid at boot";
+  else if (config_done <= 0)
+      msg = "no wifi info in config.json at boot";
   filelist[0] = '\0';
   int nfiles = 0;
   File root = SPIFFS.open("/");
@@ -156,7 +172,7 @@ void handleUpload(AsyncWebServerRequest* request)
   }
   file.close();
   root.close();
-  snprintf(upload_html, 1150, upload_templ, filelist);
+  snprintf(upload_html, 1150, upload_templ, msg, filelist);
   request->send(200, "text/html", upload_html);
   free(upload_html);
   free(filelist);
@@ -352,6 +368,11 @@ void mini_server()
         request->redirect("/");
     });
 
+    wserver.on("/reboot", HTTP_GET, [](AsyncWebServerRequest* request){
+        request->redirect("/");
+        SoC->reset();
+    });    
+
     Web_start();
 }
 
@@ -437,9 +458,22 @@ void Web_setup(ufo_t* this_aircraft)
     /*END  Bugfix*/ 
 
     String version = SOFTRF_FIRMWARE_VERSION;
-    // version += (ognrelay_enable? " - remote" : (ognrelay_base? " - base" : " - standalone"));
 
-    if (ognrelay_base && ognrelay_time)
+    // the first 2 or 3 messages here will never be shown, because
+    // the status page is not loaded without a configuration file
+    if (config_done == -5)
+        ognopmode = "could not open SPIFFS file system";
+    else if (config_done == -4)
+        ognopmode = "config.json did not exist at boot";
+    else if (config_done == -3)
+        ognopmode = "could not open config.json at boot";
+    else if (config_done == -2)
+        ognopmode = "error parsing config.json at boot";
+    else if (config_done == -1)
+        ognopmode = "config.json version not valid at boot";
+    else if (config_done <= 0)
+        ognopmode = "no wifi info in config.json at boot";
+    else if (ognrelay_base && ognrelay_time)
         ognopmode = "Base station, time relayed from remote";
     else if (ognrelay_base && ogn_gnsstime)
         ognopmode = "Base station, time from GNSS";

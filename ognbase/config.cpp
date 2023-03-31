@@ -39,7 +39,7 @@
 #define ARDUINOJSON_USE_DOUBLE 0
 #include <ArduinoJson.h>
 
-
+int config_done = 0;
 
 //wifi
 String ogn_ssid[5];
@@ -175,6 +175,7 @@ bool OGN_read_config(void)
     if (!SPIFFS.begin(true))
     {
         Serial.println("An Error has occurred while mounting SPIFFS");
+        config_done = -5;
         return false;
     }
 
@@ -243,12 +244,14 @@ bool OGN_read_config(void)
       if (!configFile)
       {
           Serial.println(F("Failed to open config.json."));
+          config_done = -3;
           return false;
       }      
     } else {
         Serial.println(F("config.json doesnt exist, please upload config.json"));
         OLED_write("no config file", 0, 27, true);
         delay(1000);
+        config_done = -4;
         return(false);
     }
 
@@ -261,6 +264,7 @@ bool OGN_read_config(void)
         OLED_write("config file error", 0, 27, true);
         delay(1000);
         configFile.close();
+        config_done = -2;
         return false;
     }
     else
@@ -273,6 +277,7 @@ bool OGN_read_config(void)
         Serial.println("config.json not valid - version missing");
         OLED_write("config.json - no version", 0, 27, true);
         delay(1000);
+        config_done = -1;
         return false;
     } else {
         String jsonversion = "wrong";
@@ -281,6 +286,7 @@ bool OGN_read_config(void)
             Serial.println("Wrong version of config.json");
             OLED_write("config version wrong", 0, 27, true);
             delay(1000);
+            config_done = -1;
             return false;
         }
     }
@@ -288,6 +294,7 @@ bool OGN_read_config(void)
     if (!obj.containsKey(F("wifi"))){
         //Serial.println("no wifi confgiuration found, return setup mode");
         // configFile.close();        
+        config_done = 0;
         return false;
     }
     else
@@ -471,6 +478,7 @@ ogn_protocol_1  = RF_PROTOCOL_LEGACY;  /* override - only protocol supported for
     if (obj.containsKey(F("beers")))
         beers_show = obj["beers"]["show"];
 
+    config_done = 1;
     return true;
 }
 

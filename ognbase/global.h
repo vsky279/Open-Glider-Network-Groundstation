@@ -1,8 +1,9 @@
+extern int config_done;
+
 extern String ogn_ssid[];
 extern String ogn_wpass[];
 
 extern int ssid_index;
-
 
 extern float   ogn_lat;
 extern float   ogn_lon;

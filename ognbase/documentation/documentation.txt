@@ -3,7 +3,7 @@ Preliminary Documentation for OGNbase
 
 By Moshe Braner
 
-This version last updated March 30 2023 to fit software version MB104
+This version last updated March 31 2023 to fit software version MB105
 
 
 HISTORY
@@ -75,7 +75,7 @@ Configuration file options
 
 The configuration file is called config.json and is in the JSON format.  Start with the config.json provided here:
 https://github.com/moshe-braner/Open-Glider-Network-Groundstation/tree/main/ognbase/data
-and change only what you need to.  The file is plain text, you can edit it with any text editor.  Many settings are either on or off, which in this file are either stated as "true" or "false", or as "1" or "0".  The file is divided into sections, such as "wifi", "coordinates", etc.
+and change only what you need to.  The file is plain text, you can edit it with any text editor.  Be careful not to delete (or add) commas or quotes.  Many settings are either on or off, which in this file are either stated as "true" or "false", or as "1" or "0".  The file is divided into sections, such as "wifi", "coordinates", etc.
 
 The "wifi" section has two subsections, one where you can list the names of the (one or more) wifi networks that you will want the device to recognize, and the other where you list the password for those networks.  When turned on, the device will attempt to connect to the listed network(s).  Here is an example of that section:
 
@@ -107,7 +107,7 @@ The "coordinates" section states the location of the station, using lat/lon (in 
       "mobile":false
    },
 
-If "mobile" is set to true, then the position is not fixed, rather, the station can move, and the location will be continuously updated using GNSS.  If you want to automatically set the station location when you turn it on, but not move it while operating, then leave "mobile" as false, and set both "lat" and "lon" to zero, or, remove the "coordinates" section altogether from the config file.  Either way, the hardware device used must include GNSS, and "gnsstime" must be set to 1 (see below in the relay section).  Note that the web interface (see below) does NOT update the displayed lat/lon after they are adjusted based on GNSS, it keeps displaying the lat/lon that was in the configuration file.
+If "mobile" is set to true, then the position is not fixed, rather, the station can move, and the location will be continuously updated using GNSS.  If you want to automatically set the station location when you turn OGNbase on, but not move it while operating, then leave "mobile" as false, and set both "lat" and "lon" to zero.  Either way, for automatic coordinates, the hardware device used must include GNSS, and "gnsstime" must be set to 1 (see below in the relay section).  Note that the web interface (see below) does NOT update the displayed lat/lon after they are adjusted based on GNSS, it keeps displaying the lat/lon that was in the configuration file.
 
 The "aprs" section is about the OGN server that OGNbase will send APRS data packets to, how it will identify itself, and some options on the messaging.  Here is an example of this section:
 
@@ -187,9 +187,7 @@ The web interface shows either the OGNbase status page, or its file-upload page,
 
 Uploading files
 
-Before any configuration files are uploaded to the device, the web interface automatically goes to the file-upload page.  On that page, click the "browse" button on the left, select a file in the browser's file-selection window, click "open" (or whatever that window wants), then click "upload" in the OGNbase file-upload page.  The file will be uploaded immediately and with no confirmation, and the status page will be displayed again.
-
-You cannot see what what files are already loaded into the device, but if you upload a file it will silently overwrite a file by the same name that if it is already there.
+Before any configuration files are uploaded to the device, the web interface automatically goes to the file-upload page.  On that page, the files currently stored are listed.  Click the "browse" button on the left, select a file in the browser's file-selection window, click "open" (or whatever that window wants), then click "upload" in the OGNbase file-upload page.  If you upload a file it will silently overwrite an already stored file by the same name if it exists.  The file will be uploaded immediately, and the status (or upload) page will be displayed again.
 
 The one file you MUST upload is the configuration file, which must be named config.json - it was described in a section above.
 
@@ -202,7 +200,7 @@ To upload files after that (for example, if you want to change the configuration
 
 Other features of the web interface
 
-The status page shows the OGNbase settings in effect, and (at the top) a few statistics on its operation.  The buttons and links at the bottom allow resetting the local or remote device, or reaching the statistics page, the file upload page, the firmware update page.  The "clear" button removes all the files stored in the device - there is normally no need to do that, since uploading a file overwrites the previous version.  But if you accidentally uploaded a wrong file, perhaps a large one that fills the space, this button may be useful.  Also a future version of the firmware may be incompatible with the existing uploaded files, so it may be a good idea to clear the files before updating the firmware.  (See later section about firmware updates.)
+The status page shows the OGNbase settings in effect, and a few statistics on its operation.  Near the top the OGNbase version and the operational mode will be displayed.  If there was a problem reading or interpreting the configuration file, a note about that will appear in the "Mode:" line.  The buttons and links at the bottom allow resetting the local or remote device, or reaching the statistics page, the file upload page, the firmware update page.  The "clear" button removes all the files stored in the device - there is normally no need to do that, since uploading a file overwrites the previous version.  But if you accidentally uploaded a wrong file, perhaps a large one that fills the space, this button may be useful.  Also a future version of the firmware may be incompatible with the existing uploaded files, so it may be a good idea to clear the files before updating the firmware.  (See later section about firmware updates.)
 
 The OGNbase settings visible in the status page can be changed there, and a "save" button can save them to the stored configuration file within the device.  But it is best to edit the configuration file outside of the device and then upload it.  If you want to download the current configuration file stored on the device, click the "Download Config" button on the status page.
 
