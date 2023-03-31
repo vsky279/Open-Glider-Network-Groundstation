@@ -52,15 +52,19 @@ AsyncWebSocketClient* globalClient = NULL;
 
 size_t content_len;
 
-static const char upload_html[] PROGMEM =
+static const char upload_templ[] PROGMEM =
 "<html>\
  <head>\
  <meta http-equiv='Content-Type' content='text/html; charset=utf-8'>\
+ <meta http-equiv='cache-control' content='no-cache'>\
  </head>\
+ Files on device:<br>%s<br>\
  <div class = 'upload'>\
  <form method = 'POST' action = '/doUpload' enctype='multipart/form-data'>\
  <input type='file' name='data'/><input type='submit' name='upload' value='Upload' title = 'Upload Files'>\
  </form></div>\
+ <p><a href='dnload' class='upload'>Download Config</a></p>\
+ <p><a href='clear' class='clear'>Clear All Files</a></p>\
  </html>";
 
 const char *ognopmode = "OGNbase";
@@ -121,7 +125,44 @@ void handleUpdate(AsyncWebServerRequest* request)
     request->send(200, "text/html", html);
 }
 
-void handleUpload(AsyncWebServerRequest* request, String filename, size_t index, uint8_t* data, size_t len, bool final)
+void handleUpload(AsyncWebServerRequest* request)
+{
+  char *upload_html = (char *) malloc(1150);
+  char *filelist = (char *) malloc(600);
+  filelist[0] = '\0';
+  int nfiles = 0;
+  File root = SPIFFS.open("/");
+  Serial.println("Files in SPIFFS:");
+  File file = root.openNextFile();
+  while(file){
+      Serial.print("... ");
+      Serial.print(file.name());
+      Serial.print("  [");
+      Serial.print(file.size());
+      Serial.println(" bytes]");
+      int len = strlen(filelist);
+      if (len < 520) {
+        snprintf(filelist+len, 600-len,
+                 "&nbsp;&nbsp;%s&nbsp;&nbsp;[%d bytes]<br>", file.name(), file.size());
+      } else {
+        snprintf(filelist+len, 600-len, "...<br>");
+      }
+      ++nfiles;
+      file = root.openNextFile();
+  }
+  if (nfiles == 0) {
+      Serial.println("... (none)");
+      snprintf(filelist, 600, "&nbsp;&nbsp;(none)<br>");
+  }
+  file.close();
+  root.close();
+  snprintf(upload_html, 1150, upload_templ, filelist);
+  request->send(200, "text/html", upload_html);
+  free(upload_html);
+  free(filelist);
+}
+
+void DoUpload(AsyncWebServerRequest* request, String filename, size_t index, uint8_t* data, size_t len, bool final)
 {
     if (!index)
         request->_tempFile = SPIFFS.open("/" + filename, "w");
@@ -133,6 +174,17 @@ void handleUpload(AsyncWebServerRequest* request, String filename, size_t index,
         request->_tempFile.close();
         request->redirect("/");
     }
+}
+
+void handleDnload(AsyncWebServerRequest* request)
+{
+  if (SPIFFS.exists("/config.json")) {
+    request->send(SPIFFS, "/config.json", String(), true);
+    Serial.println("Sent config.json file");
+  } else {
+    request->send(404, "text/plain", "config.json not found");
+    Serial.println("Config.json not found");
+  }
 }
 
 void handleDoUpdate(AsyncWebServerRequest* request, const String& filename, size_t index, uint8_t* data, size_t len, bool final)
@@ -178,7 +230,7 @@ void handleDoUpdate(AsyncWebServerRequest* request, const String& filename, size
     }
 }
 
-#define STATS_SIZE 1279
+#define STATS_SIZE 1479
 char stats_html[STATS_SIZE+1];
 
 void update_stats()
@@ -276,6 +328,33 @@ void Web_stop()
     wserver.end();
 }
 
+/* if no config, just offer to upload config */
+void mini_server()
+{
+    // wserver.on("/", HTTP_GET, [upload_html](AsyncWebServerRequest* request){
+    //wserver.on("/", HTTP_GET, [](AsyncWebServerRequest* request){
+    //    request->send(200, "text/html", upload_html);
+    //});
+
+    wserver.on("/", HTTP_GET, [](AsyncWebServerRequest* request){
+      handleUpload(request);
+    });
+
+    wserver.on("/doUpload", HTTP_POST, [](AsyncWebServerRequest* request) {}, DoUpload);
+
+    wserver.on("/dnload", HTTP_GET, [](AsyncWebServerRequest* request){
+      handleDnload(request);
+    });
+
+    wserver.on("/clear", HTTP_GET, [](AsyncWebServerRequest* request){
+        Serial.println(F("Formatting spiffs..."));
+        SPIFFS.format();
+        request->redirect("/");
+    });
+
+    Web_start();
+}
+
 void Web_setup(ufo_t* this_aircraft)
 {
     if (!SPIFFS.begin(true))
@@ -286,27 +365,22 @@ void Web_setup(ufo_t* this_aircraft)
 
     if (!SPIFFS.exists("/index.html"))
     {
-        // wserver.on("/", HTTP_GET, [upload_html](AsyncWebServerRequest* request){
-        wserver.on("/", HTTP_GET, [](AsyncWebServerRequest* request){
-            request->send(200, "text/html", upload_html);
-        });
-
-        wserver.on("/doUpload", HTTP_POST, [](AsyncWebServerRequest* request) {}, handleUpload);
-
-        Web_start();
+        Serial.println("index.html does not exist");
+        mini_server();
         return;
     }
 
     File file = SPIFFS.open("/index.html", "r");
     if (!file)
     {
-        Serial.println("An Error has occurred while opening index.html");
+        Serial.println("Error reading index.html");
+        SPIFFS.remove("/index.html");
+        mini_server();
         return;
     }
 
     ws.onEvent(onWsEvent);
     wserver.addHandler(&ws);
-
 
     size_t filesize   = file.size();
     char*  index_html = (char *) malloc(filesize + 1);
@@ -328,20 +402,18 @@ void Web_setup(ufo_t* this_aircraft)
         if (strcmp(versionbuf,OGNBASE_HTML_VERSION) == 0)
             wrong_version = false;
     }
+
     if (wrong_version) {
         Serial.println("Wrong version of index.html");
         OLED_write("Wrong index.html version", 0, 27, true);
-        delay(500);
-        wserver.on("/", HTTP_GET, [](AsyncWebServerRequest* request){
-            request->send(200, "text/html", upload_html);
-        });
-        wserver.on("/doUpload", HTTP_POST, [](AsyncWebServerRequest* request) {}, handleUpload);
-        Web_start();
+        delay(1000);
+        SPIFFS.remove("/index.html");
+        mini_server();
         return;
     }
 
     char*  offset;
-    size_t size = 11200;
+    size_t size = 12000;
     char*  Settings_temp = (char *) malloc(size);
 
     if (Settings_temp == NULL)
@@ -494,9 +566,25 @@ void Web_setup(ufo_t* this_aircraft)
     });
 
     // wserver.on("/upload", HTTP_GET, [upload_html](AsyncWebServerRequest* request){
+    //wserver.on("/upload", HTTP_GET, [](AsyncWebServerRequest* request){
+    //    request->send(200, "text/html", upload_html);
+    //});
+
     wserver.on("/upload", HTTP_GET, [](AsyncWebServerRequest* request){
-        request->send(200, "text/html", upload_html);
+        handleUpload(request);
     });
+
+    wserver.on("/doUpload", HTTP_POST, [](AsyncWebServerRequest* request) {}, DoUpload);
+
+    wserver.on("/dnload", HTTP_GET, [](AsyncWebServerRequest* request){
+        handleDnload(request);
+    });
+
+    wserver.on("/clear", HTTP_GET, [](AsyncWebServerRequest* request){
+        Serial.println(F("Formatting spiffs..."));
+        SPIFFS.format();
+        request->redirect("/");
+    });    
 
     snprintf(stats_html, STATS_SIZE, "stats not available yet");
 
@@ -529,14 +617,6 @@ void Web_setup(ufo_t* this_aircraft)
           uptime = 0;
           ExportTimeWebRefresh = 0;   /* force a refresh of the stats at the top of the status page */
         }
-        request->redirect("/");
-    });    
-
-    wserver.on("/doUpload", HTTP_POST, [](AsyncWebServerRequest* request) {}, handleUpload);
-
-    wserver.on("/clear", HTTP_GET, [](AsyncWebServerRequest* request){
-        Serial.println(F("Formatting spiffs..."));
-        SPIFFS.format();
         request->redirect("/");
     });    
 
