@@ -324,6 +324,13 @@ Serial.flush();
     }
 }
 
+#if defined(TBEAM)
+
+bool on_ext_power()
+{
+   return(axp.isVBUSPlug());
+}
+
 void turn_LED_on()
 {
         axp.setChgLEDMode(AXP20X_LED_LOW_LEVEL);
@@ -352,6 +359,8 @@ void turn_GNSS_off()
     }
   }
 }
+
+#endif
 
 static void ESP32_fini()
 {

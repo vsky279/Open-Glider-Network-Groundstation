@@ -30,7 +30,6 @@
 #include "OLED.h"
 #include "global.h"
 
-
 #include <TimeLib.h>
 
 #define kKey 0x73e2
@@ -578,15 +577,6 @@ bool OGN_APRS_Status(ufo_t* this_aircraft)
 
     //APRS_STAT.realtime_clock = String(0.0);
 
-    // standalone station reports local voltage
-    int v;
-    if (ognrelay_time)
-        v = (int)(10.0 * remote_voltage + 0.5);  /* may be wrong if time not synched yet */
-    else
-        v = (int)(10.0 * Battery_voltage() + 0.5);
-    if (v > 0)
-        APRS_STAT.board_voltage  = String(v/10) + "." + String(v%10) + "V";
-
     String StatusPacket = APRS_STAT.origin;
     StatusPacket += ">";
     StatusPacket += TOCALL;
@@ -595,10 +585,20 @@ bool OGN_APRS_Status(ufo_t* this_aircraft)
     StatusPacket += " ";
     StatusPacket += APRS_STAT.platform;
     if ((! ognrelay_time) || time_synched) {
-        if (v > 0) {
-            StatusPacket += " ";
-            StatusPacket += APRS_STAT.board_voltage;
+        int v;
+        if (time_synched) {
+            v = (int)(10.0 * remote_voltage + 0.5);
+        } else {
+#if defined(TBEAM)
+            if (on_ext_power())   // USB powered
+                v = 0;
+            else
+#endif
+            v = (int)(10.0 * Battery_voltage() + 0.5);
+            // standalone station reports local voltage
         }
+        if (v > 20)
+            StatusPacket += " " + String(v/10) + "." + String(v%10) + "V";
         if (sleep_length == 0 && remote_sleep_length == 0) {
             StatusPacket += " ";
             // added packets per minute and IDs seen in last hour

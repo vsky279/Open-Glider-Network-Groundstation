@@ -5,6 +5,13 @@
 Besides the binary here, download the files in the "data" folder: config.json (template), index.html, style.css.
 
 
+## revision MB106
+
+### Major improvements
+
+Nothing major.  Better formatting of web pages.  Removed some debug output.
+
+
 ## revision MB105
 
 ### Major improvements

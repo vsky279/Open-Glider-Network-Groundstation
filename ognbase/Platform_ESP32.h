@@ -190,6 +190,10 @@ extern Adafruit_NeoPixel strip;
 
 extern WebServer server;
 
+#if defined(TBEAM)
+bool on_ext_power(void);
+#endif
+
 void turn_LED_on(void);
 void turn_LED_off(void);
 

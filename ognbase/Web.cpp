@@ -29,6 +29,9 @@
 #include "Log.h"
 #include "config.h"
 #include "Traffic.h"
+
+#include <string>
+
 #include <ArduinoJson.h>
 
 #include <ErriezCRC32.h>
@@ -81,6 +84,7 @@ static const char stats_templ[] PROGMEM =
  <br><p>\r\nBase Station Stats:</p>\
  <p>&nbsp;\r\n Uptime: %d minutes</p>\
  <p>&nbsp;\r\n Traffic packets received: %d</p>\
+ <p>&nbsp; &nbsp; &nbsp;\r\n  per minute: %d</p>\
  <p>&nbsp;\r\n Traffic packets reported: %d</p>\
  <p>&nbsp;\r\n Aircraft seen ever: %d, today: %d</p>\
  <p>&nbsp;\r\n Largest Range: %d km</p>\
@@ -121,19 +125,23 @@ String processor(const String& var)
 void Web_fini()
 {}
 
+static const char update_html[] PROGMEM =
+ "<form method='POST' action='/doUpdate' enctype='multipart/form-data'>\
+  <input type='file' name='update'><input type='submit' value='Update'></form>";
+
 void handleUpdate(AsyncWebServerRequest* request)
 {
-    const char* html = "<form method='POST' action='/doUpdate' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>";
-    request->send(200, "text/html", html);
+    request->send(200, "text/html", update_html);
 }
 
+#define UPLHTMSIZE 1150
+#define FILELSTSIZ 600
 void handleUpload(AsyncWebServerRequest* request)
 {
-  char *upload_html = (char *) malloc(1150);
-  char *filelist = (char *) malloc(600);
+  char *upload_html = (char *) malloc(UPLHTMSIZE);
+  char *filelist = (char *) malloc(FILELSTSIZ);
   const char *msg;
-  msg = "success parsing config.json at boot";
-  if (config_done == -5)
+  if (config_done < -4)
       msg = "could not open SPIFFS file system";
   else if (config_done == -4)
       msg = "config.json did not exist at boot";
@@ -143,12 +151,14 @@ void handleUpload(AsyncWebServerRequest* request)
       msg = "error parsing config.json at boot";
   else if (config_done == -1)
       msg = "config.json version not valid at boot";
-  else if (config_done <= 0)
+  else if (config_done == 0)
       msg = "no wifi info in config.json at boot";
+  else
+      msg = "success parsing config.json at boot";
   filelist[0] = '\0';
   int nfiles = 0;
   File root = SPIFFS.open("/");
-  Serial.println("Files in SPIFFS:");
+  Serial.println(F("Files in SPIFFS:"));
   File file = root.openNextFile();
   while(file){
       Serial.print("... ");
@@ -157,22 +167,24 @@ void handleUpload(AsyncWebServerRequest* request)
       Serial.print(file.size());
       Serial.println(" bytes]");
       int len = strlen(filelist);
-      if (len < 520) {
-        snprintf(filelist+len, 600-len,
-                 "&nbsp;&nbsp;%s&nbsp;&nbsp;[%d bytes]<br>", file.name(), file.size());
+      if (len < FILELSTSIZ-80) {
+        snprintf(filelist+len, FILELSTSIZ-len,
+           "&nbsp;&nbsp;%s&nbsp;&nbsp;[%d bytes]<br>", file.name(), file.size());
       } else {
-        snprintf(filelist+len, 600-len, "...<br>");
+        Serial.println("...");
+        snprintf(filelist+len, FILELSTSIZ-len, "...<br>");
+        break;
       }
       ++nfiles;
       file = root.openNextFile();
   }
   if (nfiles == 0) {
       Serial.println("... (none)");
-      snprintf(filelist, 600, "&nbsp;&nbsp;(none)<br>");
+      snprintf(filelist, FILELSTSIZ, "&nbsp;&nbsp;(none)<br>");
   }
   file.close();
   root.close();
-  snprintf(upload_html, 1150, upload_templ, msg, filelist);
+  snprintf(upload_html, UPLHTMSIZE, upload_templ, msg, filelist);
   request->send(200, "text/html", upload_html);
   free(upload_html);
   free(filelist);
@@ -196,12 +208,16 @@ void handleDnload(AsyncWebServerRequest* request)
 {
   if (SPIFFS.exists("/config.json")) {
     request->send(SPIFFS, "/config.json", String(), true);
-    Serial.println("Sent config.json file");
+    Serial.println(F("Sent config.json file"));
   } else {
     request->send(404, "text/plain", "config.json not found");
-    Serial.println("Config.json not found");
+    Serial.println(F("Config.json not found"));
   }
 }
+
+//void notFound(AsyncWebServerRequest *request) {
+//    request->send(404, "text/plain", "file not found");
+//}
 
 void handleDoUpdate(AsyncWebServerRequest* request, const String& filename, size_t index, uint8_t* data, size_t len, bool final)
 {
@@ -246,7 +262,7 @@ void handleDoUpdate(AsyncWebServerRequest* request, const String& filename, size
     }
 }
 
-#define STATS_SIZE 1479
+#define STATS_SIZE 1499
 char stats_html[STATS_SIZE+1];
 
 void update_stats()
@@ -262,7 +278,7 @@ void update_stats()
      snprintf(stats_html, STATS_SIZE, stats_templ,
         ognopmode,
         uptime,
-        traffic_packets_recvd,
+        traffic_packets_recvd, zero,
         traffic_packets_reported,
         (uint32_t) numseen_ever,
         (uint32_t) numseen_today,
@@ -284,7 +300,7 @@ void update_stats()
      snprintf(stats_html, STATS_SIZE, stats_templ,
         ognopmode,
         uptime,
-        traffic_packets_recvd,
+        traffic_packets_recvd, zero,
         traffic_packets_reported,
         (uint32_t) numseen_ever,
         (uint32_t) numseen_today,
@@ -293,7 +309,7 @@ void update_stats()
         other_packets_recvd,
         zero, zero,
         remote_traffic,
-        (uint32_t) packets_per_minute,
+        zero,
         (uint32_t) remote_pctrel,
         zero, zero, zero, zero, zero,
         (float) 0.0);
@@ -301,7 +317,7 @@ void update_stats()
      snprintf(stats_html, STATS_SIZE, stats_templ,
         ognopmode,
         zero,
-        zero, zero, zero, zero,
+        zero, zero, zero, zero, zero,
         zero, zero, zero, zero,
         uptime,
         traffic_packets_recvd,
@@ -319,14 +335,14 @@ void update_stats()
         ognopmode,
         uptime,
         traffic_packets_recvd,
+        (uint32_t) packets_per_minute,
         traffic_packets_reported,
         (uint32_t) numseen_ever,
         (uint32_t) numseen_today,
         (uint32_t) largest_range,
         (uint32_t) bad_packets_recvd,
         other_packets_recvd,
-        zero, zero, zero,
-        (uint32_t) packets_per_minute,
+        zero, zero, zero, zero,
         zero, zero, zero, zero, zero, zero,
         (float) Battery_voltage());
   }
@@ -445,21 +461,21 @@ void Web_setup(ufo_t* this_aircraft)
     String station_addr = String(this_aircraft->addr, HEX);
     station_addr.toUpperCase();
 
-    /*Bugfix Issue 20*/
-    String pos_lat = "";
-    String pos_lon = "";    
+    // to_string() formats to 6 decimals
+    //String pos_lat = to_string(ogn_lat);
+    //String pos_lon = to_string(ogn_lon);
+    char buf_lat[16];
+    snprintf(buf_lat,16,"%.6f",ogn_lat);
+    char buf_lon[16];
+    snprintf(buf_lon,16,"%.6f",ogn_lon);
     String pos_alt = "";
-    String pos_geo = "";
-
-    pos_lat.concat(ogn_lat);
-    pos_lon.concat(ogn_lon);
     pos_alt.concat(ogn_alt);
+    String pos_geo = "";
     pos_geo.concat(ogn_geoid_separation);
-    /*END  Bugfix*/ 
 
     String version = SOFTRF_FIRMWARE_VERSION;
 
-    // the first 2 or 3 messages here will never be shown, because
+    // the first few messages here will never be shown, because
     // the status page is not loaded without a configuration file
     if (config_done == -5)
         ognopmode = "could not open SPIFFS file system";
@@ -495,8 +511,8 @@ void Web_setup(ufo_t* this_aircraft)
              version.c_str(),
              ognopmode,
              ogn_callsign,
-             pos_lat,
-             pos_lon,
+             buf_lat,
+             buf_lon,
              pos_alt,
              pos_geo,
              String(ogn_range),
@@ -653,6 +669,12 @@ void Web_setup(ufo_t* this_aircraft)
         }
         request->redirect("/");
     });    
+
+//    wserver.onNotFound([](AsyncWebServerRequest *request){
+//        request->send(404, "text/plain", "file not found.");
+//    });
+
+//    wserver.onNotFound(notFound);
 
     // Send a GET request to <ESP_IP>/get?inputString=<inputMessage>
     wserver.on("/get", HTTP_GET, [](AsyncWebServerRequest* request) {

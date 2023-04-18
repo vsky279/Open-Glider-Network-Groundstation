@@ -371,6 +371,11 @@ size_t RF_Encode(ufo_t* fop)
 
 bool RF_Transmit(size_t size, bool wait)
 {
+    if (ognrelay_enable==false && ognrelay_base==false) {
+        // should not be transmitting
+        Serial.println(">>> Single-Station Transmitting?");
+    }
+
     if (settings->txpower == RF_TX_POWER_OFF)
         return true;
 

@@ -544,6 +544,20 @@ bool OGN_save_config(void)
     }
 
     //position config
+/*
+    float f = ogn_lat * 1024*1024;
+    int32_t i = (int) f;
+    f = (float) i;
+    f /= 1024*1024;
+    snprintf(buf, sizeof(buf), "%.6f", f);
+    obj["coordinates"]["lat"] = buf;
+    f = ogn_lon * 1024*1024;
+    i = (int) f;
+    f = (float) i;
+    f /= 1024*1024;
+    snprintf(buf, sizeof(buf), "%.6f", f);
+    obj["coordinates"]["lon"] = buf;
+*/
     obj["coordinates"]["lat"]      = ogn_lat;
     obj["coordinates"]["lon"]      = ogn_lon;
     obj["coordinates"]["alt"]      = ogn_alt;
@@ -552,8 +566,8 @@ bool OGN_save_config(void)
 
     //aprs config
     obj["aprs"]["callsign"] = ogn_callsign;
-    obj["aprs"]["server"] = ogn_server;
-    obj["aprs"]["port"]   = ogn_port;
+    obj["aprs"]["server"]   = ogn_server;
+    obj["aprs"]["port"]     = ogn_port;
 
     obj["aprs"]["band"]        = ogn_band;
     obj["aprs"]["protocol_1"]  = ogn_protocol_1;
@@ -572,8 +586,12 @@ bool OGN_save_config(void)
     obj["sleep"]["wakeuptimer"] = ogn_wakeuptimer / 60;
 
     //wifi config
-    obj["wifi"]["ssid"][0] =  ogn_ssid[0];
-    obj["wifi"]["pass"][0] =  ogn_wpass[0];
+    obj["wifi"]["ssid"][0] = ogn_ssid[0];
+    obj["wifi"]["pass"][0] = ogn_wpass[0];
+    if (ogn_ssid[1].length() > 0) {
+        obj["wifi"]["ssid"][1] = ogn_ssid[1];
+        obj["wifi"]["pass"][1] = ogn_wpass[1];
+    }
 
     //fanet config
     obj["fanetservice"]["enable"] = (int) fanet_enable;
