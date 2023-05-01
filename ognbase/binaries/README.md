@@ -5,6 +5,13 @@
 Besides the binary here, download the files in the "data" folder: config.json (template), index.html, style.css.
 
 
+## revision MB107
+
+### Major improvements
+
+Better handling of WiFi dropouts.  Debug log facility.  Minor bug fixes.
+
+
 ## revision MB106
 
 ### Major improvements

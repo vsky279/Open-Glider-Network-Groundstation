@@ -3,7 +3,7 @@ Preliminary Documentation for OGNbase
 
 By Moshe Braner
 
-This version last updated March 31 2023 to fit software version MB105
+This version last updated April 23 2023 to fit software version MB107
 
 
 HISTORY
@@ -116,8 +116,6 @@ The "aprs" section is about the OGN server that OGNbase will send APRS data pack
       "server":"aprs.glidernet.org",
       "port":14580,
       "band":1,
-      "protocol_1":0,
-      "protocol_2":1,
       "debug":false,
       "debugport":12000,
       "itrackbit":false,
@@ -126,7 +124,7 @@ The "aprs" section is about the OGN server that OGNbase will send APRS data pack
    },
 
 It states that the name of the station is "GileMtn" - see here for guidelines on naming the station: http://wiki.glidernet.org/receiver-naming-convention
-Currently only protocol 0 (FLARM) is supported.  The "rxidle":3600 setting says that after 3600 seconds (one hour) of no received signals OGNbase will shut itself off - and wake up after another 3600 seconds.  The "range" is the maximum distance (in km) to be reported on - an aircraft farther than that from the station will not be reported.
+The "range" is the maximum distance (in km) to be reported on - an aircraft farther than that from the station will not be reported.
 
 You can leave the other entries as they are, except for the "band": it must be set to the right band for the region your station is in, otherwise it won't be listening on the right frequencies.  The codes for the regions are:
 
@@ -141,7 +139,7 @@ You can leave the other entries as they are, except for the "band": it must be s
   RF_BAND_IL   = 9,  /* 916.2 MHz band */
   RF_BAND_KR   = 10  /* 920.9 MHz band */
 
-The example configuration above ("band":1) chose the European band.  The "protocol", at this time, is always 0 (FLARM protocol), and "protocol_2" is ignored.  This may change in future version of OGNbase.
+The example configuration above ("band":1) chose the European band.
 
 The "sleep" section configures the deep sleep options.  Here is an example of this section:
 

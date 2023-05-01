@@ -228,8 +228,10 @@ bool OGN_read_config(void)
         updateBin.close();
         SD.remove("/firmware/ognbase.bin");
         snprintf(buf, sizeof(buf), "reboot");
-        OLED_write(buf, 0, 33, false);      
-        ESP.restart();         
+        OLED_write(buf, 0, 33, false);
+        DebugLogWrite("SD firmware update reboot");
+        delay(500);
+        SoC->reset();         
       }
       else {
          Serial.println("No firmware found");
@@ -340,7 +342,8 @@ bool OGN_read_config(void)
                 ogn_band = 1;
 //          ogn_protocol_1  = obj["aprs"]["protocol_1"];
 ogn_protocol_1  = RF_PROTOCOL_LEGACY;  /* override - only protocol supported for now */
-            ogn_protocol_2  = obj["aprs"]["protocol_2"];
+//          ogn_protocol_2  = obj["aprs"]["protocol_2"];
+ogn_protocol_2  = RF_PROTOCOL_OGNTP;
             ogn_debug       = obj["aprs"]["debug"];
             ogn_debugport   = obj["aprs"]["debugport"];
             ogn_itrackbit   = obj["aprs"]["itrackbit"];

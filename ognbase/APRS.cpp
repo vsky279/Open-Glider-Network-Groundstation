@@ -28,6 +28,7 @@
 #include "global.h"
 #include "Log.h"
 #include "OLED.h"
+#include "SoC.h"
 #include "global.h"
 
 #include <TimeLib.h>
@@ -131,7 +132,7 @@ bool OGN_APRS_check_Wifi(void)
 {
     if (WiFi.status() != WL_CONNECTED && WiFi.getMode() == WIFI_STA)
     {
-        WiFi.disconnect();
+        //WiFi.disconnect();
         WiFi.mode(WIFI_OFF);
         WiFi.mode(WIFI_STA);
         //WiFi.begin(ogn_ssid_1.c_str(), ogn_wpass_1.c_str());
@@ -139,11 +140,7 @@ bool OGN_APRS_check_Wifi(void)
     }
     if (WiFi.status() == WL_CONNECTED)
         return true;
-    else if (! ognrelay_enable)
-    {
-        Serial.println("10 minutes in AP mode - resetting");
-        SoC->reset();
-    }
+    //DebugLogWrite("APRS_check_Wifi: not connected");
     return false;
 }
 
@@ -523,7 +520,7 @@ bool OGN_APRS_Location(ufo_t* this_aircraft)
     RegisterPacket += "\r\n";
 
     Serial.println("");
-    Serial.println(RegisterPacket.c_str());
+    Serial.print(RegisterPacket.c_str());
     Serial.println("");
     Logger_send_udp(&RegisterPacket);
 
@@ -546,7 +543,7 @@ void OGN_APRS_KeepAlive(void)
 // correct format:
 // K2B9>OGNSXR:>183602h vMB101-ESP32-OGNbase 3.8V 55/min 2/3Acfts[1h] 10sat time_synched 180_m_r_uptime
 
-bool OGN_APRS_Status(ufo_t* this_aircraft)
+bool OGN_APRS_Status(ufo_t* this_aircraft, bool first_time, String resetReason)
 {
     if (OurTime == 0) {      /* no GNSS time available yet */
       // return false;
@@ -620,7 +617,11 @@ bool OGN_APRS_Status(ufo_t* this_aircraft)
         StatusPacket += "sat ";
 #endif
     }
-    if (ognrelay_time && time_synched) {
+    if (first_time) {
+        StatusPacket += "reset_reason_";
+        StatusPacket += resetReason;
+        StatusPacket += "\r\n";
+    } else if (ognrelay_time && time_synched) {
         if (remote_sleep_length == 0) {
             StatusPacket += String(remote_uptime);
             StatusPacket += "_m_r_uptime\r\n";
@@ -638,9 +639,10 @@ bool OGN_APRS_Status(ufo_t* this_aircraft)
         }
     }
     Serial.println("");
-    Serial.println(StatusPacket.c_str());
+    Serial.print(StatusPacket.c_str());
     Serial.println("");
     Logger_send_udp(&StatusPacket);
     SoC->WiFi_transmit_TCP(StatusPacket);
+
     return true;
 }

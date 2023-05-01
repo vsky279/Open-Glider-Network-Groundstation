@@ -1,6 +1,6 @@
 {
    "ognbase":{
-      "version":"MB100"
+      "version":"MB104"
    },
    "wifi":{
       "ssid":[
@@ -45,8 +45,6 @@
       "server":"aprs.glidernet.org",
       "port":14580,
       "band":2,
-      "protocol_1":0,
-      "protocol_2":1,
       "debug":false,
       "debugport":12000,
       "itrackbit":false,

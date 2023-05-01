@@ -172,7 +172,7 @@ Serial.printf("send_time: ref_time_ms %d << now %d ??\r\n", ref_time_ms, now_ms)
           pkt->addr_type = (((uptime-300)/120) & 0x03) | 0x04;
           pkt->_unk1 = 1;
       }
-//Serial.printf("send_time: uptime %d sent as %d %X\r\n", uptime, pkt->_unk1, pkt->addr_type);
+Serial.printf("send_time: uptime %d sent as %d %X\r\n", uptime, pkt->_unk1, pkt->addr_type);
       int pctrel = 100 * traffic_packets_relayed;
       if (traffic_packets_recvd > 0)
         pctrel /= traffic_packets_recvd;    /* percent relayed */
@@ -282,8 +282,8 @@ Serial.println(F("received time pkt failed check"));
         ref_time_ms = when_synched - timeOffset;   /* time of last PPS in remote station */
         remote_sleep_length = 0;
 
-//Serial.printf("set_our_clock: ms=%d, ourt=%d, ofst=%d, reft=%d\r\n",
-//              when_synched, OurTime, timeOffset, ref_time_ms);
+Serial.printf("set_our_clock: ms=%d, ourt=%d, ofst=%d, reft=%d\r\n",
+              when_synched, OurTime, timeOffset, ref_time_ms);
 
     } else {   /* this packet reports intended sleep */
         remote_sleep_length = (uint16_t)(p[2] & 0x0FFF);   /* minutes */
@@ -403,8 +403,8 @@ void sync_alive_pkt(uint8_t *raw)
     if (delay < 1000) {
         ++ack_packets_recvd;
         total_delays += delay;
-        // Serial.printf("received timesync ack: ms=%d, time=%d, ofst=%d, avg round %d ms\r\n",
-        //   when_synched, p[1], p[2], total_delays/ack_packets_recvd);
+        Serial.printf("received timesync ack: ms=%d, time=%d, ofst=%d, avg round %d ms\r\n",
+           when_synched, p[1], p[2], total_delays/ack_packets_recvd);
     }
 
     bool base_ack = (pkt->_unk0 == 0xE);        /* base says it got ack-ack */
@@ -474,6 +474,7 @@ bool maybe_remote_reboot(uint8_t *raw) {
             OLED_enable();
             delay(1000);
             OLED_write("rebooting...", 0, 27, true);
+            DebugLogWrite("maybe_remote_reboot() rebooting");
             delay(1000);
             SoC->reset();
     }
@@ -743,6 +744,8 @@ void Time_loop()
       if (oldmin != ThisAircraft.minute) {
           /* minute changed, gather per-minute traffic stats */
           ++uptime;                        /* minutes */ 
+//          if (! isValidGNSStime())
+//              DebugLogWrite("time_loop: no gnss fix");
           static bool rounded = false;
           uint32_t cumul_traffic, prev_traffic;
           if (ognrelay_base)

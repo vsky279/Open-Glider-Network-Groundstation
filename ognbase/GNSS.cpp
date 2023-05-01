@@ -804,6 +804,7 @@ void PickGNSSFix()
 #if defined(USE_NMEA_CFG)
       if (C_Version.isUpdated()) {
         if (strncmp(C_Version.value(), "RST", 3) == 0) {
+            DebugLogWrite("nmea reset");
             SoC->WDT_fini();
             Serial.println();
             Serial.println(F("Restart is in progress. Please, wait..."));
@@ -812,7 +813,8 @@ void PickGNSSFix()
             RF_Shutdown();
             SoC->reset();
         } else if (strncmp(C_Version.value(), "OFF", 3) == 0) {
-          shutdown("  OFF  ");
+            DebugLogWrite("nmea shutdown");
+            shutdown("  OFF  ");
         } else if (strncmp(C_Version.value(), "?", 1) == 0) {
           char psrfc_buf[MAX_PSRFC_LEN];
 
@@ -942,6 +944,7 @@ void PickGNSSFix()
           }
 
           if (cfg_is_updated) {
+            DebugLogWrite("nmea config reset");
             SoC->WDT_fini();
             Serial.println();
             Serial.println(F("Restart is in progress. Please, wait..."));

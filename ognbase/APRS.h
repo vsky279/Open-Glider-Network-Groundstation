@@ -107,7 +107,7 @@ void OGN_APRS_KeepAlive();
 bool OGN_APRS_check_Wifi();
 
 bool OGN_APRS_Location(ufo_t* this_aircraft);
-bool OGN_APRS_Status(ufo_t* this_aircraft);
+bool OGN_APRS_Status(ufo_t* this_aircraft, bool first_time, String resetReason);
 
 static int OGN_APRS_check_reg(char*);
 

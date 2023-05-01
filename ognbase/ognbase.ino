@@ -85,6 +85,7 @@
 #include "global.h"
 #include "version.h"
 #include "config.h"
+#include "SPIFFS.h"
 
 #include <rom/rtc.h>
 
@@ -129,7 +130,7 @@
 #define APRS_CHECK_KEEPALIVE_TIME 21
 #define TimeToCheckKeepAliveOGN() (seconds() >= ExportTimeCheckKeepAliveOGN + APRS_CHECK_KEEPALIVE_TIME)
 
-#define APRS_CHECK_WIFI_TIME 602
+#define APRS_CHECK_WIFI_TIME 133
 #define TimeToCheckWifi() (seconds() >= ExportTimeCheckWifi + APRS_CHECK_WIFI_TIME)
 
 #define APRS_STATUS_REC 233
@@ -166,6 +167,41 @@ bool groundstation = false;
 int ground_registred = 0;
 bool fanet_transmitter = false;
 int proto_in_use = 0;
+
+File DebugLog;
+bool DebugLogOpen = false;
+
+void DebugLogWrite(const char *s)
+{
+    if (! DebugLogOpen)
+        return;
+    char buf[80];
+    snprintf (buf, sizeof(buf), "[%02d:%02d] %s\r\n",
+       ThisAircraft.hour, ThisAircraft.minute, s);
+    DebugLog.write((const uint8_t *)buf, strlen(buf));
+    DebugLog.flush();
+}
+
+void LogDate()
+{
+    static bool done = false;
+    if (! DebugLogOpen)
+        return;
+    if (done)
+        return;
+    done = true;
+    char buf[80];
+#ifdef TBEAM
+    snprintf (buf, sizeof(buf), "\r\n[%02d:%02d] Date: %d/%d\r\n",
+       ThisAircraft.hour, ThisAircraft.minute,
+       gnss.date.month(), gnss.date.day());
+#else
+    snprintf (buf, sizeof(buf), "\r\n[%02d:%02d] got time\r\n",
+       ThisAircraft.hour, ThisAircraft.minute);
+#endif
+    DebugLog.write((const uint8_t *)buf, strlen(buf));
+    DebugLog.flush();    
+}
 
 hardware_info_t hw_info = {
   .model    = DEFAULT_SOFTRF_MODEL,
@@ -305,7 +341,26 @@ void setup()
 
 #if defined(TBEAM)
   pinMode(BUTTON, INPUT);
-#endif  
+#endif
+
+//settings->nmea_p = true;    // write to debuglog
+  settings->nmea_p = false;   // do not write to debuglog
+
+  if (settings->nmea_p) {
+    if (SPIFFS.begin(true)) {
+      bool append = false;
+      if (SPIFFS.exists("/debuglog.txt") && SPIFFS.totalBytes() - SPIFFS.usedBytes() > 10000)
+          append = true;
+      DebugLog = SPIFFS.open("/debuglog.txt", (append? FILE_APPEND : FILE_WRITE));
+      if (DebugLog) {
+          DebugLogOpen = true;
+      } else {
+          Serial.println(F("Failed to open debuglog.txt"));
+      }
+    } else {
+        Serial.println(F("Failed to start SPIFFS"));
+    }
+  }
 }
 
 void loop()
@@ -397,6 +452,8 @@ void ground()
     OLED_write(buf, 0, 45, false);    
     delay(1000);
     if(600 < seconds()){
+      DebugLogWrite("ground() reset after 600 sec");
+      delay(500);
       SoC->reset();
     }
   }
@@ -413,8 +470,10 @@ void ground()
     ThisAircraft.geoid_separation = ogn_geoid_separation;
 
 #if defined(TBEAM)
-    if (! ogn_gnsstime)
+    if (! ogn_gnsstime) {
       GNSS_sleep();
+      DebugLogWrite("gnss sleep, position from config");
+    }
 #endif
 
     msg = "found position data LAT: ";
@@ -463,8 +522,10 @@ void ground()
           position_is_set = true;    
       }
 
-      if (! ogn_gnsstime)
+      if (! ogn_gnsstime) {
         GNSS_sleep();
+        DebugLogWrite("gnss sleep, position from gnss");
+      }
 
     }
 
@@ -543,13 +604,14 @@ void ground()
 //Serial.println("check registration...");
 
     if (TimeToRegisterOGN() || ground_registred == 0) {  
-      if (OurTime != 0 && ThisAircraft.second != 0 && position_is_set && WiFi.getMode() != WIFI_AP) {
+      if (OurTime != 0 && ThisAircraft.second != 0 && position_is_set && WiFi.getMode() == WIFI_STA) {
         Serial.println("Registering OGN...");
         OLED_write("Registering OGN...", 0, 18, true);
         ground_registred = OGN_APRS_Register(&ThisAircraft);
         if (ground_registred == 1)  OLED_write("Registered OGN OK", 0, 27, false);
         ExportTimeRegisterOGN = seconds();
       }
+      LogDate();
     }
 
     if(ground_registred == -1) {
@@ -605,8 +667,28 @@ void ground()
   
     if ((TimeToStatusOGN() || (ExportTimeStatusOGN==0 && millis()>50000))
         && ground_registred == 1 && position_is_set) {
-      
-      if (OGN_APRS_Location(&ThisAircraft) && OGN_APRS_Status(&ThisAircraft)) {
+
+      static bool first_time = true;
+      String resetReason, logmsg;
+      if (first_time) {
+          resetReason = SoC->getResetReason();
+          logmsg = "restarted after " + resetReason;
+          DebugLogWrite(logmsg.c_str());
+      }
+
+      if (OGN_APRS_Location(&ThisAircraft)
+       && OGN_APRS_Status(&ThisAircraft, first_time, resetReason)) {
+
+        if (OurTime > 0) {   // sent reset-reason along with a time stamp
+            if (first_time) {
+                first_time = false;
+            } else {
+                Serial.print(F("Free heap size: "));
+                Serial.println(SoC->getFreeHeap());
+                if (SoC->getFreeHeap() < 30000)
+                    DebugLogWrite("free heap < 30000");
+            }
+        }
 
         //Serial.println("status OGN...");
 
@@ -635,24 +717,36 @@ void ground()
       MONIT_send_trap();
     }
 
-    if( TimeToCheckWifi() && !ognrelay_enable){
+    static int retries = 0;
+    if( TimeToCheckWifi() ) {
       //Serial.println("APRS check wifi...");
       OLED_draw_Bitmap(39, 5, 3 , true);
       OLED_write("check connections..", 15, 45, false);
       if(OGN_APRS_check_Wifi()){
         OLED_write("success", 35, 54, false);
-      }
-      else{
+        retries = 0;
+      } else {
         OLED_write("error", 35, 54, false);
         Serial.println("...APRS wifi error");
+        if (++retries < 3) {
+            DebugLogWrite("WiFi disconnected - restart WiFi");
+            Serial.println("WiFi disconnected - restart WiFi");
+            WiFi_setup();
+        } else {
+            DebugLogWrite("WiFi reconnections failed - reset");
+            Serial.println("WiFi reconnections failed - reset");
+            OLED_write("reboot", 35, 54, false);
+            delay(1000);
+            SoC->reset();
+        }
       }
       ExportTimeCheckWifi = seconds();
-    }  
+    }
 
-  }
+  }  // end if (only as basestation)
 
-  /* use same time marker for OLED display cycling */
-  if (TimeToExportOGN() && ognrelay_enable){
+  /* use export time marker for OLED display cycling in remote station */
+  if (TimeToExportOGN() && ognrelay_enable) {
     // OLED_info(position_is_set);
     if (! OLED_blank)
       OLED_info(false);
@@ -705,7 +799,7 @@ void ground()
       if (settings->nmea_p)
           StdOut.println(F("$PSRFS,WIFI_OFF"));
       Serial.println(F("[ino] shutting down WiFI & LED..."));
-
+      DebugLogWrite("ino shut down wifi");
       Web_fini();
       WiFi_fini();
     }
@@ -736,11 +830,11 @@ sleep_check()
             ever_synched = true;
     }
 
-static uint32_t oldsecs = 0;
-if (seconds() > oldsecs+30) {
-oldsecs = seconds();
-Serial.printf("ExportTimeSleep=%d, seconds=%d\r\n", ExportTimeSleep, seconds());
-}
+//static uint32_t oldsecs = 0;
+//if (seconds() > oldsecs+30) {
+//oldsecs = seconds();
+//Serial.printf("ExportTimeSleep=%d, seconds=%d\r\n", ExportTimeSleep, seconds());
+//}
 
     /* if clock is valid, tie wakeup time to clock time */
     int localtime = 0;
@@ -833,7 +927,8 @@ localtime, ThisAircraft.minute, seconds_into_hour);
                 sleephours += 24;
             if (low_bat && localtime >= ogn_evening - 2)
                 sleephours += 2;      /* no time to charge much today, sleep late tomorrow */
-            sleep_length = sleephours * 3600 - seconds_into_hour;
+            if (sleephours > 0)
+                sleep_length = sleephours * 3600 - seconds_into_hour;
 
           } else {   /* round up, to top of hour or half-past */
 
@@ -890,6 +985,11 @@ Serial.printf("hourcounter=%d, sleep_length=%d\r\n", hourcounter, sleep_length);
     OLED_enable();
 
     OLED_write("SLEEP...", 0, 24, true);
+
+    if (low_bat)
+        DebugLogWrite("low_bat sleep");
+    else
+        DebugLogWrite("planned sleep");
 
 #if defined(TBEAM)      
     turn_LED_off();

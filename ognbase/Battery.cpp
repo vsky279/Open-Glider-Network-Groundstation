@@ -22,6 +22,7 @@
 
 #include "SoC.h"
 #include "Battery.h"
+#include "global.h"
 
 unsigned long Battery_TimeMarker   = 0;
 static int    Battery_cutoff_count = 0;
@@ -63,20 +64,21 @@ void Battery_loop()
     if (hw_info.model == SOFTRF_MODEL_PRIME_MK2                             ||
         (hw_info.model == SOFTRF_MODEL_STANDALONE && hw_info.revision == 16) || /* TTGO T3 V2.1.6 */
         hw_info.model == SOFTRF_MODEL_DONGLE                                ||
-        hw_info.model == SOFTRF_MODEL_UNI)
-        if (isTimeToBattery())
-        {
+        hw_info.model == SOFTRF_MODEL_UNI) {
+        if (isTimeToBattery()) {
             float voltage = Battery_voltage();
 
-            if (voltage > 1.8 && voltage < Battery_cutoff())
-            {
-                if (Battery_cutoff_count > 2)
+            if (voltage > 1.8 && voltage < Battery_cutoff()) {
+                if (Battery_cutoff_count > 2) {
+                    DebugLogWrite("low bat shutdown()");
                     shutdown("LOW BAT");
-                else
+                } else {
                     Battery_cutoff_count++;
-            }
-            else
+                }
+            } else {
                 Battery_cutoff_count = 0;
+            }
             Battery_TimeMarker = millis();
         }
+    }
 }

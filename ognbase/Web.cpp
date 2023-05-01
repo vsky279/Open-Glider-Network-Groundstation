@@ -155,6 +155,8 @@ void handleUpload(AsyncWebServerRequest* request)
       msg = "no wifi info in config.json at boot";
   else
       msg = "success parsing config.json at boot";
+  if (! settings->nmea_p)
+      SPIFFS.remove("/debuglog.txt");
   filelist[0] = '\0';
   int nfiles = 0;
   File root = SPIFFS.open("/");
@@ -192,6 +194,13 @@ void handleUpload(AsyncWebServerRequest* request)
 
 void DoUpload(AsyncWebServerRequest* request, String filename, size_t index, uint8_t* data, size_t len, bool final)
 {
+    bool was_open = false;
+    if (strcmp(filename.c_str(),"debuglog.txt")==0) {
+        if (DebugLogOpen) {
+            DebugLog.close();
+            was_open = true;
+        }
+    }
     if (!index)
         request->_tempFile = SPIFFS.open("/" + filename, "w");
     if (len)
@@ -202,6 +211,8 @@ void DoUpload(AsyncWebServerRequest* request, String filename, size_t index, uin
         request->_tempFile.close();
         request->redirect("/");
     }
+    if (was_open)
+        DebugLog = SPIFFS.open("/debuglog.txt", FILE_APPEND);
 }
 
 void handleDnload(AsyncWebServerRequest* request)
@@ -213,6 +224,24 @@ void handleDnload(AsyncWebServerRequest* request)
     request->send(404, "text/plain", "config.json not found");
     Serial.println(F("Config.json not found"));
   }
+}
+
+void handleDnldlog(AsyncWebServerRequest* request)
+{
+  bool was_open = false;
+  if (DebugLogOpen) {
+      DebugLog.close();
+      was_open = true;
+  }
+  if (SPIFFS.exists("/debuglog.txt")) {
+    request->send(SPIFFS, "/debuglog.txt", String(), true);
+    Serial.println(F("Sent debuglog.txt file"));
+  } else {
+    request->send(404, "text/plain", "debuglog.txt not found");
+    Serial.println(F("debuglog.txt not found"));
+  }
+  if (was_open)
+      DebugLog = SPIFFS.open("/debuglog.txt", FILE_APPEND);
 }
 
 //void notFound(AsyncWebServerRequest *request) {
@@ -256,8 +285,11 @@ void handleDoUpdate(AsyncWebServerRequest* request, const String& filename, size
             Update.printError(Serial);
         else
         {
+            DebugLogWrite("firmware update restart");
             delay(10000);
-            ESP.restart();
+            // ESP.restart();
+            RF_Shutdown();
+            SoC->reset();
         }
     }
 }
@@ -378,6 +410,10 @@ void mini_server()
       handleDnload(request);
     });
 
+    wserver.on("/debuglog.txt", HTTP_GET, [](AsyncWebServerRequest* request){
+      handleDnldlog(request);
+    });
+
     wserver.on("/clear", HTTP_GET, [](AsyncWebServerRequest* request){
         Serial.println(F("Formatting spiffs..."));
         SPIFFS.format();
@@ -386,6 +422,8 @@ void mini_server()
 
     wserver.on("/reboot", HTTP_GET, [](AsyncWebServerRequest* request){
         request->redirect("/");
+        DebugLogWrite("mini_web_server reboot");
+        delay(500);
         SoC->reset();
     });    
 
@@ -630,6 +668,10 @@ void Web_setup(ufo_t* this_aircraft)
         handleDnload(request);
     });
 
+    wserver.on("/debuglog.txt", HTTP_GET, [](AsyncWebServerRequest* request){
+      handleDnldlog(request);
+    });
+
     wserver.on("/clear", HTTP_GET, [](AsyncWebServerRequest* request){
         Serial.println(F("Formatting spiffs..."));
         SPIFFS.format();
@@ -652,6 +694,8 @@ void Web_setup(ufo_t* this_aircraft)
 
     wserver.on("/reboot", HTTP_GET, [](AsyncWebServerRequest* request){
         request->redirect("/");
+        DebugLogWrite("web_server reboot");
+        delay(500);
         SoC->reset();
     });    
 
@@ -807,14 +851,16 @@ void Web_setup(ufo_t* this_aircraft)
             {
                 SPIFFS.format();
                 RF_Shutdown();
-                delay(200);
+                DebugLogWrite("ogn_reset_all reboot");
+                delay(500);
                 SoC->reset();
             }
 #endif
         EEPROM_store();
         OGN_save_config();
+        DebugLogWrite("web settings reboot");
         RF_Shutdown();
-        delay(200);
+        delay(500);
         SoC->reset();
     });
 

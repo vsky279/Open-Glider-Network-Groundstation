@@ -239,6 +239,7 @@ bool Wifi_connected()
 
 void WiFi_loop()
 {
+
 #if defined(USE_DNS_SERVER)
     if (dns_active)
         dnsServer.processNextRequest();

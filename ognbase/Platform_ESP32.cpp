@@ -308,8 +308,10 @@ Serial.flush();
             PMU_Irq = false;
             portEXIT_CRITICAL_ISR(&PMU_mutex);
 
-            if (down)
+            if (down) {
+                DebugLogWrite("button shutdown()");
                 shutdown("  -- OFF -- ");
+            }
         }
 
         if (isTimeToBattery())
@@ -565,7 +567,7 @@ static String ESP32_getResetReason()
         case RTCWDT_RTC_RESET:
             return F("RTCWDT_RTC_RESET");
         default:
-            return F("NO_MEAN");
+            return F("DEFAULT_RESET");
     }
 }
 

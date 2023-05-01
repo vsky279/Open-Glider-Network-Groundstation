@@ -58,3 +58,8 @@ extern bool ognrelay_base;
 extern bool ognrelay_time;
 extern bool ogn_gnsstime;
 extern uint32_t ognrelay_key;
+
+#include "SPIFFS.h"
+extern File DebugLog;
+extern bool DebugLogOpen;
+void DebugLogWrite(const char *s);
