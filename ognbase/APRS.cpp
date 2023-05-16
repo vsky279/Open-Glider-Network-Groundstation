@@ -39,6 +39,8 @@ int MIN_SPEED = 0;
 
 int  aprs_registred   = 0;
 bool aprs_connected   = false;
+bool wifi_reconnected = false;
+uint32_t wifi_outage  = 0;
 int  last_packet_time = 0; // seconds
 int  ap_uptime        = 0;
 
@@ -130,17 +132,29 @@ static int OGN_APRS_check_reg(char* cp) // 0 = unverified // 1 = verified // -1 
 
 bool OGN_APRS_check_Wifi(void)
 {
-    if (WiFi.status() != WL_CONNECTED && WiFi.getMode() == WIFI_STA)
-    {
-        //WiFi.disconnect();
-        WiFi.mode(WIFI_OFF);
-        WiFi.mode(WIFI_STA);
+    if (WiFi.getMode() != WIFI_STA)
+        return false;
+    if (WiFi.status() != WL_CONNECTED) {
+        WiFi.disconnect();
+        delay(150);
+        //WiFi.mode(WIFI_OFF);
+        //WiFi.mode(WIFI_STA);
         //WiFi.begin(ogn_ssid_1.c_str(), ogn_wpass_1.c_str());
-        delay(100);
+        WiFi.reconnect();
+        delay(350);
+        if (WiFi.status() == WL_CONNECTED) {
+            wifi_reconnected = true;
+            Serial.println("WiFi reconnected");
+        }
     }
-    if (WiFi.status() == WL_CONNECTED)
+    if (WiFi.status() == WL_CONNECTED) {
         return true;
+    }
+
+    //Serial.println(F("APRS_check_Wifi: not connected"));
     //DebugLogWrite("APRS_check_Wifi: not connected");
+    if (wifi_outage == 0)
+        wifi_outage = millis();
     return false;
 }
 
@@ -239,7 +253,7 @@ void OGN_APRS_Export(void)
             if ((ThisAircraft.timestamp - Container[i].timestamp) > EXPORT_EXPIRATION_TIME) {
                 Container[i].waiting = false;
                 // Container[i].timereported = OurTime;
-                Serial.println("... skipping expired packet");
+                Serial.println(F("... skipping expired packet"));
                 continue;
             }
 
@@ -247,7 +261,7 @@ void OGN_APRS_Export(void)
             if (Container[i].no_track && !ogn_itrackbit) {
                 Container[i].waiting = false;
                 Container[i].timereported = OurTime;
-                Serial.println("... skipping no-track packet");
+                Serial.println(F("... skipping no-track packet"));
                 continue;
             }
 
@@ -258,14 +272,14 @@ void OGN_APRS_Export(void)
             if (distance > ogn_range) {
                 Container[i].waiting = false;
                 Container[i].timereported = OurTime;
-                Serial.println("... skipping too-far packet");
+                Serial.println(F("... skipping too-far packet"));
                 continue;
             }
 
             if (!isPacketValid(&Container[i])) {
                 // Container[i].waiting = false;
                 // Container[i].timereported = OurTime;
-                Serial.println("... skipping invalid packet");
+                Serial.println(F("... skipping invalid packet"));
                 continue;
             }
 
@@ -405,18 +419,21 @@ void OGN_APRS_Export(void)
             Logger_send_udp(&AircraftPacket);
             Logger_send_udp(&APRS_AIRC.pos_precision);
 
-            SoC->WiFi_transmit_TCP(AircraftPacket);
+            if (SoC->WiFi_transmit_TCP(AircraftPacket) == 0)  // <<<
+                Serial.println(F("transmit traffic to TCP failed"));
 
             Container[i].waiting = false;
             Container[i].timereported = OurTime;
             ++traffic_packets_reported;
+
+            yield();
         }
     }
 }
 
 int OGN_APRS_Register(ufo_t* this_aircraft)
 {
-//    Serial.println("OGN_APRS_Registering...");
+//    Serial.println(F("OGN_APRS_Registering..."));
 
 //    if (OurTime == 0)  /* no GNSS time available yet */
 //      return aprs_registred;
@@ -440,25 +457,31 @@ int OGN_APRS_Register(ufo_t* this_aircraft)
         LoginPacket += APRS_LOGIN.appname;
         LoginPacket += " ";
         LoginPacket += APRS_LOGIN.version;
-        LoginPacket += " filter m/";
-        LoginPacket += String(ogn_range);
-        LoginPacket += "\r\n";
+        LoginPacket += " filter m/20\r\n";
+//      LoginPacket += " filter m/";
+//      LoginPacket += String(ogn_range);     // no need to receive data from other stations
+//      LoginPacket += "\r\n";
 
         Serial.println("");
         Serial.println(LoginPacket.c_str());
         Serial.println("");
         Logger_send_udp(&LoginPacket);
 
-        SoC->WiFi_transmit_TCP(LoginPacket);
-
-        aprs_registred = 1;
-        return 1;
+        if (SoC->WiFi_transmit_TCP(LoginPacket)) {   // <<<
+            aprs_registred = 1;
+            return 1;
+        }
+        Serial.println("");
+        Serial.println(F("transmit to OGN failed"));    // <<<
+        Serial.println("");
+        aprs_registred = 0;
+        return -1;
     }
 
     else
     {
         Serial.println("");
-        Serial.println("OGN connection failed");
+        Serial.println(F("OGN connection failed"));
         Serial.println("");
         aprs_registred = 0;
         return -1;
@@ -524,9 +547,11 @@ bool OGN_APRS_Location(ufo_t* this_aircraft)
     Serial.println("");
     Logger_send_udp(&RegisterPacket);
 
-    SoC->WiFi_transmit_TCP(RegisterPacket);
+    if(SoC->WiFi_transmit_TCP(RegisterPacket))  // <<<
+       return true;
 
-    return true;
+    Serial.println(F("transmit location to TCP failed"));
+    return false;
 }
 
 void OGN_APRS_KeepAlive(void)
@@ -534,7 +559,8 @@ void OGN_APRS_KeepAlive(void)
     String KeepAlivePacket = "#keepalive\r\n";
     Serial.println(KeepAlivePacket.c_str());
     Logger_send_udp(&KeepAlivePacket);
-    SoC->WiFi_transmit_TCP(KeepAlivePacket);
+    if (SoC->WiFi_transmit_TCP(KeepAlivePacket) == 0)
+        Serial.println(F("transmit keepalive to TCP failed"));
 }
 
 // LKHS>APRS,TCPIP*,qAC,GLIDERN2:>211635h v0.2.6.ARM CPU:0.2 RAM:777.7/972.2MB NTP:3.1ms/-3.8ppm 4.902V 0.583A +33.6C
@@ -545,10 +571,8 @@ void OGN_APRS_KeepAlive(void)
 
 bool OGN_APRS_Status(ufo_t* this_aircraft, bool first_time, String resetReason)
 {
-    if (OurTime == 0) {      /* no GNSS time available yet */
-      // return false;
-      Serial.println("sending status packet without time stamp");
-    }
+    //char buf[32];
+    //buf[0] = '\0';
 
     // time_t APRStime = OurTime; // - seventyYears;
     struct aprs_stat_packet APRS_STAT;
@@ -621,6 +645,13 @@ bool OGN_APRS_Status(ufo_t* this_aircraft, bool first_time, String resetReason)
         StatusPacket += "reset_reason_";
         StatusPacket += resetReason;
         StatusPacket += "\r\n";
+    } else if (wifi_outage && millis() > wifi_outage + 360000) {
+         //snprintf (buf, sizeof(buf), "%d_m_WiFi_outage_ended\r\n",
+         //          (millis() - wifi_outage) / 60000);
+         StatusPacket += ((millis() - wifi_outage) / 60000);
+         StatusPacket += "_m_WiFi_outage_ended\r\n";
+    } else if (wifi_reconnected) {
+        StatusPacket += "wifi_reconnected\r\n";
     } else if (ognrelay_time && time_synched) {
         if (remote_sleep_length == 0) {
             StatusPacket += String(remote_uptime);
@@ -642,7 +673,23 @@ bool OGN_APRS_Status(ufo_t* this_aircraft, bool first_time, String resetReason)
     Serial.print(StatusPacket.c_str());
     Serial.println("");
     Logger_send_udp(&StatusPacket);
-    SoC->WiFi_transmit_TCP(StatusPacket);
+    if (SoC->WiFi_transmit_TCP(StatusPacket) == 0) {
+        Serial.println(F("transmit status to TCP failed"));   // <<<
+        return false;
+    }
+
+    if (OurTime == 0) {      /* no GNSS time available yet */
+      Serial.println(F("sent status packet without time stamp"));
+      return false;
+    }
+
+    // reset wifi_reconnected and wifi_outage here,
+    // after sending packet out has succeeded.
+    if (wifi_reconnected) {
+        DebugLogWrite("WiFi reconnected");
+        wifi_reconnected = false;
+    }
+    wifi_outage = 0;
 
     return true;
 }

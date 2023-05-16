@@ -33,7 +33,7 @@
 
 #include "version.h"
 
-#define SOFTRF_FIRMWARE_VERSION "MB107"   // _VERSION
+#define SOFTRF_FIRMWARE_VERSION "MB108"   // _VERSION
 #define SOFTRF_IDENT            "OGNB-"
 #define OGNBASE_HTML_VERSION    "MB104"
 
@@ -235,6 +235,13 @@ extern void shutdown(const char *);
 //#define ENABLE_BT_VOICE
 //#define TEST_PAW_ON_NICERF_SV610_FW466
 #define  DO_GDL90_FF_EXT
+
+#define UDP_LOGGER 0
+
+#define FILE_LOGGER 1
+
+// FILE_LOGGER only outputs a few messages to debuglog.txt (if ogn_debug is enabled)
+// LOGGER_IS_ENABLED redirects StdOut to another log file
 
 #define LOGGER_IS_ENABLED 0
 

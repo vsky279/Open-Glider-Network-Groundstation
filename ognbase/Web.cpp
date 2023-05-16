@@ -155,8 +155,10 @@ void handleUpload(AsyncWebServerRequest* request)
       msg = "no wifi info in config.json at boot";
   else
       msg = "success parsing config.json at boot";
-  if (! settings->nmea_p)
+#if FILE_LOGGER
+  if (! ogn_debug)
       SPIFFS.remove("/debuglog.txt");
+#endif
   filelist[0] = '\0';
   int nfiles = 0;
   File root = SPIFFS.open("/");
@@ -195,12 +197,14 @@ void handleUpload(AsyncWebServerRequest* request)
 void DoUpload(AsyncWebServerRequest* request, String filename, size_t index, uint8_t* data, size_t len, bool final)
 {
     bool was_open = false;
+#if FILE_LOGGER
     if (strcmp(filename.c_str(),"debuglog.txt")==0) {
         if (DebugLogOpen) {
             DebugLog.close();
             was_open = true;
         }
     }
+#endif
     if (!index)
         request->_tempFile = SPIFFS.open("/" + filename, "w");
     if (len)
@@ -211,8 +215,10 @@ void DoUpload(AsyncWebServerRequest* request, String filename, size_t index, uin
         request->_tempFile.close();
         request->redirect("/");
     }
+#if FILE_LOGGER
     if (was_open)
         DebugLog = SPIFFS.open("/debuglog.txt", FILE_APPEND);
+#endif
 }
 
 void handleDnload(AsyncWebServerRequest* request)
@@ -229,10 +235,12 @@ void handleDnload(AsyncWebServerRequest* request)
 void handleDnldlog(AsyncWebServerRequest* request)
 {
   bool was_open = false;
+#if FILE_LOGGER
   if (DebugLogOpen) {
       DebugLog.close();
       was_open = true;
   }
+#endif
   if (SPIFFS.exists("/debuglog.txt")) {
     request->send(SPIFFS, "/debuglog.txt", String(), true);
     Serial.println(F("Sent debuglog.txt file"));
@@ -240,8 +248,10 @@ void handleDnldlog(AsyncWebServerRequest* request)
     request->send(404, "text/plain", "debuglog.txt not found");
     Serial.println(F("debuglog.txt not found"));
   }
+#if FILE_LOGGER
   if (was_open)
       DebugLog = SPIFFS.open("/debuglog.txt", FILE_APPEND);
+#endif
 }
 
 //void notFound(AsyncWebServerRequest *request) {

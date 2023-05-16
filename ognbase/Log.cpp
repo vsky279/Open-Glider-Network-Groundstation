@@ -20,11 +20,76 @@
 #include "Log.h"
 #include "EEPROM.h"
 #include "PNET.h"
+#include "GNSS.h"
 #include "global.h"
 
+File DebugLog;
+bool DebugLogOpen = false;
+
+void OpenDebugLog()
+{
+#if FILE_LOGGER
+  if (ogn_debug) {
+    if (SPIFFS.begin(true)) {
+      bool append = false;
+      if (SPIFFS.exists("/debuglog.txt") && SPIFFS.totalBytes() - SPIFFS.usedBytes() > 10000)
+          append = true;
+      DebugLog = SPIFFS.open("/debuglog.txt", (append? FILE_APPEND : FILE_WRITE));
+      if (DebugLog) {
+          DebugLogOpen = true;
+      } else {
+          Serial.println(F("Failed to open debuglog.txt"));
+      }
+    } else {
+        Serial.println(F("Failed to start SPIFFS"));
+    }
+  }
+#endif
+}
+
+void DebugLogWrite(const char *s)
+{
+#if FILE_LOGGER
+    if (! DebugLogOpen)
+        return;
+    char buf[80];
+    snprintf (buf, sizeof(buf), "[%02d:%02d] %s\r\n",
+       ThisAircraft.hour, ThisAircraft.minute, s);
+    DebugLog.write((const uint8_t *)buf, strlen(buf));
+    DebugLog.flush();
+#endif
+}
+
+void LogDate()
+{
+#if FILE_LOGGER
+    static bool done = false;
+    if (! DebugLogOpen)
+        return;
+    if (done)
+        return;
+    done = true;
+#ifdef TBEAM
+    char buf[80];
+    snprintf (buf, sizeof(buf), "\r\n[%02d:%02d] Date: %d/%d\r\n",
+       ThisAircraft.hour, ThisAircraft.minute,
+       gnss.date.month(), gnss.date.day());
+    DebugLog.write((const uint8_t *)buf, strlen(buf));
+#endif
+    String resetReason, logmsg;
+    logmsg = "version ";
+    logmsg += SOFTRF_FIRMWARE_VERSION;
+    resetReason = SoC->getResetReason();
+    logmsg += " restarted after " + resetReason;
+    DebugLogWrite(logmsg.c_str());
+    // DebugLog.flush();    
+#endif
+}
 
 void Logger_send_udp(String* buf)
 {
+#if UDP_LOGGER
+
     if (ogn_debug && !ognrelay_enable)
     {
         int  debug_len = buf->length() + 1;
@@ -40,6 +105,8 @@ void Logger_send_udp(String* buf)
           //free(encrypted);
           }        
     }
+
+#endif
 }
 
 #if LOGGER_IS_ENABLED

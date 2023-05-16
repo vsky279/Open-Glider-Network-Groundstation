@@ -721,14 +721,34 @@ static void ESP32_WiFi_transmit_UDP(const char* host, int port, byte* buf, size_
 
 static int ESP32_WiFi_connect_TCP(const char* host, int port)
 {
+    if (client.connected())     // <<< added to avoid extra connections
+        return 1;
+
+    Serial.println("Reconnecting TCP...");
+
+    yield();
+
+    //disableLoopWDT();  // sometimes hangs, better to let watchdog reboot the system
+
     bool ret = Ping.ping(host, 2);
+    yield();
+
+    if (ret == false) {
+        Serial.println("Ping host failed");
+        return 0;
+    }
+
+    // Serial.println("... ping OK");
+
+    ret = client.connect(host, port, 5000);
+    yield();
+
+    //enableLoopWDT();
 
     if (ret)
-    {
-        if (!client.connect(host, port, 5000))
-            return 0;
         return 1;
-    }
+
+    Serial.println("client.connect failed");
     return 0;
 }
 
@@ -743,22 +763,33 @@ static int ESP32_WiFi_transmit_TCP(String message)
     if (client.connected())
     {
         client.print(message);
-        return 0;
+        return 1;
     }
     return 0;
 }
 
 static int ESP32_WiFi_receive_TCP(char* RXbuffer, int RXbuffer_size)
 {
+    --RXbuffer_size;    // <<< room for trailing null char
     int i = 0;
-
+    int n = 0;
     if (client.connected())
     {
-        while (client.available() && i < RXbuffer_size - 1) {
-            RXbuffer[i] = client.read();
-            i++;
-            RXbuffer[i] = '\0';
+        while (client.available()) {       // try and clear congestion
+            if (i < RXbuffer_size)
+                RXbuffer[i++] = client.read();
+            else
+                char c = client.read();    // discard excess chars
+            if (++n > 1000)
+                break;                     // handle the rest next time around the loop()
+            if ((n & 0x80) == 0)
+                yield();
         }
+        if (n > 1000)
+            Serial.println("TCP RX major congestion");
+        else if (i == RXbuffer_size)
+            Serial.println("TCP RX congestion");
+        RXbuffer[i] = '\0';
         return i;
     }
     client.stop();

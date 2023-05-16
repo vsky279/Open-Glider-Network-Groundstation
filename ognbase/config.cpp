@@ -19,6 +19,7 @@
 #include "SoftRF.h"
 #include "EEPROM.h"
 #include "global.h"
+#include "Log.h"
 #include "config.h"
 #include "OLED.h"
 

@@ -125,6 +125,7 @@ void WiFi_setup()
 {
     char buf[32];
     static bool configged = false;
+    //static bool reconnecting = false;
 
       if (WiFi.getMode() != WIFI_STA)
       {
@@ -134,21 +135,25 @@ void WiFi_setup()
 
     if (! configged) {
       configged = OGN_read_config();
-      Serial.println(F("Read configuration."));   /* ensure compiler does not skip the OGN_read_config() */
+      Serial.println(F("...Read configuration"));   /* ensure compiler does not skip the OGN_read_config() */
     }
 
     if (configged) {
 
-        Serial.println(F("WiFi config changed."));
+        Serial.println(F("Using WiFi config..."));
 
+        WiFi.mode(WIFI_OFF);
         delay(1000);
 
+        //if (reconnecting)
+        //    delete wifiMulti;
         wifiMulti = new WiFiMulti();
         OLED_draw_Bitmap(85, 20, 1, true);
         for (int i=0; i < 5; i++) {
             if (ogn_ssid[i] != "") {
                 snprintf(buf, sizeof(buf), "%d: %s", i, ogn_ssid[i].c_str());
                 OLED_write(buf, 0, i * 9, false);
+                Serial.println(buf);
                 if (i == 0 || ogn_ssid[i] != "xxxxxxx")
                   wifiMulti->addAP(ogn_ssid[i].c_str(), ogn_wpass[i].c_str());
             }
@@ -180,6 +185,7 @@ void WiFi_setup()
             Serial.println(F("Can not connect to WiFi station"));
             snprintf(buf, sizeof(buf), "failed..");
             OLED_write(buf, 0, 45, false);
+            //DebugLogWrite("WiFi_setup: cannot connect");
         }
 
     } else {  /* not configged */
@@ -192,6 +198,9 @@ void WiFi_setup()
 
     if (WiFi.status() != WL_CONNECTED)
     {
+        //if (reconnecting)
+        //    return;      // do not go into AP mode if temporarily disconnected
+
         host_name += String((SoC->getChipId() & 0xFFFFFF), HEX);
         SoC->WiFi_hostname(host_name);
 
@@ -219,6 +228,7 @@ void WiFi_setup()
         Serial.println(WiFi.softAPIP());
     }
 
+    //reconnecting = true;
 
     Uni_Udp.begin(RFlocalPort);
     Serial.print(F("UDP server has started at port: "));

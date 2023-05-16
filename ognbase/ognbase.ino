@@ -127,7 +127,7 @@
 #define APRS_KEEPALIVE_TIME 239
 #define TimeToKeepAliveOGN() (seconds() >= ExportTimeKeepAliveOGN + APRS_KEEPALIVE_TIME)
 
-#define APRS_CHECK_KEEPALIVE_TIME 21
+#define APRS_CHECK_KEEPALIVE_TIME 5   // <<< was 21
 #define TimeToCheckKeepAliveOGN() (seconds() >= ExportTimeCheckKeepAliveOGN + APRS_CHECK_KEEPALIVE_TIME)
 
 #define APRS_CHECK_WIFI_TIME 133
@@ -167,41 +167,6 @@ bool groundstation = false;
 int ground_registred = 0;
 bool fanet_transmitter = false;
 int proto_in_use = 0;
-
-File DebugLog;
-bool DebugLogOpen = false;
-
-void DebugLogWrite(const char *s)
-{
-    if (! DebugLogOpen)
-        return;
-    char buf[80];
-    snprintf (buf, sizeof(buf), "[%02d:%02d] %s\r\n",
-       ThisAircraft.hour, ThisAircraft.minute, s);
-    DebugLog.write((const uint8_t *)buf, strlen(buf));
-    DebugLog.flush();
-}
-
-void LogDate()
-{
-    static bool done = false;
-    if (! DebugLogOpen)
-        return;
-    if (done)
-        return;
-    done = true;
-    char buf[80];
-#ifdef TBEAM
-    snprintf (buf, sizeof(buf), "\r\n[%02d:%02d] Date: %d/%d\r\n",
-       ThisAircraft.hour, ThisAircraft.minute,
-       gnss.date.month(), gnss.date.day());
-#else
-    snprintf (buf, sizeof(buf), "\r\n[%02d:%02d] got time\r\n",
-       ThisAircraft.hour, ThisAircraft.minute);
-#endif
-    DebugLog.write((const uint8_t *)buf, strlen(buf));
-    DebugLog.flush();    
-}
 
 hardware_info_t hw_info = {
   .model    = DEFAULT_SOFTRF_MODEL,
@@ -276,7 +241,7 @@ void setup()
       delay(600);
       --deep_sleep_counter;
       esp_sleep_enable_timer_wakeup(3600*1000000ULL);
-//      esp_sleep_enable_ext0_wakeup(GPIO_NUM_26,1);           // which button is this?
+//      esp_sleep_enable_ext0_wakeup(GPIO_NUM_26,1);           // this is IO0 on the LORA module
       esp_deep_sleep_start();
   }
   deep_sleep_counter = 0;
@@ -285,7 +250,7 @@ void setup()
   Serial.print(SoC->name);
   Serial.print(F(" FW.REV: " SOFTRF_FIRMWARE_VERSION " DEV.ID: "));
   Serial.println(String(SoC->getChipId(), HEX));
-  Serial.println(F("Copyright (C) 2020 Manuel Roesel. All rights reserved."));
+  Serial.println(F("By Manuel Roesel and Moshe Braner"));
   Serial.flush();
 
   if (resetInfo) {
@@ -343,24 +308,29 @@ void setup()
   pinMode(BUTTON, INPUT);
 #endif
 
-//settings->nmea_p = true;    // write to debuglog
-  settings->nmea_p = false;   // do not write to debuglog
+  OpenDebugLog();
+}
 
-  if (settings->nmea_p) {
-    if (SPIFFS.begin(true)) {
-      bool append = false;
-      if (SPIFFS.exists("/debuglog.txt") && SPIFFS.totalBytes() - SPIFFS.usedBytes() > 10000)
-          append = true;
-      DebugLog = SPIFFS.open("/debuglog.txt", (append? FILE_APPEND : FILE_WRITE));
-      if (DebugLog) {
-          DebugLogOpen = true;
-      } else {
-          Serial.println(F("Failed to open debuglog.txt"));
-      }
-    } else {
-        Serial.println(F("Failed to start SPIFFS"));
-    }
-  }
+void pre_shutdown()
+{
+  SoC->WDT_fini();
+  SoC->swSer_enableRx(false);
+  Web_fini();
+  WiFi_fini();
+  RF_Shutdown();
+  SoC->Button_fini();
+}
+
+void shutdown(const char *msg)
+{
+  OLED_enable();
+
+  Serial.println(msg);
+  OLED_write(msg, 0, 27, true);
+  delay(500);
+
+  pre_shutdown();
+  SoC_fini();
 }
 
 void loop()
@@ -371,7 +341,30 @@ void loop()
   // Do common RF stuff first
   RF_loop();
 
-  ground();
+//Serial.println("AP check...");
+
+  if((WiFi.getMode() == WIFI_AP) && !ognrelay_enable){
+    char buf[32];
+    OLED_write("Setup mode..", 0, 9, true);
+    snprintf (buf, sizeof(buf), "SSID: %s", host_name.c_str());
+    OLED_write(buf, 0, 18, false);
+    snprintf (buf, sizeof(buf), "ip: %s", "192.168.1.1");
+    OLED_write(buf, 0, 27, false);
+    snprintf (buf, sizeof(buf), "reboot in %d seconds", 600 - seconds());
+    OLED_write(buf, 0, 36, false);
+    snprintf (buf, sizeof(buf), "Version: %s ", _VERSION);
+    OLED_write(buf, 0, 45, false);    
+    delay(1000);
+    if(seconds() > 600){
+      DebugLogWrite("reset after 600 sec in AP mode");
+      delay(700);
+      pre_shutdown();
+      SoC->reset();
+    }
+  } else {
+
+    ground();
+  }
 
 //Serial.println("WiFi_loop...");
 
@@ -407,29 +400,6 @@ void loop()
   yield();
 }
 
-void shutdown(const char *msg)
-{
-  OLED_enable();
-
-Serial.println(msg);
-OLED_write(msg, 0, 27, true);
-delay(500);
-  
-  SoC->WDT_fini();
-
-  SoC->swSer_enableRx(false);
-
-  Web_fini();
-
-  WiFi_fini();
-
-  RF_Shutdown();
-
-  SoC->Button_fini();
-
-  SoC_fini();
-}
-
 void ground()
 {
 
@@ -437,26 +407,6 @@ void ground()
    bool success;
    String msg;
    char buf[32];
-
-//Serial.println("AP check...");
-
-  if((WiFi.getMode() == WIFI_AP) && !ognrelay_enable){
-    OLED_write("Setup mode..", 0, 9, true);
-    snprintf (buf, sizeof(buf), "SSID: %s", host_name.c_str());
-    OLED_write(buf, 0, 18, false);
-    snprintf (buf, sizeof(buf), "ip: %s", "192.168.1.1");
-    OLED_write(buf, 0, 27, false);
-    snprintf (buf, sizeof(buf), "reboot in %d seconds", 600 - seconds());
-    OLED_write(buf, 0, 36, false);
-    snprintf (buf, sizeof(buf), "Version: %s ", _VERSION);
-    OLED_write(buf, 0, 45, false);    
-    delay(1000);
-    if(600 < seconds()){
-      DebugLogWrite("ground() reset after 600 sec");
-      delay(500);
-      SoC->reset();
-    }
-  }
 
 //Serial.println("position...");
 
@@ -530,7 +480,7 @@ void ground()
     }
 
   if(!position_is_set){
-    Serial.println("still no position...");
+    Serial.println(F("still no position..."));
     OLED_write("no position data found", 0, 18, true);
     delay(300);
     OLED_write("waiting for GPS fix", 0, 18, true);
@@ -543,7 +493,7 @@ void ground()
 #else
 
   if(!position_is_set){
-    Serial.println("TTGO - no position");
+    Serial.println(F("TTGO - no position"));
     OLED_write("no position data found", 0, 18, true);
     delay(500);
   }
@@ -601,21 +551,27 @@ void ground()
 
   if (!ognrelay_enable) {
 
+    LogDate();  // once
+
 //Serial.println("check registration...");
 
     if (TimeToRegisterOGN() || ground_registred == 0) {  
       if (OurTime != 0 && ThisAircraft.second != 0 && position_is_set && WiFi.getMode() == WIFI_STA) {
-        Serial.println("Registering OGN...");
+        Serial.println(F("Registering OGN..."));
         OLED_write("Registering OGN...", 0, 18, true);
         ground_registred = OGN_APRS_Register(&ThisAircraft);
         if (ground_registred == 1)  OLED_write("Registered OGN OK", 0, 27, false);
         ExportTimeRegisterOGN = seconds();
+        if (SoC->getFreeHeap() < 30000) {
+            Serial.print(F("Free heap size: "));
+            Serial.println(SoC->getFreeHeap());
+            DebugLogWrite("free heap < 30000");
+        }
       }
-      LogDate();
     }
 
     if(ground_registred == -1) {
-      Serial.println("server registration failed!");
+      Serial.println(F("server registration failed!"));
       OLED_write("server reg failed!", 0, 18, true);
       OLED_write("please check json file!", 0, 27, false);
       snprintf (buf, sizeof(buf), "%s : %d", ogn_server.c_str(), ogn_port);
@@ -625,15 +581,20 @@ void ground()
     }
   
     if(ground_registred == -2) {
+      if (ExportTimeReRegister != 0)     // <<<
+          os_runstep();
 //Serial.println("check wifi...");
       if (TimeToReRegisterOGN()) {
-          if (OGN_APRS_check_Wifi())
+          if (OGN_APRS_check_Wifi()) {
               ground_registred = 0;
-          else
-              ExportTimeReRegister = seconds();
+              ExportTimeReRegister = 0;
+          } else {
+              Serial.println(F("REregistration: wifi error"));
+              ExportTimeReRegister = seconds();  // try again 30 seconds from now
+          }
       }
-//      ExportTimeReRegister = seconds();
-//      while(TimeToReRegisterOGN()){                  /* >>> is this safe? <<< */
+//      ExportTimeReRegister = seconds();      /* >>> doesn't this prevent next line? <<< */
+//      while(TimeToReRegisterOGN()){          /* >>> is this safe? <<< */
 //        os_runstep();
 //      }
 //      ground_registred = 0;
@@ -669,26 +630,14 @@ void ground()
         && ground_registred == 1 && position_is_set) {
 
       static bool first_time = true;
-      String resetReason, logmsg;
-      if (first_time) {
+      String resetReason;
+      if (first_time)
           resetReason = SoC->getResetReason();
-          logmsg = "restarted after " + resetReason;
-          DebugLogWrite(logmsg.c_str());
-      }
 
       if (OGN_APRS_Location(&ThisAircraft)
        && OGN_APRS_Status(&ThisAircraft, first_time, resetReason)) {
 
-        if (OurTime > 0) {   // sent reset-reason along with a time stamp
-            if (first_time) {
-                first_time = false;
-            } else {
-                Serial.print(F("Free heap size: "));
-                Serial.println(SoC->getFreeHeap());
-                if (SoC->getFreeHeap() < 30000)
-                    DebugLogWrite("free heap < 30000");
-            }
-        }
+        first_time = false;
 
         //Serial.println("status OGN...");
 
@@ -706,8 +655,11 @@ void ground()
         msg += String(gnss.satellites.value());
         Logger_send_udp(&msg);
 
-      }
+      } else {   // transmission failed
 
+        ExportTimeStatusOGN += 23;    // wait a bit before trying again
+
+      }
     }
 
     if(TimeToCheckKeepAliveOGN() && ground_registred == 1){
@@ -726,18 +678,20 @@ void ground()
         OLED_write("success", 35, 54, false);
         retries = 0;
       } else {
+        // OGN_APRS_check_Wifi() did WiFi.disconnect() & WiFi.reconnect()
+        DebugLogWrite("WiFi disconnected - trying reconnect...");
         OLED_write("error", 35, 54, false);
-        Serial.println("...APRS wifi error");
-        if (++retries < 3) {
-            DebugLogWrite("WiFi disconnected - restart WiFi");
-            Serial.println("WiFi disconnected - restart WiFi");
-            WiFi_setup();
+        if (retries < 4) {    // 4 * 133 seconds = 9 minutes
+            ++retries;
+            Serial.print(retries);
+            Serial.println(F(" WiFi disconnected - trying..."));
+            // WiFi_setup();    // not re-entrant, wifiMulti->run() causes watchdog crash?
         } else {
-            DebugLogWrite("WiFi reconnections failed - reset");
-            Serial.println("WiFi reconnections failed - reset");
+            DebugLogWrite("WiFi reconnections failed - reboot");
+            Serial.println(F("WiFi reconnections failed - reboot"));
             OLED_write("reboot", 35, 54, false);
             delay(1000);
-            SoC->reset();
+            SoC->reset();    // will run as AP for 10 minutes if WiFi network still not available
         }
       }
       ExportTimeCheckWifi = seconds();
@@ -855,7 +809,7 @@ sleep_check()
     if (Battery_voltage() < 3.65 && Battery_voltage() > 2.0) {
         low_bat = true;
         if (low_bat_time == 0) {
-            Serial.println("local battery voltage < 3.65");
+            Serial.println(F("local battery voltage < 3.65"));
             low_bat_time = millis();
         }
 //        bool gnss_ready = true;

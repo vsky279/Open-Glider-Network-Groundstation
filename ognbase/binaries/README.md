@@ -5,6 +5,13 @@
 Besides the binary here, download the files in the "data" folder: config.json (template), index.html, style.css.
 
 
+## revision MB108
+
+### Major improvements
+
+Further improved handling of intermittent WiFi.
+
+
 ## revision MB107
 
 ### Major improvements

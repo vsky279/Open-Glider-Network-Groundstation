@@ -620,6 +620,11 @@ void Time_update()
             // OurTime = 0;
             if (time_synched && (sleep_when==0 || millis()>sleep_when+3*TIME_TO_RE_SYNC))
                 Timesync_restart();
+Serial.println(F("Lost GNSS time, will re-sync..."));
+        }
+        if (OurTime > 0 && now_ms >= ref_time_ms + 1000) {    // >>> added 5/2023: keep counting time
+            OurTime += 1;
+            ref_time_ms += 1000;
         }
 //Serial.println(F("waiting for GNSS time..."));
         return;

@@ -24,6 +24,13 @@
 void Logger_send_udp(String *);
 void Logger_send_enc_udp(String *);
 
+#include "SPIFFS.h"
+extern File DebugLog;
+extern bool DebugLogOpen;
+void OpenDebugLog();
+void DebugLogWrite(const char *s);
+void LogDate();
+
 #if LOGGER_IS_ENABLED
 
 #include <FS.h>
