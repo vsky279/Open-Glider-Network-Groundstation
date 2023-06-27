@@ -3,7 +3,7 @@ Preliminary Documentation for OGNbase
 
 By Moshe Braner
 
-This version last updated April 23 2023 to fit software version MB107
+This version last updated June 27 2023 to fit software version MB109
 
 
 HISTORY
@@ -391,7 +391,7 @@ Data fields may also include:
 
 Radio packets relayed by SoftRF
 
-SoftRF (from version MB09k) relays radio packets from landed aircraft.  To avoid recursive relaying, it changes the address (ID) type in the packet, to values not otherwise used by FLARM.  OGNbase restores the original address types when it reports the traffic to OGN, but for the callsign prefix it uses ICZ and FLZ instead of ICA and FLR, to mark this traffic.
+SoftRF (from version MB09x) optionally relays radio packets from landed (or far or low) aircraft.  To avoid recursive relaying, it changes the address (ID) type in the packet, to values not otherwise used by FLARM.  OGNbase restores the original address types when it reports the relayed traffic to OGN, but changes the reporting station name to "relayed" so as not to affect the station range stats.  It also reports the reception SNR as 99 dB.
 
 Compiling OGNbase
 

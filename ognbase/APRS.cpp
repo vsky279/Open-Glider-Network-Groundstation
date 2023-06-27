@@ -1,5 +1,5 @@
 /*
-   OGN.cpp
+   APRS.cpp
    Copyright (C) 2020 Manuel Rösel
 
    This program is free software: you can redistribute it and/or modify
@@ -336,38 +336,39 @@ void OGN_APRS_Export(void)
             String AircraftPacket;
             uint8_t addr_type = Container[i].addr_type;
 
-            if (addr_type == 1)
-                AircraftPacket = "ICA";
-            else if (addr_type == 2)
-                AircraftPacket = "FLR";
-            else if (addr_type == 3)
-                AircraftPacket = "OGN";
-            else if (Container[i].protocol == RF_PROTOCOL_LEGACY) {
-                // assume these mark FLARM messages relayed by SoftRF:
+            bool relayed = (Container[i].protocol == RF_PROTOCOL_LEGACY && addr_type > 3);
+              // assume these are messages relayed by SoftRF
+
+            if (relayed) {
+                // restore the original address type
                 if (addr_type == 4) {
-                    AircraftPacket = "ICZ";             // was ICAO
+                    AircraftPacket = "ICA";             // was ICAO
                     addr_type = 1;
                 } else if (addr_type == 7) {
-                    AircraftPacket = "FLZ";             // was FLARM
+                    AircraftPacket = "FLR";             // was FLARM
                     addr_type = 2;
-                } else if (addr_type == 5) {
-                    AircraftPacket = "RNZ";             // was random
-                    addr_type = 0;
                 } else if (addr_type == 6) {
-                    AircraftPacket = "ANZ";             // was anonymous
+                    AircraftPacket = "OGN";             // was anonymous
                     addr_type = 3;
-                } else {                                // shouldn't happen
+                } else {
                     AircraftPacket = "RND";
                     addr_type = 0;
                 }
-            } else {
-                if (addr_type == 4)
+            } else /* not relayed */ {
+                if (addr_type == 1)
+                    AircraftPacket = "ICA";
+                else if (addr_type == 2)
+                    AircraftPacket = "FLR";
+                else if (addr_type == 3)
+                    AircraftPacket = "OGN";
+                else if (addr_type == 4)
                     AircraftPacket = "P3I";
                 else if (addr_type == 5)
                     AircraftPacket = "FNT";
-                else
+                else {
                     AircraftPacket = "RND";
-                addr_type = 0;
+                    addr_type = 0;
+                }
             }
 
             APRS_AIRC.sender_details = zeroPadding(String((Container[i].aircraft_type << 2)
@@ -377,7 +378,14 @@ void OGN_APRS_Export(void)
             APRS_AIRC.sender_details.toUpperCase();
 
             AircraftPacket += APRS_AIRC.callsign;
-            AircraftPacket += ">OGFLR,qOR:/";
+            // AircraftPacket += ">OGFLR,qOR:/";
+            if (relayed) {
+                AircraftPacket += ">OGFLR,qAS,relayed:/";
+                // disassociate this packet from this station, so
+                // as not to mess up the station range measurement
+            } else {
+                AircraftPacket += ">OGFLR,qOR:/";
+            }
             AircraftPacket += APRS_AIRC.timestamp;
             AircraftPacket += APRS_AIRC.lat_deg;
             AircraftPacket += APRS_AIRC.lat_min;
@@ -407,9 +415,15 @@ void OGN_APRS_Export(void)
             AircraftPacket += APRS_AIRC.climbrate;
             // AircraftPacket += "fpm +0.0rot ";
             AircraftPacket += "fpm ";
-            AircraftPacket += APRS_AIRC.snr;
+            if (relayed)
+              AircraftPacket += "99.0";   // marks as relayed, when SNR is meaningless anyway
+            else
+              AircraftPacket += APRS_AIRC.snr;
             // AircraftPacket += "dB 0e -0.0kHz";
             // AircraftPacket += "\r\n";
+            //if (relayed)
+            //  AircraftPacket += "dB relayed\r\n";
+            //else
             AircraftPacket += "dB\r\n";
 
             Serial.println("");
