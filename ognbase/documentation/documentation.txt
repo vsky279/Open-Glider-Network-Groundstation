@@ -3,7 +3,7 @@ Preliminary Documentation for OGNbase
 
 By Moshe Braner
 
-This version last updated June 27 2023 to fit software version MB109
+This version last updated August 4 2023 to fit software version MB110
 
 
 HISTORY
@@ -42,12 +42,12 @@ HOW TO USE OGNBASE
 
 Hardware choices
 
-The LilyGo "T-Beam" includes a GNSS (GPS) module and can also be used for the SoftRF FLARM-compatible collision avoidance system.  It also has an integrated holder for an 18650 li-ion battery.  For use in the USA, Canada or Australia this or a similar model is required for single-station operation and for the remote station in a relay setup.  For use in Europe, too, it is recommended.
+The LilyGo "T-Beam" includes a GNSS (GPS) module and can also be used for the SoftRF FLARM-compatible collision avoidance system.  It also has an integrated holder for an 18650 li-ion battery.  For use in the USA, Canada or Australia this or a similar (GNSS-equipped) model is required for single-station operation and for the remote station in a relay setup.  For use in Europe, too, it is recommended.  Be sure to get the model for the frequency used in your region, e.g., 915 MHz in North America and 868 MHz in Europe.
 https://www.amazon.com/LILYGO-T-Beam-915Mhz-Bluetooth-Battery/dp/B09G6GPG9S
 
 Note: to turn off the T-Beam, press and hold the button closest to the USB jack until the dim red LED turns off.
 
-The LilyGo (TTGO) "Paxcounter" does not have a GNSS module, but can be used for the base station in a relay setup, and for any role in any setup in regions with only 1 or 2 channels (e.g., Europe).
+The LilyGo (TTGO) "Paxcounter" does not have a GNSS module, but can be used for the base station in a relay setup, and for any role in regions with only 1 or 2 channels (e.g., Europe).
 https://www.amazon.com/LILYGO-V2-1_1-6-868Mhz-Bluetooth-Development/dp/B09FXHSS6P
 
 Note: One needs to install different binaries on the two hardware models, due to the absence of "PSRAM" on the Paxcounter.
@@ -374,6 +374,9 @@ You can monitor the operation of your station remotely via the internet.  Every 
 The status messages from OGNbase include the following information:  For example:
 K2B9>OGNSXR,TCPIP*,qAC,GLIDERN2:>235055h vMB103-ESP32-OGNbase 3.7V 0/min 0/0Acfts[1h] 8sat time_synched 120_m_r_uptime
 Where the fields are:
+   K2B9                 name of the ground station reporting
+   OGNSXR               identifies the source as OGNbase
+   GLIDERN2             name of OGN server handling this message
    235055h              time stamp
    vMB103-ESP32-OGNbase software version and type of hardware
    3.7V                 battery voltage (in remote relay station if used)
@@ -391,7 +394,7 @@ Data fields may also include:
 
 Radio packets relayed by SoftRF
 
-SoftRF (from version MB09x) optionally relays radio packets from landed (or far or low) aircraft.  To avoid recursive relaying, it changes the address (ID) type in the packet, to values not otherwise used by FLARM.  OGNbase restores the original address types when it reports the relayed traffic to OGN, but changes the reporting station name to "relayed" so as not to affect the station range stats.  It also reports the reception SNR as 99 dB.
+SoftRF (from version MB09x) optionally relays radio packets from landed (or far or low) aircraft.  To avoid recursive relaying, it marks the packet by changing the address (ID) type, to values not otherwise used by FLARM.  OGNbase restores the original address types when it reports the relayed traffic to OGN, but changes the reporting station name to "relayed" so as not to affect the station range stats.  It also reports the reception SNR as 99 dB.  SoftRF also changes other fields in the packets originally from airborne (not landed) devices to make them invisible to FLARM devices.  OGNbase interprets these packets and reports them similarly to relayed packets from landed aircraft.
 
 Compiling OGNbase
 

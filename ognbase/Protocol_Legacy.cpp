@@ -146,6 +146,19 @@ bool legacy_decode(void* buffer, ufo_t* this_aircraft, ufo_t* fop)
     fop->addr = pkt->addr;     /* first 32 bits are not encrypted */
 //Serial.printf("decoding pkt, unk0=%X, addr=%06X\r\n", pkt->_unk0, pkt->addr);
 
+    //bool air_relayed = false;
+
+    if (! ognrelay_base) {    // relay station or single station
+        if (pkt->_unk0 == 0xF && pkt->_unk1 == 1 && pkt->addr_type > 3) {
+            // probably air-relayed by SoftRF
+            //   but do some sanity checks below
+            pkt->_unk0 = 0;
+            pkt->_unk1 = 0;   // restores original parity
+            //air_relayed = true;
+            // leave the special addr_type for later processing
+        }
+    }
+
     if (ognrelay_enable) {
 
         if (pkt->_unk0 != 0) {    /* received relayed, or special FLARM packet - ignore */
@@ -233,16 +246,27 @@ Serial.println("bad checksum in relayed packet");
         uint8_t pkt_parity=0;
         for (int ndx = 0; ndx < sizeof (legacy_packet_t); ndx++)
             pkt_parity += parity(*(((unsigned char *) pkt) + ndx));
-        if (pkt_parity % 2) {
+        // if ((pkt_parity % 2) && (! air_relayed)) {
+        if (pkt_parity & 0x01) {
 //if (ognrelay_base)
 //Serial.println("bad parity in relayed packet");
 //else
 //Serial.println("bad parity in original packet");
             return false;
         }
-        // since parity will be right 50% of the time by chance, it's a very weak check!
+        // parity will be right 50% of the cases by chance, it's a very weak check!
         fop->rssi  = RF_last_rssi;      /* local reception */
     }
+
+    uint16_t vs_u16 = pkt->vs;
+    int16_t  vs_i16 = (int16_t) (vs_u16 | (vs_u16 & (1 << 9) ? 0xFC00U : 0));
+    int16_t  vs10   = vs_i16 << pkt->smult;
+
+    /* FLARM sometimes sends packets with implausible data */
+    if (pkt->airborne == 0 && (vs10 > 100 || vs10 < -100))
+        return false;
+    if (pkt->_unk2 == 2)   // appears with implausible data in speed fields
+        return false;
 
     fop->timestamp = timestamp;
     fop->addr_type = pkt->addr_type;
@@ -262,9 +286,9 @@ Serial.println("bad checksum in relayed packet");
         // >>> do some sanity checks here in case approx_time is off by a second
         //     and thus the decrypted data is random garbage
         // - if we knew what is in the "gps" field could check that
-        if (pkt->airborne == 0)  return false;
         if (pkt->stealth)   return false;
         if (pkt->no_track)  return false;
+        //if (pkt->airborne == 0)  return false;
       }
       /* do not decode further */
       /* packet will be relayed in Traffic.cpp using legacy_encode() below */
@@ -277,9 +301,9 @@ Serial.println("bad checksum in relayed packet");
         // >>> do some sanity checks here in case NTP time is off by a second
         //     and thus the decrypted data is random garbage
         // - if we knew what is in the "gps" field could check that
-        if (pkt->airborne == 0)  return false;
         if (pkt->stealth)   return false;
         if (pkt->no_track)  return false;
+        //if (pkt->airborne == 0)  return false;
       }
 
       if (time_sent) {
@@ -337,9 +361,9 @@ Serial.println("bad checksum in relayed packet");
     if (ilon >= 0x080000) ilon -= 0x0100000;
     float lon = (float)((ilon + round_lon) << 7) * 1e-7;
 
-    int32_t ns = pkt->ns[0];
-    int32_t ew = pkt->ew[0];
-    float   speed4 = sqrtf((float)(ew * ew + ns * ns)) * (float)(1 << pkt->smult);
+    int32_t ns = (((int32_t) pkt->ns[0]) << pkt->smult);      /* quarter-meters per sec */
+    int32_t ew = (((int32_t) pkt->ew[0]) << pkt->smult);
+    float speed4 = sqrtf((float)(ew * ew + ns * ns));
 
     float direction = 0;
     if (speed4 > 0)
@@ -348,9 +372,11 @@ Serial.println("bad checksum in relayed packet");
         direction = (direction >= 0.0 ? direction : direction + 360);
     }
 
-    uint16_t vs_u16 = pkt->vs;
-    int16_t  vs_i16 = (int16_t) (vs_u16 | (vs_u16 & (1 << 9) ? 0xFC00U : 0));
-    int16_t  vs10   = vs_i16 << pkt->smult;
+    // additional sanity checks
+    if (speed4 > 600.0)
+            return false;
+    if (abs(vs10) > 300)
+            return false;
 
     int16_t alt = pkt->alt;  /* relative to WGS84 ellipsoid */
 
@@ -360,7 +386,7 @@ Serial.println("bad checksum in relayed packet");
     fop->latitude      = lat;
     fop->longitude     = lon;
     fop->altitude      = (float) alt - geo_separ;
-    fop->speed         = speed4 / (4 * _GPS_MPS_PER_KNOT);
+    fop->speed         = speed4 * (1.0 / (4 * _GPS_MPS_PER_KNOT));
     fop->course        = direction;
     fop->vs            = ((float) vs10) * (_GPS_FEET_PER_METER * 6.0);
     fop->aircraft_type = pkt->aircraft_type;

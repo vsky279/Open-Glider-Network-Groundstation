@@ -333,42 +333,34 @@ void OGN_APRS_Export(void)
             else
                 APRS_AIRC.climbrate = zeroPadding(String(int(Container[i].vs)), 3);
 
-            String AircraftPacket;
             uint8_t addr_type = Container[i].addr_type;
-
             bool relayed = (Container[i].protocol == RF_PROTOCOL_LEGACY && addr_type > 3);
               // assume these are messages relayed by SoftRF
-
-            if (relayed) {
-                // restore the original address type
-                if (addr_type == 4) {
-                    AircraftPacket = "ICA";             // was ICAO
+            if (relayed) {              // restore the original address type
+                if (addr_type == 4)           // was ICAO
                     addr_type = 1;
-                } else if (addr_type == 7) {
-                    AircraftPacket = "FLR";             // was FLARM
+                else if (addr_type == 7)      // was FLARM
                     addr_type = 2;
-                } else if (addr_type == 6) {
-                    AircraftPacket = "OGN";             // was anonymous
+                else if (addr_type == 6)      // was anonymous
                     addr_type = 3;
-                } else {
-                    AircraftPacket = "RND";
+                else
                     addr_type = 0;
-                }
-            } else /* not relayed */ {
-                if (addr_type == 1)
-                    AircraftPacket = "ICA";
-                else if (addr_type == 2)
-                    AircraftPacket = "FLR";
-                else if (addr_type == 3)
-                    AircraftPacket = "OGN";
-                else if (addr_type == 4)
-                    AircraftPacket = "P3I";
-                else if (addr_type == 5)
-                    AircraftPacket = "FNT";
-                else {
-                    AircraftPacket = "RND";
-                    addr_type = 0;
-                }
+            }
+
+            String AircraftPacket;
+            if (addr_type == 1)
+                AircraftPacket = "ICA";
+            else if (addr_type == 2)
+                AircraftPacket = "FLR";
+            else if (addr_type == 3)
+                AircraftPacket = "OGN";
+            //else if (addr_type == 4)
+            //    AircraftPacket = "P3I";
+            //else if (addr_type == 5)
+            //    AircraftPacket = "FNT";
+            else {
+                AircraftPacket = "RND";
+                addr_type = 0;
             }
 
             APRS_AIRC.sender_details = zeroPadding(String((Container[i].aircraft_type << 2)
@@ -381,8 +373,8 @@ void OGN_APRS_Export(void)
             // AircraftPacket += ">OGFLR,qOR:/";
             if (relayed) {
                 AircraftPacket += ">OGFLR,qAS,relayed:/";
-                // disassociate this packet from this station, so
-                // as not to mess up the station range measurement
+                // - disassociate this packet from this station, so
+                //   as not to mess up the station range measurement
             } else {
                 AircraftPacket += ">OGFLR,qOR:/";
             }
