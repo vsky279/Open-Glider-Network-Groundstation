@@ -420,19 +420,22 @@ void OGN_APRS_Export(void)
 
             Serial.println("");
             Serial.println(AircraftPacket.c_str());
-            Serial.println("");
 
             Logger_send_udp(&AircraftPacket);
             Logger_send_udp(&APRS_AIRC.pos_precision);
 
-            if (SoC->WiFi_transmit_TCP(AircraftPacket) == 0)  // <<<
-                Serial.println(F("transmit traffic to TCP failed"));
+            if (SoC->WiFi_transmit_TCP(AircraftPacket) == 0) {
+                Serial.println(F("- transmit traffic to TCP failed"));
+            } else {
+                Container[i].waiting = false;
+                Container[i].timereported = OurTime;
+                ++traffic_packets_reported;
+            }
 
-            Container[i].waiting = false;
-            Container[i].timereported = OurTime;
-            ++traffic_packets_reported;
+            Serial.println("");
 
             yield();
+            delay(20);
         }
     }
 }

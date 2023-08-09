@@ -127,11 +127,14 @@ void WiFi_setup()
     static bool configged = false;
     //static bool reconnecting = false;
 
-      if (WiFi.getMode() != WIFI_STA)
-      {
-          WiFi.mode(WIFI_STA);
-          delay(500);
-      }
+    //  if (WiFi.getMode() != WIFI_STA)
+    //  {
+    //      WiFi.mode(WIFI_STA);
+    //      delay(500);
+    //  }
+
+    WiFi.mode(WIFI_OFF);
+    delay(500);
 
     if (! configged) {
       configged = OGN_read_config();
@@ -142,8 +145,9 @@ void WiFi_setup()
 
         Serial.println(F("Using WiFi config..."));
 
-        WiFi.mode(WIFI_OFF);
-        delay(1000);
+        //WiFi.mode(WIFI_OFF);
+        WiFi.mode(WIFI_STA);
+        delay(500);
 
         //if (reconnecting)
         //    delete wifiMulti;
@@ -190,16 +194,21 @@ void WiFi_setup()
 
     } else {  /* not configged */
 
-        station_ssid = MY_ACCESSPOINT_SSID;
-        station_psk  = MY_ACCESSPOINT_PSK;
-        WiFi.begin();
-        delay(1000);
+        //station_ssid = MY_ACCESSPOINT_SSID;
+        //station_psk  = MY_ACCESSPOINT_PSK;
+        //WiFi.begin();
+        //delay(1000);
     }
 
     if (WiFi.status() != WL_CONNECTED)
     {
         //if (reconnecting)
         //    return;      // do not go into AP mode if temporarily disconnected
+
+        WiFi.begin();
+        delay(200);
+        WiFi.mode(WIFI_AP);
+        delay(100);
 
         host_name += String((SoC->getChipId() & 0xFFFFFF), HEX);
         SoC->WiFi_hostname(host_name);

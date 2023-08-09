@@ -227,8 +227,8 @@ void setup()
   Serial.begin(SERIAL_OUT_BR, SERIAL_OUT_BITS);
   Serial.println();
 
-  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER
-      && deep_sleep_counter > 0 && deep_sleep_counter < 24) {
+  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER) {
+    if (deep_sleep_counter > 0 && deep_sleep_counter < 24) {
       /* yet more hour(s) to sleep */
       Serial.print(F("----> ")); Serial.print(deep_sleep_counter); Serial.println(F(" more hours to sleep"));
       delay(600);
@@ -243,6 +243,9 @@ void setup()
       esp_sleep_enable_timer_wakeup(3600*1000000ULL);
 //      esp_sleep_enable_ext0_wakeup(GPIO_NUM_26,1);           // this is IO0 on the LORA module
       esp_deep_sleep_start();
+   } else {
+      Serial.println(F("====> woke up from deep sleep"));
+   }
   }
   deep_sleep_counter = 0;
 
@@ -309,6 +312,9 @@ void setup()
 #endif
 
   OpenDebugLog();
+
+  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER)
+      DebugLogWrite("woke up from deep sleep");
 }
 
 void pre_shutdown()
@@ -482,9 +488,9 @@ void ground()
   if(!position_is_set){
     Serial.println(F("still no position..."));
     OLED_write("no position data found", 0, 18, true);
-    delay(300);
+    delay(600);
     OLED_write("waiting for GPS fix", 0, 18, true);
-    delay(300);
+    delay(600);
     OLED_info(false);
   }
 
@@ -495,7 +501,7 @@ void ground()
   if(!position_is_set){
     Serial.println(F("TTGO - no position"));
     OLED_write("no position data found", 0, 18, true);
-    delay(500);
+    delay(600);
   }
 
 #endif
