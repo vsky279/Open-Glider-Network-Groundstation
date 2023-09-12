@@ -1,6 +1,6 @@
 # OGNbase
 
-(Note: version MB120 (Sep 12 2023) is compatible with the newer version of the T-Beam, with the AXP2101 - as well as with the older version with the AXP192.  Firmware update via WiFi sometimes fails - hangs within async_tcp and then auto-reboots - keep trying.)
+(Note: version MB120 (Sep 12 2023) is compatible with the newer version v1.2 of the T-Beam, with the AXP2101 - as well as with the older version v1.1 with the AXP192.  Firmware update via WiFi sometimes fails - hangs within async_tcp and then auto-reboots - keep trying.)
 
 Groundstation for Open Glider Network with ESP32
 

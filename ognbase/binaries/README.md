@@ -9,7 +9,7 @@ Besides the binary here, download the files in the "data" folder: config.json (t
 
 ### Major improvements
 
-Support T-Beam v1.2 with AXP2101 (as well as the older v1.2 with AXP192).
+Support T-Beam v1.2 with AXP2101 (as well as the older v1.1 with AXP192).
 
 
 ## revision MB111
