@@ -5,6 +5,27 @@
 Besides the binary here, download the files in the "data" folder: config.json (template), index.html, style.css.
 
 
+## revision MB120
+
+### Major improvements
+
+Support T-Beam v1.2 with AXP2101 (as well as the older v1.2 with AXP192).
+
+
+## revision MB111
+
+### Major improvements
+
+Fixed: WiFi not starting when no config file loaded.
+
+
+## revision MB110
+
+### Major improvements
+
+Handling of packets air-relayed by SoftRF.
+
+
 ## revision MB108
 
 ### Major improvements
