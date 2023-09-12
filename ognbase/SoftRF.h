@@ -33,7 +33,7 @@
 
 #include "version.h"
 
-#define SOFTRF_FIRMWARE_VERSION "MB111"   // _VERSION
+#define SOFTRF_FIRMWARE_VERSION "MB120"   // _VERSION
 #define SOFTRF_IDENT            "OGNB-"
 #define OGNBASE_HTML_VERSION    "MB104"
 
@@ -178,6 +178,7 @@ typedef struct hardware_info
     byte model;
     byte revision;
     byte soc;
+    byte pmu;
     byte rf;
     byte gnss;
     byte baro;

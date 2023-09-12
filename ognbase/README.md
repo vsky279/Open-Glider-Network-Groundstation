@@ -1,5 +1,7 @@
 # OGNbase
 
+(Note: version MB120 (Sep 12 2023) is compatible with the newer version of the T-Beam, with the AXP2101 - as well as with the older version with the AXP192.  Firmware update via WiFi sometimes fails - hangs within async_tcp and then auto-reboots - keep trying.)
+
 Groundstation for Open Glider Network with ESP32
 
 The aim of this project is to create a simple base station for the OGN network. The SoftRF project was used as the base. Thanks to Linar Yusupov for this work!

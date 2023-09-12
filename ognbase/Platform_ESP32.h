@@ -20,6 +20,8 @@
 #ifndef PLATFORM_ESP32_H
 #define PLATFORM_ESP32_H
 
+#include "sdkconfig.h"
+
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
@@ -40,6 +42,12 @@
 #define EEPROM_commit()         EEPROM.commit()
 
 #define isValidFix()            isValidGNSSFix()
+
+#if defined(ESP_IDF_VERSION_MAJOR) && ESP_IDF_VERSION_MAJOR>=4
+#define WIRE_FINI(bus)          { bus.end(); }
+#else
+#define WIRE_FINI(bus)          { } /* AC 1.0.x has no Wire.end() */
+#endif
 
 /* Adafruit_NeoPixel still has "flickering" issue of ESP32 caused by 1 ms scheduler */
 //#define USE_ADAFRUIT_NEO_LIBRARY
@@ -211,13 +219,15 @@ enum rst_reason
     REASON_EXT_SYS_RST = 6       /* external system reset */
 };
 
-enum esp32_board_id
-{
-    ESP32_DEVKIT,
-    ESP32_TTGO_V2_OLED,
-    ESP32_HELTEC_OLED,
-    ESP32_TTGO_T_BEAM,
-    ESP32_TTGO_T_WATCH
+enum esp32_board_id {
+  ESP32_DEVKIT,
+  ESP32_TTGO_V2_OLED,
+  ESP32_HELTEC_OLED,
+  ESP32_TTGO_T_BEAM,
+  ESP32_TTGO_T_BEAM_SUPREME,
+  ESP32_TTGO_T_WATCH,
+  ESP32_S2_T8_V1_1,
+  ESP32_S3_DEVKIT,
 };
 
 struct rst_info
