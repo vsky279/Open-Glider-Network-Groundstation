@@ -440,6 +440,8 @@ void mini_server()
     Web_start();
 }
 
+int ssid_num = -1;
+
 void Web_setup(ufo_t* this_aircraft)
 {
     if (!SPIFFS.begin(true))
@@ -463,6 +465,8 @@ void Web_setup(ufo_t* this_aircraft)
         mini_server();
         return;
     }
+
+    yield();
 
     ws.onEvent(onWsEvent);
     wserver.addHandler(&ws);
@@ -554,6 +558,8 @@ void Web_setup(ufo_t* this_aircraft)
     else
         ognopmode = "Single station, time from NTP";
 
+    yield();
+
     snprintf(offset, size, index_html,
              station_addr,
              version.c_str(),
@@ -607,7 +613,8 @@ void Web_setup(ufo_t* this_aircraft)
              (ogn_istealthbit == true ? "selected" : ""), "True",
              (ogn_istealthbit == false ? "selected" : ""), "False",
 
-             ogn_ssid[0].c_str(),
+             //ogn_ssid[0].c_str(),
+             WiFi.SSID().c_str(),
 
              /*Hide Wifi Password*/
              "hidepass",
@@ -638,7 +645,15 @@ void Web_setup(ufo_t* this_aircraft)
              (testmode_enable == 1 ? "selected" : ""), "Enabled"
 
              );
-            
+
+    ssid_num = -1;
+    for (int sn=0; sn<5; sn++) {
+       if (WiFi.SSID() == ogn_ssid[sn])
+           ssid_num = sn;   // using the SSID from this slot
+    }
+
+    yield();
+
     size_t len  = strlen(offset);
     String html = String(offset);
 
@@ -730,6 +745,8 @@ void Web_setup(ufo_t* this_aircraft)
 
 //    wserver.onNotFound(notFound);
 
+    yield();
+
     // Send a GET request to <ESP_IP>/get?inputString=<inputMessage>
     wserver.on("/get", HTTP_GET, [](AsyncWebServerRequest* request) {
         if (request->hasParam("callsign"))
@@ -753,7 +770,9 @@ void Web_setup(ufo_t* this_aircraft)
             ogn_geoid_separation = request->getParam("ogn_geoid")->value().toInt();
 
         if (request->hasParam("ogn_mobile"))
-            ogn_geoid_separation = request->getParam("ogn_mobile")->value().toInt();
+            ogn_mobile = request->getParam("ogn_mobile")->value().toInt();
+
+        yield();
 
         if (request->hasParam("ogn_freq"))
             ogn_band = request->getParam("ogn_freq")->value().toInt();
@@ -793,12 +812,18 @@ void Web_setup(ufo_t* this_aircraft)
         //if (request->hasParam("ogn_agc"))
         //    settings->sxlna = request->getParam("ogn_agc")->value().toInt();
 
-        if (request->hasParam("ogn_ssid"))
-            ogn_ssid[0] = request->getParam("ogn_ssid")->value().c_str();
+        yield();
 
+        if (request->hasParam("ogn_ssid")) {
+            if (ssid_num >= 0) {
+               // new SSID introduced, overwrite same slot
+               ogn_ssid[ssid_num] = request->getParam("ogn_ssid")->value().c_str();
+            }
+        }
         if (request->hasParam("ogn_wifi_password")){
-            if (request->getParam("ogn_wifi_password")->value() != "hidepass"){
-              ogn_wpass[0] = request->getParam("ogn_wifi_password")->value().c_str();
+            if (ssid_num >= 0) {
+              if (request->getParam("ogn_wifi_password")->value() != "hidepass")
+                ogn_wpass[ssid_num] = request->getParam("ogn_wifi_password")->value().c_str();
             }
         }
 
@@ -813,6 +838,8 @@ void Web_setup(ufo_t* this_aircraft)
 
         if (request->hasParam("zabbix_trap_en"))
             zabbix_enable = request->getParam("zabbix_trap_en")->value().toInt();
+
+        yield();
 
         if (request->hasParam("ogn_sleep_time")) {
             ogn_rxidle = 60 * request->getParam("ogn_sleep_time")->value().toInt();
@@ -853,6 +880,10 @@ void Web_setup(ufo_t* this_aircraft)
         if (request->hasParam("test_mode_en"))
             testmode_enable = request->getParam("test_mode_en")->value().toInt();
 
+        beers_show = false;
+
+        yield();
+
         request->redirect("/");
 #if 0
         // ogn_reset_all
@@ -877,6 +908,8 @@ void Web_setup(ufo_t* this_aircraft)
     SoC->swSer_enableRx(true);
     free(Settings_temp);
     free(index_html);
+
+    yield();
 
     // Start server
     Web_start();

@@ -159,9 +159,6 @@
 #define TIME_TO_EXPORT_FANET_SERVICE 40 /*every 40 sec 10 for testing*/
 #define TimeToExportFanetService() (seconds() >= ExportTimeFanetService + TIME_TO_EXPORT_FANET_SERVICE)
 
-#define BUTTON 38
-
-
 ufo_t ThisAircraft;
 bool groundstation = false;
 int ground_registred = 0;
@@ -307,10 +304,6 @@ void setup()
     aes_init();
   }
 
-#if defined(TBEAM)
-  pinMode(BUTTON, INPUT);
-#endif
-
   OpenDebugLog();
 
   if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER)
@@ -386,6 +379,8 @@ void loop()
     ExportTimeWebRefresh = seconds();
   }
 
+  yield();
+
 //Serial.println("OTA_loop...");
 
   // Handle OTA update.
@@ -432,6 +427,8 @@ void ground()
     }
 #endif
 
+    Serial.println("Position set from config file");
+
     msg = "found position data LAT: ";
     msg += ogn_lat;
     msg += " LON: ";
@@ -466,6 +463,8 @@ void ground()
       ogn_lon = gnss.location.lng();
       ogn_alt = gnss.altitude.meters();
       ogn_geoid_separation = gnss.separation.meters();
+
+      Serial.println("Position set from GNSS");
 
       if (!position_is_set) {
           msg = "GPS fix LAT: ";
@@ -506,6 +505,8 @@ void ground()
 
 #endif
 
+    yield();
+
 //Serial.println("ground...");
 
    if (position_is_set && !groundstation) {
@@ -517,6 +518,8 @@ void ground()
 
     // RF_Transmit(RF_Encode(&ThisAircraft), true);  // is this necessary?
     groundstation = true;
+
+    Serial.println("good morning, startup esp32 groundstation");
 
     msg = "good morning, startup esp32 groundstation ";
     msg += "version ";
@@ -537,6 +540,8 @@ void ground()
   /* time-relay stuff */
   Time_loop();
 
+  yield();
+
 //Serial.println("RF_Receive...");
 
   success = RF_Receive();
@@ -550,6 +555,8 @@ void ground()
         ExportTimeSleep = seconds();    /* actual traffic postpones sleep */
   }
 
+  yield();
+
 //Serial.println("Traffic_loop...");
   Traffic_loop();  /* if relay station, this is where relaying happens */
 
@@ -558,8 +565,6 @@ void ground()
   if (!ognrelay_enable) {
 
     LogDate();  // once
-
-//Serial.println("check registration...");
 
     if (TimeToRegisterOGN() || ground_registred == 0) {  
       if (OurTime != 0 && ThisAircraft.second != 0 && position_is_set && WiFi.getMode() == WIFI_STA) {
@@ -606,6 +611,8 @@ void ground()
 //      ground_registred = 0;
     }
 
+    yield();
+
     if (TimeToExportOGN())
     {
       if (ground_registred == 1) {
@@ -616,6 +623,7 @@ void ground()
         //disp = "Calling APRS_Export...";
         //OLED_write(disp, 0, 24, true);
         OGN_APRS_Export();
+        //Serial.println("... APRS_Export returned");
       }
       // OLED_info(position_is_set);
       if (! OLED_blank)
@@ -629,11 +637,14 @@ void ground()
       //disp = "keepalive OGN...";
       //OLED_write(disp, 0, 24, true);
       OGN_APRS_KeepAlive();
+      //Serial.println("... APRS_KeepAlive returned");
       ExportTimeKeepAliveOGN = seconds();
     }
   
     if ((TimeToStatusOGN() || (ExportTimeStatusOGN==0 && millis()>50000))
         && ground_registred == 1 && position_is_set) {
+
+      //Serial.println("status OGN...");
 
       static bool first_time = true;
       String resetReason;
@@ -645,7 +656,7 @@ void ground()
 
         first_time = false;
 
-        //Serial.println("status OGN...");
+        //Serial.println("... status OGN returned");
 
         ExportTimeStatusOGN = seconds();
         disp = "status OGN...";
@@ -671,17 +682,21 @@ void ground()
     if(TimeToCheckKeepAliveOGN() && ground_registred == 1){
       //Serial.println("check APRS msgs...");
       ground_registred = OGN_APRS_check_messages();
+      //Serial.println("... APRS_check_messages returned");
       ExportTimeCheckKeepAliveOGN = seconds();
       MONIT_send_trap();
     }
 
+    yield();
+
     static int retries = 0;
     if( TimeToCheckWifi() ) {
-      //Serial.println("APRS check wifi...");
+      Serial.println("APRS check wifi...");
       OLED_draw_Bitmap(39, 5, 3 , true);
       OLED_write("check connections..", 15, 45, false);
       if(OGN_APRS_check_Wifi()){
         OLED_write("success", 35, 54, false);
+        Serial.println("... success");
         retries = 0;
       } else {
         // OGN_APRS_check_Wifi() did WiFi.disconnect() & WiFi.reconnect()
@@ -705,6 +720,8 @@ void ground()
 
   }  // end if (only as basestation)
 
+  yield();
+
   /* use export time marker for OLED display cycling in remote station */
   if (TimeToExportOGN() && ognrelay_enable) {
     // OLED_info(position_is_set);
@@ -718,10 +735,10 @@ void ground()
   if (ogn_sleepmode > 0)
       sleep_check();
 
+  if(fanet_enable && ground_registred == 1 && TimeToExportFanetService()) {
+
 //Serial.println("FANET check...");
 
-  if(fanet_enable && ground_registred == 1 && TimeToExportFanetService()) {
-    
     OLED_draw_Bitmap(14, 0, 2 , true);
       
     if( fanet_transmitter ){
@@ -741,10 +758,9 @@ void ground()
     UpdateTrafficTimeMarker = millis();
   }
 
+  if (TimeToDisWifi() && ognrelay_enable) {
 
 //Serial.println("disable things check...");
-
-  if (TimeToDisWifi() && ognrelay_enable) {
 
     if (ExportTimeDisWifi == 0) {
 
@@ -769,13 +785,19 @@ void ground()
      OLED_disable(); 
   }
 
+  yield();
+
 //Serial.println("check button...");
 
 #if defined(TBEAM)
-  if (!digitalRead(BUTTON)){
-    while(!digitalRead(BUTTON)){delay(100);}
-    OLED_enable();
-    ExportTimeOledDisable = seconds();
+  if (tbeam_button != SOC_UNUSED_PIN) {
+    if (!digitalRead(tbeam_button)){   // (middle) button pressed
+      int n = 10;
+      while(!digitalRead(tbeam_button) && --n>0) {delay(100);}
+//Serial.println("button pressed");
+      OLED_enable();
+      ExportTimeOledDisable = seconds();
+    }
   }
 #endif
 }

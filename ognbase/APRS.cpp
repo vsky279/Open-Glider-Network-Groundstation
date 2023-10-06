@@ -151,7 +151,7 @@ bool OGN_APRS_check_Wifi(void)
         return true;
     }
 
-    //Serial.println(F("APRS_check_Wifi: not connected"));
+    Serial.println(F("APRS_check_Wifi: not connected"));
     //DebugLogWrite("APRS_check_Wifi: not connected");
     if (wifi_outage == 0)
         wifi_outage = millis();
@@ -162,8 +162,13 @@ int OGN_APRS_check_messages(void)
 {
     static char RXbuffer[512];  // was malloc()ed
 
+Serial.println("APRS_check_messages()...");
+
     int    recStatus = SoC->WiFi_receive_TCP(RXbuffer, 512);
     String msg;
+
+Serial.print("... receive_TCP() returned ");
+Serial.println(recStatus);
 
     if (recStatus > 0)
     {
@@ -191,11 +196,14 @@ int OGN_APRS_check_messages(void)
         }
     }
 
+
     if (seconds() - last_packet_time > 60)
     {
         msg = "no packet since > 60 seconds...reconnecting";
+        Serial.println(msg.c_str());
         Logger_send_udp(&msg);
         SoC->WiFi_disconnect_TCP();
+        yield();
         aprs_registred = 0;
     }
 
@@ -247,6 +255,8 @@ void OGN_APRS_Export(void)
 //      return;
 
     for (int i = 0; i < MAX_TRACKING_OBJECTS; i++) {
+
+Serial.print(".");
 
         if (Container[i].addr && Container[i].waiting) {
 
@@ -442,7 +452,8 @@ void OGN_APRS_Export(void)
 
 int OGN_APRS_Register(ufo_t* this_aircraft)
 {
-//    Serial.println(F("OGN_APRS_Registering..."));
+
+// Serial.println(F("OGN_APRS_Registering..."));
 
 //    if (OurTime == 0)  /* no GNSS time available yet */
 //      return aprs_registred;
@@ -477,6 +488,7 @@ int OGN_APRS_Register(ufo_t* this_aircraft)
         Logger_send_udp(&LoginPacket);
 
         if (SoC->WiFi_transmit_TCP(LoginPacket)) {   // <<<
+Serial.println("...transmit_TCP() returned");
             aprs_registred = 1;
             return 1;
         }
@@ -651,7 +663,7 @@ bool OGN_APRS_Status(ufo_t* this_aircraft, bool first_time, String resetReason)
 #endif
     }
     if (first_time) {
-        StatusPacket += "reset_reason_";
+        // StatusPacket += "reset_reason_";
         StatusPacket += resetReason;
         StatusPacket += "\r\n";
     } else if (wifi_outage && millis() > wifi_outage + 360000) {

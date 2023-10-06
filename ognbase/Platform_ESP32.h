@@ -200,6 +200,7 @@ extern WebServer server;
 
 #if defined(TBEAM)
 bool on_ext_power(void);
+extern int tbeam_button;
 #endif
 
 void turn_LED_on(void);

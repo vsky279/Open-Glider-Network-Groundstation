@@ -412,10 +412,20 @@ static void ESP32_loop()
 bool on_ext_power()
 {
 //>>> is this OK for the AXP2101?
-    if (axp_xxx.getVbusVoltage() > 4000) {
-      return true;
-    } else {
-      return false;
+    switch (hw_info.pmu)
+    {
+    case PMU_AXP192:
+    case PMU_AXP202:
+        if (axp_xxx.getVbusVoltage() > 4000) {
+          return true;
+        } else {
+          return false;
+        }
+        break;
+    case PMU_NONE:
+    default:
+        return true;
+        break;
     }
 }
 
@@ -428,6 +438,7 @@ void turn_LED_on()
 //>>> is this OK for the AXP2101?
         axp_xxx.setChgLEDMode(AXP20X_LED_LOW_LEVEL);
         break;
+    case PMU_NONE:
     default:
         break;
     }    
@@ -442,6 +453,7 @@ void turn_LED_off()
 //>>> is this OK for the AXP2101?
         axp_xxx.setChgLEDMode(AXP20X_LED_OFF);
         break;
+    case PMU_NONE:
     default:
         break;
     }    
@@ -460,6 +472,7 @@ void turn_GNSS_on()
         axp_2xxx.setALDO3Voltage(3300); // GPS,  AXP2101 power-on value: 3300
         axp_2xxx.enableALDO3();
         break;
+    case PMU_NONE:
     default:
         break;
     }    
@@ -476,6 +489,7 @@ void turn_GNSS_off()
     case PMU_AXP2101:
         axp_2xxx.disableALDO3();
         break;
+    case PMU_NONE:
     default:
         break;
     }    
@@ -1144,9 +1158,20 @@ static void ESP32_WDT_fini()
     disableLoopWDT();
 }
 
+int tbeam_button = SOC_UNUSED_PIN;
+
 static void ESP32_Button_setup()
 {
-    /* TODO */
+#if defined(TBEAM)
+  if (hw_info.model == SOFTRF_MODEL_PRIME_MK2) {
+    if (hw_info.revision >= 8 && hw_info.revision <= 12)
+        tbeam_button = SOC_GPIO_PIN_TBEAM_V08_BUTTON;   // 38
+    else if (hw_info.revision < 8)
+        tbeam_button = SOC_GPIO_PIN_TBEAM_V05_BUTTON;   // 39
+  }
+  if (tbeam_button != SOC_UNUSED_PIN)
+      pinMode(tbeam_button, INPUT);
+#endif
 }
 
 static void ESP32_Button_loop()

@@ -5,6 +5,13 @@
 Besides the binary here, download the files in the "data" folder: config.json (template), index.html, style.css.
 
 
+## revision MB128
+
+### Major improvements
+
+Support T-Beam v0.7 (as well as v1.0-v1.2).
+
+
 ## revision MB120
 
 ### Major improvements
