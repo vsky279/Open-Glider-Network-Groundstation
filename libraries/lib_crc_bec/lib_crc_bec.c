@@ -234,6 +234,13 @@ void init_crc_ccitt_tab( void ) {
     0b1111000000000000                                           //4 bit errors in 4 bits
   };
 
+  const unsigned short NumberOfBits[NumPatterns] = {
+    1,
+    2, 2, 2,
+    3, 3, 3,
+    4
+  };
+
     /*******************************************************************\
     *                                                                   *
     *   void init_crc_bec_tab( void );                                  *
@@ -309,7 +316,7 @@ unsigned short bec_correct_errors( unsigned short crc, unsigned char *pkt ) {
   //ErrorIndex = bec_tab[crc];
   ErrorIndex = lookup_dense(crc);
   if (ErrorIndex == 0) {
-    return FALSE;     // no correction possible
+    return 0;     // no correction possible
   } else {
     ErrorIndex--;     // remove error flag offset
     // get pattern index, shift offset and byte position
@@ -318,7 +325,7 @@ unsigned short bec_correct_errors( unsigned short crc, unsigned char *pkt ) {
     // changed packet to have data only, so must offset by 3 for sync
     PktByte_I = PktByte_I - 3;
     if (PktByte_I < 0) { // should never happen as SYNC doesn't have errors
-      return FALSE;   // no correction possible
+      return 0;   // no correction possible
     } else {
       Pattern = ErrorIndex >> 8;            // bits 8 to 15
       P = ErrorPattern[Pattern] >> ShiftedPattern;
@@ -328,7 +335,7 @@ unsigned short bec_correct_errors( unsigned short crc, unsigned char *pkt ) {
         pkt[PktByte_I+1] = pkt[PktByte_I+1] ^ (P & 0xff);
       }
     }
-    return TRUE;   // correction is possible
+    return NumberOfBits[Pattern];   // correction is possible
   }
 }  /* bec_correct_errors */
 
