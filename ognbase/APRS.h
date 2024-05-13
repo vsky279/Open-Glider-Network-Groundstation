@@ -25,7 +25,7 @@
 
 //LKHS>APRS,TCPIP*,qAC,GLIDERN2:/211635h4902.45NI01429.51E&000/000/A=001689
 
-// use something different from OGNSDR - maybe OGNBASE? OGNSFR? OGNSXR?
+// use something different from OGNSDR
 #define TOCALL "OGNSXR"
 
 struct aprs_reg_packet
@@ -81,8 +81,10 @@ struct aprs_airc_packet
     String symbol_table;
     String symbol;
     String climbrate;
+    String turnrate;
     String sender_details;
     String snr;
+    String bec;
 };
 
 enum

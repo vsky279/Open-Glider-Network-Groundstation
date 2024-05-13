@@ -162,13 +162,13 @@ int OGN_APRS_check_messages(void)
 {
     static char RXbuffer[512];  // was malloc()ed
 
-Serial.println("APRS_check_messages()...");
+//Serial.println("APRS_check_messages()...");
 
     int    recStatus = SoC->WiFi_receive_TCP(RXbuffer, 512);
     String msg;
 
-Serial.print("... receive_TCP() returned ");
-Serial.println(recStatus);
+//Serial.print("... receive_TCP() returned ");
+//Serial.println(recStatus);
 
     if (recStatus > 0)
     {
@@ -177,7 +177,7 @@ Serial.println(recStatus);
         if (recStatus > 511)  recStatus = 511; 
         RXbuffer[recStatus] = '\0';
         if (recStatus > 0) {
-            Serial.println("");
+            //Serial.println("");
             Serial.print(RXbuffer);
         }
         int reg = OGN_APRS_check_reg(RXbuffer);
@@ -191,7 +191,7 @@ Serial.println(recStatus);
             msg = "";
         if (reg >= 0) {
           Serial.println(msg.c_str());
-          Serial.println("");
+          //Serial.println("");
           Logger_send_udp(&msg);
         }
     }
@@ -256,7 +256,7 @@ void OGN_APRS_Export(void)
 
     for (int i = 0; i < MAX_TRACKING_OBJECTS; i++) {
 
-Serial.print(".");
+//Serial.print(".");
 
         if (Container[i].addr && Container[i].waiting) {
 
@@ -290,6 +290,15 @@ Serial.print(".");
                 // Container[i].waiting = false;
                 // Container[i].timereported = OurTime;
                 Serial.println(F("... skipping invalid packet"));
+                continue;
+            }
+
+            // report aircraft on the ground at same airport (as station) less often
+            if (Container[i].speed < 3                                      // knots
+            && fabs(Container[i].vs) < 100                                  // fpm
+            && Container[i].distance < 2000                                 // meters
+            && fabs(Container[i].altitude - ThisAircraft.altitude) < 100    // meters
+            && OurTime - Container[i].timereported < 117) {                 // seconds
                 continue;
             }
 
@@ -330,6 +339,13 @@ Serial.print(".");
             APRS_AIRC.symbol       = String(symbol[Container[i].aircraft_type]);
 
             APRS_AIRC.snr = String(SnrCalc(Container[i].rssi), 1);
+            if (Container[i].bec > 0) {
+                APRS_AIRC.bec = " ";
+                APRS_AIRC.bec += String(Container[i].bec);
+                APRS_AIRC.bec += "e";
+            } else {
+                APRS_AIRC.bec = "";
+            }
 
 
             String W_lat = String((LAT - int(LAT)) * 60, 3);
@@ -343,19 +359,14 @@ Serial.print(".");
             else
                 APRS_AIRC.climbrate = zeroPadding(String(int(Container[i].vs)), 3);
 
+            float rot = Container[i].turnrate * 0.33333;  // turns per 2 minutes (or should it be half-turns?)
+            bool nrot = (rot < 0);
+            rot = fabs(rot);
+            int irot = (int)rot;
+            int drot = (int)(10.0*(rot + 0.05 - floor(rot)));
+            APRS_AIRC.turnrate = (nrot? "-" : "+") + String(irot) + "." + String(drot);
+
             uint8_t addr_type = Container[i].addr_type;
-            bool relayed = (Container[i].protocol == RF_PROTOCOL_LEGACY && addr_type > 3);
-              // assume these are messages relayed by SoftRF
-            if (relayed) {              // restore the original address type
-                if (addr_type == 4)           // was ICAO
-                    addr_type = 1;
-                else if (addr_type == 7)      // was FLARM
-                    addr_type = 2;
-                else if (addr_type == 6)      // was anonymous
-                    addr_type = 3;
-                else
-                    addr_type = 0;
-            }
 
             String AircraftPacket;
             if (addr_type == 1)
@@ -381,7 +392,7 @@ Serial.print(".");
 
             AircraftPacket += APRS_AIRC.callsign;
             // AircraftPacket += ">OGFLR,qOR:/";
-            if (relayed) {
+            if (Container[i].relayed && ogn_hiderelayed) {
                 AircraftPacket += ">OGFLR,qAS,relayed:/";
                 // - disassociate this packet from this station, so
                 //   as not to mess up the station range measurement
@@ -415,34 +426,42 @@ Serial.print(".");
             AircraftPacket += APRS_AIRC.callsign;
             AircraftPacket += " ";
             AircraftPacket += APRS_AIRC.climbrate;
-            // AircraftPacket += "fpm +0.0rot ";
             AircraftPacket += "fpm ";
-            if (relayed)
-              AircraftPacket += "99.0";   // marks as relayed, when SNR is meaningless anyway
+            AircraftPacket += APRS_AIRC.turnrate;
+            AircraftPacket += "rot ";
+            AircraftPacket += APRS_AIRC.snr;
+            if (Container[i].relayed && !ogn_hiderelayed)
+              AircraftPacket += "dB relayed";
             else
-              AircraftPacket += APRS_AIRC.snr;
-            // AircraftPacket += "dB 0e -0.0kHz";
-            // AircraftPacket += "\r\n";
-            //if (relayed)
-            //  AircraftPacket += "dB relayed\r\n";
-            //else
-            AircraftPacket += "dB\r\n";
+              AircraftPacket += "dB";
+            AircraftPacket += APRS_AIRC.bec;
+            AircraftPacket += " gps";
+            AircraftPacket += String(Container[i].gpsA);
+            AircraftPacket += "x";
+            AircraftPacket += String(Container[i].gpsB);
+            AircraftPacket += "\r\n";
 
-            Serial.println("");
-            Serial.println(AircraftPacket.c_str());
+            //Serial.println("");
+            Serial.print(AircraftPacket.c_str());
 
             Logger_send_udp(&AircraftPacket);
-            Logger_send_udp(&APRS_AIRC.pos_precision);
+            //Logger_send_udp(&APRS_AIRC.pos_precision);
 
-            if (SoC->WiFi_transmit_TCP(AircraftPacket) == 0) {
-                Serial.println(F("- transmit traffic to TCP failed"));
-            } else {
+/*
+            bool success = false;
+            if (testmode_enable)
+                   success = true;
+            else 
+                   success = (SoC->WiFi_transmit_TCP(AircraftPacket) != 0);
+            if (success) {
+*/
+            if (SoC->WiFi_transmit_TCP(AircraftPacket) != 0) {
                 Container[i].waiting = false;
                 Container[i].timereported = OurTime;
                 ++traffic_packets_reported;
+            } else {
+                Serial.println(F("- transmit traffic to TCP failed"));
             }
-
-            Serial.println("");
 
             yield();
             delay(20);
@@ -473,37 +492,38 @@ int OGN_APRS_Register(ufo_t* this_aircraft)
         LoginPacket += APRS_LOGIN.user;
         LoginPacket += " pass ";
         LoginPacket += APRS_LOGIN.pass;
-        LoginPacket += " vers ESP32-";
+        //LoginPacket += " vers ESP32-";
+        LoginPacket += " vers ";
         LoginPacket += APRS_LOGIN.appname;
         LoginPacket += " ";
         LoginPacket += APRS_LOGIN.version;
-        LoginPacket += " filter m/20\r\n";
 //      LoginPacket += " filter m/";
 //      LoginPacket += String(ogn_range);     // no need to receive data from other stations
 //      LoginPacket += "\r\n";
+//      LoginPacket += " filter m/20\r\n";    // no need to send any filter
+        LoginPacket += "\r\n";
 
-        Serial.println("");
-        Serial.println(LoginPacket.c_str());
-        Serial.println("");
+        //Serial.println("");
+        Serial.print(LoginPacket.c_str());
+        //Serial.println("");
         Logger_send_udp(&LoginPacket);
 
         if (SoC->WiFi_transmit_TCP(LoginPacket)) {   // <<<
-Serial.println("...transmit_TCP() returned");
             aprs_registred = 1;
             return 1;
         }
-        Serial.println("");
+        //Serial.println("");
         Serial.println(F("transmit to OGN failed"));    // <<<
-        Serial.println("");
+        //Serial.println("");
         aprs_registred = 0;
         return -1;
     }
 
     else
     {
-        Serial.println("");
+        //Serial.println("");
         Serial.println(F("OGN connection failed"));
-        Serial.println("");
+        //Serial.println("");
         aprs_registred = 0;
         return -1;
     }
@@ -563,9 +583,9 @@ bool OGN_APRS_Location(ufo_t* this_aircraft)
     RegisterPacket += APRS_REG.alt;
     RegisterPacket += "\r\n";
 
-    Serial.println("");
+    //Serial.println("");
     Serial.print(RegisterPacket.c_str());
-    Serial.println("");
+    //Serial.println("");
     Logger_send_udp(&RegisterPacket);
 
     if(SoC->WiFi_transmit_TCP(RegisterPacket))  // <<<
@@ -578,7 +598,7 @@ bool OGN_APRS_Location(ufo_t* this_aircraft)
 void OGN_APRS_KeepAlive(void)
 {
     String KeepAlivePacket = "#keepalive\r\n";
-    Serial.println(KeepAlivePacket.c_str());
+    //Serial.println(KeepAlivePacket.c_str());
     Logger_send_udp(&KeepAlivePacket);
     if (SoC->WiFi_transmit_TCP(KeepAlivePacket) == 0)
         Serial.println(F("transmit keepalive to TCP failed"));
@@ -607,15 +627,26 @@ bool OGN_APRS_Status(ufo_t* this_aircraft, bool first_time, String resetReason)
     }
 
     /*issue17*/ /*v0.1.0.20-ESP32*/
-    APRS_STAT.platform = "v";
+
+#if 1  // OGNbase specific fields
+    APRS_STAT.platform = " v";
     APRS_STAT.platform += SOFTRF_FIRMWARE_VERSION;
 #if defined(ESP32)
     APRS_STAT.platform += "-ESP32";
 #endif
 //  APRS_STAT.platform += rf_chip->name;
-//   - not useful, should report the RF chip in REMOTE station.
+//   - not useful in 2-station mode, should report the RF chip in REMOTE station.
 //     - but no bits left in radio packet to send that info.
+    if (ognrelay_base) {
+        APRS_STAT.platform += "-2station";
+    } else {
+        APRS_STAT.platform += "-";
+        APRS_STAT.platform += rf_chip->name;
+    }
     APRS_STAT.platform += "-OGNbase";
+#else
+    APRS_STAT.platform = "";
+#endif
 
     //APRS_STAT.realtime_clock = String(0.0);
 
@@ -624,8 +655,9 @@ bool OGN_APRS_Status(ufo_t* this_aircraft, bool first_time, String resetReason)
     StatusPacket += TOCALL;
     StatusPacket += ":>";
     StatusPacket += APRS_STAT.timestamp;
-    StatusPacket += " ";
+    //StatusPacket += " ";
     StatusPacket += APRS_STAT.platform;
+
     if ((! ognrelay_time) || time_synched) {
         int v;
         if (time_synched) {
@@ -648,6 +680,7 @@ bool OGN_APRS_Status(ufo_t* this_aircraft, bool first_time, String resetReason)
             StatusPacket += String(numvisible) + "/" + String(numseen_1hr) + "Acfts[1h]";
         }
     }
+#if 1  // OGNbase specific fields
     StatusPacket += " ";
     if (ognrelay_time) {
         if (time_synched) {
@@ -690,9 +723,12 @@ bool OGN_APRS_Status(ufo_t* this_aircraft, bool first_time, String resetReason)
             StatusPacket += "_m_sleep\r\n";
         }
     }
-    Serial.println("");
+#else
+    StatusPacket += "\r\n";
+#endif
+    //Serial.println("");
     Serial.print(StatusPacket.c_str());
-    Serial.println("");
+    //Serial.println("");
     Logger_send_udp(&StatusPacket);
     if (SoC->WiFi_transmit_TCP(StatusPacket) == 0) {
         Serial.println(F("transmit status to TCP failed"));   // <<<

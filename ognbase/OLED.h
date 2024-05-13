@@ -23,6 +23,7 @@
 
 #define SSD1306_OLED_I2C_ADDR   0x3C
 
+bool OLED_probe(void);
 void OLED_setup(void);
 
 void OLED_write(const char *, short, short, bool);

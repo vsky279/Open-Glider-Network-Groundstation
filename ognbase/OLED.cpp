@@ -33,7 +33,9 @@
 #include "SoftRF.h"
 #include "logos.h"
 
-SSD1306Wire display(SSD1306_OLED_I2C_ADDR, SDA, SCL, GEOMETRY_128_64, I2C_TWO, 400000);  // ADDRESS, SDA, SCL
+//SSD1306Wire display(SSD1306_OLED_I2C_ADDR, SDA, SCL, GEOMETRY_128_64, I2C_TWO, 400000);  // ADDRESS, SDA, SCL
+// construct using the existing SDA, SCL:
+SSD1306Wire display(SSD1306_OLED_I2C_ADDR, -1, -1, GEOMETRY_128_64, I2C_TWO, 400000);
 
 bool display_init = false;
 bool display_enabled = true;
@@ -71,6 +73,23 @@ const char* ISO3166_CC[12] = {
     [RF_BAND_IL]   = "IL",
     [RF_BAND_KR]   = "KR"
 };
+
+bool OLED_probe() {
+  // look for OLED on first I2C port
+  Wire1.beginTransmission(SSD1306_OLED_I2C_ADDR);
+  if (Wire1.endTransmission() == 0) {
+    display.setWire(&Wire1);
+    return true;
+  } else {
+    // look for OLED on second I2C port
+    Wire.beginTransmission(SSD1306_OLED_I2C_ADDR);
+    if (Wire.endTransmission() == 0) {
+      display.setWire(&Wire);
+      return true;
+    }
+  }
+  return false;
+}
 
 void OLED_setup()
 {

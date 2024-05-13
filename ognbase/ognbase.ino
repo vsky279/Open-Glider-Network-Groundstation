@@ -261,7 +261,10 @@ void setup()
   Serial.println(SoC->getResetInfo()); Serial.println("");
 
   EEPROM_setup();
-  OLED_setup();
+
+  if (! OLED_probe())
+    Serial.println("OLED not found");
+  OLED_setup();   // should this be conditional on the probe()?
 
   WiFi_setup();
 
@@ -283,6 +286,8 @@ void setup()
 #if defined(TBEAM)
   if (ogn_gnsstime)
     hw_info.gnss = GNSS_setup();
+  else
+    turn_GNSS_off();
 #endif
   
   ThisAircraft.aircraft_type = settings->aircraft_type;
@@ -516,7 +521,6 @@ void ground()
     ogn_timezone = (int)(lon / 15.0 + 0.5);   // 0...24
     if (ogn_timezone > 12)  ogn_timezone -= 24;   // -11...12
 
-    // RF_Transmit(RF_Encode(&ThisAircraft), true);  // is this necessary?
     groundstation = true;
 
     Serial.println("good morning, startup esp32 groundstation");
@@ -691,12 +695,12 @@ void ground()
 
     static int retries = 0;
     if( TimeToCheckWifi() ) {
-      Serial.println("APRS check wifi...");
+      //Serial.println("APRS check wifi...");
       OLED_draw_Bitmap(39, 5, 3 , true);
       OLED_write("check connections..", 15, 45, false);
       if(OGN_APRS_check_Wifi()){
         OLED_write("success", 35, 54, false);
-        Serial.println("... success");
+        //Serial.println("... success");
         retries = 0;
       } else {
         // OGN_APRS_check_Wifi() did WiFi.disconnect() & WiFi.reconnect()

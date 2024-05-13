@@ -33,9 +33,9 @@
 
 #include "version.h"
 
-#define SOFTRF_FIRMWARE_VERSION "MB128"   // _VERSION
+#define SOFTRF_FIRMWARE_VERSION "MB136"   // _VERSION
 #define SOFTRF_IDENT            "OGNB-"
-#define OGNBASE_HTML_VERSION    "MB104"
+#define OGNBASE_HTML_VERSION    "MB106"
 
 #define ENTRY_EXPIRATION_TIME   41 /* seconds */
 #define LED_EXPIRATION_TIME     5  /* seconds */
@@ -133,15 +133,16 @@ typedef struct UFO
 
     uint32_t addr;
     uint8_t addr_type;
+    uint8_t msg_type;
     uint8_t protocol;
     uint8_t aircraft_type;
-    uint8_t spacer;
     float latitude;
     float longitude;
     float altitude;
     float pressure_altitude;
     float course;         /* CoG */
     float speed;          /* ground speed in knots */
+    float turnrate;
 
     /* previous data for comparison */
     time_t prevtime;
@@ -160,11 +161,16 @@ typedef struct UFO
     float geoid_separation; /* metres */
     uint16_t hdop;          /* cm */
     int8_t rssi;            /* SX1276 only */
+    int8_t bec;             // number of bits corrected
 
     /* 'legacy' specific data */
+    uint8_t gpsA;
+    uint8_t gpsB;
+    int8_t alarm_level;
     float distance;
     float bearing;
-    int8_t alarm_level;
+    bool airborne;
+    bool relayed;
 
     /* ADS-B (ES, UAT, GDL90) specific data */
     uint8_t callsign[8];

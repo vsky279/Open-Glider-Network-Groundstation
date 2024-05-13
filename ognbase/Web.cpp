@@ -47,8 +47,10 @@ File fsUploadFile;
 
 #define countelems(a) (sizeof(a) / sizeof(a[0]))
 
-// Create AsyncWebServer object on port 80
-AsyncWebServer wserver(80);
+//AsyncWebServer wserver(80);
+unsigned int webserver_port = 80;  // default
+AsyncWebServer *wserver = NULL;
+// - Create AsyncWebServer object later, on port number specified in config
 AsyncWebSocket ws("/ws");
 
 AsyncWebSocketClient* globalClient = NULL;
@@ -62,13 +64,16 @@ static const char upload_templ[] PROGMEM =
  <meta http-equiv='cache-control' content='no-cache'>\
  </head>\
  <p>%s</p>\
+ <p>%s</p>\
  Files on device:<br>%s<br>\
  <div class = 'upload'>\
  <form method = 'POST' action = '/doUpload' enctype='multipart/form-data'>\
  <input type='file' name='data'/><input type='submit' name='upload' value='Upload' title = 'Upload Files'>\
  </form></div>\
+ <p><a href='oldconf' class='upload'>Restore Old Config</a></p>\
  <p><a href='dnload' class='upload'>Download Config</a></p>\
  <p><a href='clear' class='clear'>Clear All Files</a></p>\
+ <p><a href='update' class='clear'>Update Firmware</a></p>\
  <p><a href='reboot' class='clear'>Reboot</a></p>\
  </html>";
 
@@ -83,8 +88,13 @@ static const char stats_templ[] PROGMEM =
  <p>\r\nOperation mode: %s</p>\
  <br><p>\r\nBase Station Stats:</p>\
  <p>&nbsp;\r\n Uptime: %d minutes</p>\
+ <p>&nbsp;\r\n Free RAM: %d bytes</p>\
+ <p>&nbsp;\r\n Incoming packets bad CRC: %d</p>\
+ <p>&nbsp;\r\n Incoming packets corrected: %d</p>\
  <p>&nbsp;\r\n Traffic packets received: %d</p>\
  <p>&nbsp; &nbsp; &nbsp;\r\n  per minute: %d</p>\
+ <p>&nbsp; &nbsp; &nbsp;\r\n  in old protocol: %d</p>\
+ <p>&nbsp; &nbsp; &nbsp;\r\n  air-relayed: %d</p>\
  <p>&nbsp;\r\n Traffic packets reported: %d</p>\
  <p>&nbsp;\r\n Aircraft seen ever: %d, today: %d</p>\
  <p>&nbsp;\r\n Largest Range: %d km</p>\
@@ -93,9 +103,14 @@ static const char stats_templ[] PROGMEM =
  <p>&nbsp;\r\n Time-sync restarts: %d</p>\
  <br><p>\r\nRemote Station Stats:</p>\
  <p>&nbsp;\r\n Uptime: %d minutes</p>\
+ <p>&nbsp;\r\n Free RAM: %d bytes</p>\
+ <p>&nbsp;\r\n Incoming packets bad CRC: %d</p>\
+ <p>&nbsp;\r\n Incoming packets corrected: %d</p>\
  <p>&nbsp;\r\n Traffic packets: %d</p>\
  <p>&nbsp; &nbsp; &nbsp;\r\n  per minute: %d</p>\
- <p>&nbsp; &nbsp; &nbsp;\r\n  pct relayed: %d</p>\
+ <p>&nbsp; &nbsp; &nbsp;\r\n  in old protocol: %d</p>\
+ <p>&nbsp; &nbsp; &nbsp;\r\n  air-relayed: %d</p>\
+ <p>&nbsp; &nbsp; &nbsp;\r\n  pct relayed to base: %d</p>\
  <p>&nbsp;\r\n Time packets sent: %d</p>\
  <p>&nbsp; &nbsp; &nbsp;\r\n  pct acknowledged: %d</p>\
  <p>&nbsp;\r\n Time-sync restarts: %d</p>\
@@ -134,12 +149,25 @@ void handleUpdate(AsyncWebServerRequest* request)
     request->send(200, "text/html", update_html);
 }
 
-#define UPLHTMSIZE 1150
+const char *index_msg = "index.html OK";
+
+#define UPLHTMSIZE 1250
 #define FILELSTSIZ 600
+
 void handleUpload(AsyncWebServerRequest* request)
 {
   char *upload_html = (char *) malloc(UPLHTMSIZE);
+  if (! upload_html) {
+      Serial.println("cannot allocate memory for upload page");
+      return;
+  }
+  bool listfiles = true;
   char *filelist = (char *) malloc(FILELSTSIZ);
+  if (! filelist) {
+      filelist = "(cannot allocate memory for file list)";
+      Serial.println(filelist);
+      listfiles = false;
+  }
   const char *msg;
   if (config_done < -4)
       msg = "could not open SPIFFS file system";
@@ -159,39 +187,50 @@ void handleUpload(AsyncWebServerRequest* request)
   if (! ogn_debug)
       SPIFFS.remove("/debuglog.txt");
 #endif
-  filelist[0] = '\0';
-  int nfiles = 0;
-  File root = SPIFFS.open("/");
-  Serial.println(F("Files in SPIFFS:"));
-  File file = root.openNextFile();
-  while(file){
-      Serial.print("... ");
-      Serial.print(file.name());
-      Serial.print("  [");
-      Serial.print(file.size());
-      Serial.println(" bytes]");
-      int len = strlen(filelist);
-      if (len < FILELSTSIZ-80) {
-        snprintf(filelist+len, FILELSTSIZ-len,
-           "&nbsp;&nbsp;%s&nbsp;&nbsp;[%d bytes]<br>", file.name(), file.size());
-      } else {
-        Serial.println("...");
-        snprintf(filelist+len, FILELSTSIZ-len, "...<br>");
-        break;
-      }
-      ++nfiles;
-      file = root.openNextFile();
+  if (listfiles) {
+    filelist[0] = '\0';
+    int nfiles = 0;
+    File root = SPIFFS.open("/");
+    Serial.println(F("Files in SPIFFS:"));
+    File file = root.openNextFile();
+    while(file){
+        Serial.print("... ");
+        Serial.print(file.name());
+        Serial.print("  [");
+        Serial.print(file.size());
+        Serial.println(" bytes]");
+        int len = strlen(filelist);
+        if (len < FILELSTSIZ-80) {
+          snprintf(filelist+len, FILELSTSIZ-len,
+             "&nbsp;&nbsp;%s&nbsp;&nbsp;[%d bytes]<br>", file.name(), file.size());
+        } else {
+          Serial.println("...");
+          snprintf(filelist+len, FILELSTSIZ-len, "...<br>");
+          break;
+        }
+        ++nfiles;
+        file = root.openNextFile();
+    }
+    if (nfiles == 0) {
+        Serial.println("... (none)");
+        snprintf(filelist, FILELSTSIZ, "&nbsp;&nbsp;(none)<br>");
+    }
+    file.close();
+    root.close();
   }
-  if (nfiles == 0) {
-      Serial.println("... (none)");
-      snprintf(filelist, FILELSTSIZ, "&nbsp;&nbsp;(none)<br>");
-  }
-  file.close();
-  root.close();
-  snprintf(upload_html, UPLHTMSIZE, upload_templ, msg, filelist);
+  snprintf(upload_html, UPLHTMSIZE, upload_templ, msg, index_msg, filelist);
   request->send(200, "text/html", upload_html);
-  free(upload_html);
   free(filelist);
+  free(upload_html);
+}
+
+void HandleOldconf(AsyncWebServerRequest* request)
+{
+            if (SPIFFS.exists("/oldconf.json")) {
+                if (SPIFFS.exists("/config.json"))
+                    SPIFFS.remove("/config.json");
+                SPIFFS.rename("/oldconf.json", "/config.json");
+            }
 }
 
 void DoUpload(AsyncWebServerRequest* request, String filename, size_t index, uint8_t* data, size_t len, bool final)
@@ -205,13 +244,27 @@ void DoUpload(AsyncWebServerRequest* request, String filename, size_t index, uin
         }
     }
 #endif
-    if (!index)
+    if (!index) {
+        // if uploading config, keep a copy of the existing config
+        if (strcmp(filename.c_str(),"config.json")==0) {
+            if (SPIFFS.exists("/config.json")) {
+                if (SPIFFS.exists("/oldconf.json"))
+                    SPIFFS.remove("/oldconf.json");
+                SPIFFS.rename("/config.json", "/oldconf.json");
+            }
+        }
         request->_tempFile = SPIFFS.open("/" + filename, "w");
-    if (len)
+    }
+    if (len) {
         // stream the incoming chunk to the opened file
+        Serial.print(F("writing "));
+        Serial.print(len);
+        Serial.println(F("bytes to file..."));
         request->_tempFile.write(data, len);
+    }
     if (final)
     {
+        Serial.println(F("closing file..."));
         request->_tempFile.close();
         request->redirect("/");
     }
@@ -304,23 +357,21 @@ void handleDoUpdate(AsyncWebServerRequest* request, const String& filename, size
     }
 }
 
-#define STATS_SIZE 1499
+#define STATS_SIZE 1999
 char stats_html[STATS_SIZE+1];
 
 void update_stats()
 {
   uint32_t zero = 0;
-  if (ognrelay_enable && ! ogn_gnsstime && ! ognrelay_time) {
-     if (have_approx_time > 0)
-        ognopmode = "Remote station, NTP time from base";
-     else
-        ognopmode = "Remote station, no precise time";
-  }
   if (ognrelay_base && ognrelay_time) {
      snprintf(stats_html, STATS_SIZE, stats_templ,
         ognopmode,
-        uptime,
+        uptime, ESP.getFreeHeap(),
+        packets_failed_crc,
+        packets_corrected,
         traffic_packets_recvd, zero,
+        old_protocol_packets_recvd,
+        air_relayed_packets_recvd,
         traffic_packets_reported,
         (uint32_t) numseen_ever,
         (uint32_t) numseen_today,
@@ -328,9 +379,10 @@ void update_stats()
         (uint32_t) bad_packets_recvd,
         other_packets_recvd,
         (uint32_t) sync_restarts,
-        remote_uptime,
+        remote_uptime, zero, zero, zero,
         remote_traffic,
         (uint32_t) packets_per_minute,
+        zero, zero,
         (uint32_t) remote_pctrel,
         (uint32_t) remote_timesent,
         (uint32_t) remote_ack,
@@ -341,29 +393,45 @@ void update_stats()
   } else if (ognrelay_base) {
      snprintf(stats_html, STATS_SIZE, stats_templ,
         ognopmode,
-        uptime,
+        uptime, ESP.getFreeHeap(),
+        packets_failed_crc,
+        packets_corrected,
         traffic_packets_recvd, zero,
+        old_protocol_packets_recvd,
+        air_relayed_packets_recvd,
         traffic_packets_reported,
         (uint32_t) numseen_ever,
         (uint32_t) numseen_today,
         (uint32_t) largest_range,
         (uint32_t) bad_packets_recvd,
         other_packets_recvd,
-        zero, zero,
+        zero, zero, zero, zero, zero,
         remote_traffic,
-        zero,
+        zero, zero, zero,
         (uint32_t) remote_pctrel,
         zero, zero, zero, zero, zero,
         (float) 0.0);
   } else if (ognrelay_enable) {
+     if (! ogn_gnsstime && ! ognrelay_time) {
+        if (have_reverse_time > 0)
+           ognopmode = "Remote station, time relayed from base";
+        else if (reverse_time_sync)
+           ognopmode = "Remote station, awaiting time from base";
+        else
+           ognopmode = "Remote station, no time source";
+     }
      snprintf(stats_html, STATS_SIZE, stats_templ,
         ognopmode,
-        zero,
         zero, zero, zero, zero, zero,
-        zero, zero, zero, zero,
-        uptime,
+        zero, zero, zero, zero, zero,
+        zero, zero, zero, zero, zero,
+        uptime, ESP.getFreeHeap(),
+        packets_failed_crc,
+        packets_corrected,
         traffic_packets_recvd,
         (uint32_t) packets_per_minute,
+        old_protocol_packets_recvd,
+        air_relayed_packets_recvd,
         (uint32_t) ((100 * traffic_packets_relayed)
                       / (traffic_packets_recvd+1)),
         (uint32_t) time_packets_sent,
@@ -375,17 +443,21 @@ void update_stats()
   } else {  /* single standalone station */
      snprintf(stats_html, STATS_SIZE, stats_templ,
         ognopmode,
-        uptime,
+        uptime, ESP.getFreeHeap(),
+        packets_failed_crc,
+        packets_corrected,
         traffic_packets_recvd,
         (uint32_t) packets_per_minute,
+        old_protocol_packets_recvd,
+        air_relayed_packets_recvd,
         traffic_packets_reported,
         (uint32_t) numseen_ever,
         (uint32_t) numseen_today,
         (uint32_t) largest_range,
         (uint32_t) bad_packets_recvd,
         other_packets_recvd,
-        zero, zero, zero, zero,
-        zero, zero, zero, zero, zero, zero,
+        zero, zero, zero, zero, zero, zero, zero,
+        zero, zero, zero, zero, zero, zero, zero, zero,
         (float) Battery_voltage());
   }
   stats_html[STATS_SIZE] = '\0';
@@ -394,43 +466,52 @@ void update_stats()
 
 void Web_start()
 {
-    wserver.begin();
+    wserver->begin();
 }
 
 void Web_stop()
 {
-    wserver.end();
+    wserver->end();
 }
 
 /* if no config, just offer to upload config */
 void mini_server()
 {
-    // wserver.on("/", HTTP_GET, [upload_html](AsyncWebServerRequest* request){
-    //wserver.on("/", HTTP_GET, [](AsyncWebServerRequest* request){
+    // wserver->on("/", HTTP_GET, [upload_html](AsyncWebServerRequest* request){
+    //wserver->on("/", HTTP_GET, [](AsyncWebServerRequest* request){
     //    request->send(200, "text/html", upload_html);
     //});
 
-    wserver.on("/", HTTP_GET, [](AsyncWebServerRequest* request){
+    wserver->on("/", HTTP_GET, [](AsyncWebServerRequest* request){
       handleUpload(request);
     });
 
-    wserver.on("/doUpload", HTTP_POST, [](AsyncWebServerRequest* request) {}, DoUpload);
+    wserver->on("/oldconf", HTTP_GET, [](AsyncWebServerRequest* request){
+      HandleOldconf(request);
+    });
 
-    wserver.on("/dnload", HTTP_GET, [](AsyncWebServerRequest* request){
+    wserver->on("/doUpload", HTTP_POST, [](AsyncWebServerRequest* request) {}, DoUpload);
+
+    wserver->on("/dnload", HTTP_GET, [](AsyncWebServerRequest* request){
       handleDnload(request);
     });
 
-    wserver.on("/debuglog.txt", HTTP_GET, [](AsyncWebServerRequest* request){
+    wserver->on("/debuglog.txt", HTTP_GET, [](AsyncWebServerRequest* request){
       handleDnldlog(request);
     });
 
-    wserver.on("/clear", HTTP_GET, [](AsyncWebServerRequest* request){
+    wserver->on("/clear", HTTP_GET, [](AsyncWebServerRequest* request){
         Serial.println(F("Formatting spiffs..."));
         SPIFFS.format();
         request->redirect("/");
     });
 
-    wserver.on("/reboot", HTTP_GET, [](AsyncWebServerRequest* request){
+    wserver->on("/update", HTTP_GET, [](AsyncWebServerRequest* request){
+        handleUpdate(request);
+        request->redirect("/");
+    });
+
+    wserver->on("/reboot", HTTP_GET, [](AsyncWebServerRequest* request){
         request->redirect("/");
         DebugLogWrite("mini_web_server reboot");
         delay(500);
@@ -444,15 +525,27 @@ int ssid_num = -1;
 
 void Web_setup(ufo_t* this_aircraft)
 {
+    Serial.print("Free memory entering Web_setup(): ");
+    Serial.println(ESP.getFreeHeap());
+
+    wserver = new AsyncWebServer(webserver_port);
+    if (wserver == NULL) {
+        Serial.println("failed to create web server object");
+        return;
+    }
+
     if (!SPIFFS.begin(true))
     {
-        Serial.println("An Error has occurred while mounting SPIFFS");
+        index_msg = "An Error has occurred while mounting SPIFFS";
+        Serial.println(index_msg);
+        mini_server();
         return;
     }
 
     if (!SPIFFS.exists("/index.html"))
     {
-        Serial.println("index.html does not exist");
+        index_msg = "index.html does not exist";
+        Serial.println(index_msg);
         mini_server();
         return;
     }
@@ -460,7 +553,8 @@ void Web_setup(ufo_t* this_aircraft)
     File file = SPIFFS.open("/index.html", "r");
     if (!file)
     {
-        Serial.println("Error reading index.html");
+        index_msg = "Error reading index.html - erased";
+        Serial.println(index_msg);
         SPIFFS.remove("/index.html");
         mini_server();
         return;
@@ -469,14 +563,19 @@ void Web_setup(ufo_t* this_aircraft)
     yield();
 
     ws.onEvent(onWsEvent);
-    wserver.addHandler(&ws);
+    wserver->addHandler(&ws);
 
     size_t filesize   = file.size();
     char*  index_html = (char *) malloc(filesize + 1);
+    if (index_html == NULL) {
+        index_msg = "failed to allocate RAM for reading index.html";
+        Serial.println(index_msg);
+        mini_server();
+        return;
+    }
 
     file.read((uint8_t *)index_html, filesize);
     index_html[filesize] = '\0';
-
     file.close();
 
     bool wrong_version = true;
@@ -493,20 +592,31 @@ void Web_setup(ufo_t* this_aircraft)
     }
 
     if (wrong_version) {
-        Serial.println("Wrong version of index.html");
+        index_msg = "Wrong version of index.html - erased";
+        Serial.println(index_msg);
         OLED_write("Wrong index.html version", 0, 27, true);
         delay(1000);
         SPIFFS.remove("/index.html");
+        free(index_html);
         mini_server();
         return;
     }
 
     char*  offset;
-    size_t size = 12000;
+    size_t size = 12300;    // currently fits in under 9000
     char*  Settings_temp = (char *) malloc(size);
-
-    if (Settings_temp == NULL)
+    if (Settings_temp == NULL) {
+        index_msg = "failed to allocate RAM for web page";
+        Serial.println(index_msg);
+        free(index_html);
+        mini_server();
         return;
+    }
+
+    Serial.print("Free memory after Web_setup() malloc()s: ");
+    Serial.println(ESP.getFreeHeap());
+
+    index_msg = "";
 
     offset = Settings_temp;
 
@@ -526,6 +636,9 @@ void Web_setup(ufo_t* this_aircraft)
     pos_geo.concat(ogn_geoid_separation);
 
     String version = SOFTRF_FIRMWARE_VERSION;
+    version += " (";
+    version += rf_chip->name;
+    version += ")";
 
     // the first few messages here will never be shown, because
     // the status page is not loaded without a configuration file
@@ -552,7 +665,7 @@ void Web_setup(ufo_t* this_aircraft)
     else if (ognrelay_enable && ogn_gnsstime)
         ognopmode = "Remote station, time from GNSS"; 
     else if (ognrelay_enable)
-        ognopmode = "Remote station, no precise time";
+        ognopmode = "Remote station, expecting time from base";
     else if (ogn_gnsstime)
         ognopmode = "Single station, time from GNSS";
     else
@@ -635,15 +748,18 @@ void Web_setup(ufo_t* this_aircraft)
              (ognrelay_enable == 1 ? "selected" : ""), "Enabled",
              (ognrelay_base == 0 ? "selected" : ""), "Disabled",
              (ognrelay_base == 1 ? "selected" : ""), "Enabled",
+
              (ognrelay_time == 0 ? "selected" : ""), "Disabled",
              (ognrelay_time == 1 ? "selected" : ""), "Enabled",
+             (ognreverse_time == 0 ? "selected" : ""), "Disabled",
+             (ognreverse_time == 1 ? "selected" : ""), "Enabled",
+
              (ogn_gnsstime == 0 ? "selected" : ""), "Disabled",
              (ogn_gnsstime == 1 ? "selected" : ""), "Enabled",
-             "hidekey",
-
              (testmode_enable == 0 ? "selected" : ""), "Disabled",
-             (testmode_enable == 1 ? "selected" : ""), "Enabled"
+             (testmode_enable == 1 ? "selected" : ""), "Enabled",
 
+             "hidekey", "hidekey"
              );
 
     ssid_num = -1;
@@ -654,50 +770,67 @@ void Web_setup(ufo_t* this_aircraft)
 
     yield();
 
-    size_t len  = strlen(offset);
+    size_t len = strlen(offset);
+    if (len+2 < size) {
+        Serial.print("Size of web page: ");
+        Serial.println(len);
+    } else {
+        Serial.print("Web page needs more bytes than the allocated ");
+        Serial.println(size);
+        free(Settings_temp);
+        free(index_html);
+        index_msg = "allocated RAM insufficient for web page";
+        mini_server();
+        return;
+    }
+
     String html = String(offset);
 
-    wserver.on("/", HTTP_GET, [html](AsyncWebServerRequest* request){
+    wserver->on("/", HTTP_GET, [html](AsyncWebServerRequest* request){
         request->send(200, "text/html", html);
     });
 
     // Route to load style.css file
-    wserver.on("/style.css", HTTP_GET, [](AsyncWebServerRequest* request){
+    wserver->on("/style.css", HTTP_GET, [](AsyncWebServerRequest* request){
         request->send(SPIFFS, "/style.css", "text/css");
     });
 
-    wserver.on("/update", HTTP_GET, [](AsyncWebServerRequest* request){
+    wserver->on("/update", HTTP_GET, [](AsyncWebServerRequest* request){
         handleUpdate(request);
         request->redirect("/");
     });
 
-    wserver.on("/doUpdate", HTTP_POST,
+    wserver->on("/doUpdate", HTTP_POST,
                [](AsyncWebServerRequest* request) {},
                [](AsyncWebServerRequest* request, const String& filename, size_t index, uint8_t* data,
                   size_t len, bool final) {
         handleDoUpdate(request, filename, index, data, len, final);
     });
 
-    // wserver.on("/upload", HTTP_GET, [upload_html](AsyncWebServerRequest* request){
-    //wserver.on("/upload", HTTP_GET, [](AsyncWebServerRequest* request){
+    // wserver->on("/upload", HTTP_GET, [upload_html](AsyncWebServerRequest* request){
+    //wserver->on("/upload", HTTP_GET, [](AsyncWebServerRequest* request){
     //    request->send(200, "text/html", upload_html);
     //});
 
-    wserver.on("/upload", HTTP_GET, [](AsyncWebServerRequest* request){
+    wserver->on("/upload", HTTP_GET, [](AsyncWebServerRequest* request){
         handleUpload(request);
     });
 
-    wserver.on("/doUpload", HTTP_POST, [](AsyncWebServerRequest* request) {}, DoUpload);
+    wserver->on("/doUpload", HTTP_POST, [](AsyncWebServerRequest* request) {}, DoUpload);
 
-    wserver.on("/dnload", HTTP_GET, [](AsyncWebServerRequest* request){
+    wserver->on("/oldconf", HTTP_GET, [](AsyncWebServerRequest* request){
+      HandleOldconf(request);
+    });
+
+    wserver->on("/dnload", HTTP_GET, [](AsyncWebServerRequest* request){
         handleDnload(request);
     });
 
-    wserver.on("/debuglog.txt", HTTP_GET, [](AsyncWebServerRequest* request){
+    wserver->on("/debuglog.txt", HTTP_GET, [](AsyncWebServerRequest* request){
       handleDnldlog(request);
     });
 
-    wserver.on("/clear", HTTP_GET, [](AsyncWebServerRequest* request){
+    wserver->on("/clear", HTTP_GET, [](AsyncWebServerRequest* request){
         Serial.println(F("Formatting spiffs..."));
         SPIFFS.format();
         request->redirect("/");
@@ -705,26 +838,26 @@ void Web_setup(ufo_t* this_aircraft)
 
     snprintf(stats_html, STATS_SIZE, "stats not available yet");
 
-    wserver.on("/stats", HTTP_GET, [](AsyncWebServerRequest* request){
+    wserver->on("/stats", HTTP_GET, [](AsyncWebServerRequest* request){
         update_stats();
         Serial.println(F("requesting stats page..."));
         request->send(200, "text/html", String(stats_html));
     });
 
-    wserver.on("/refresh", HTTP_GET, [](AsyncWebServerRequest* request){
+    wserver->on("/refresh", HTTP_GET, [](AsyncWebServerRequest* request){
         /* refresh the stats at the top of the status page in 2 sec */
         ExportTimeWebRefresh = millis()/1000 - 21;
         request->redirect("/");
     });    
 
-    wserver.on("/reboot", HTTP_GET, [](AsyncWebServerRequest* request){
+    wserver->on("/reboot", HTTP_GET, [](AsyncWebServerRequest* request){
         request->redirect("/");
         DebugLogWrite("web_server reboot");
         delay(500);
         SoC->reset();
     });    
 
-    wserver.on("/remote_reboot", HTTP_GET, [](AsyncWebServerRequest* request){
+    wserver->on("/remote_reboot", HTTP_GET, [](AsyncWebServerRequest* request){
         if (reboot_remote()) {
           Serial.println(F("sent remote reboot packet..."));
           OLED_write("remote reboot...", 0, 27, true);
@@ -739,16 +872,16 @@ void Web_setup(ufo_t* this_aircraft)
         request->redirect("/");
     });    
 
-//    wserver.onNotFound([](AsyncWebServerRequest *request){
+//    wserver->onNotFound([](AsyncWebServerRequest *request){
 //        request->send(404, "text/plain", "file not found.");
 //    });
 
-//    wserver.onNotFound(notFound);
+//    wserver->onNotFound(notFound);
 
     yield();
 
     // Send a GET request to <ESP_IP>/get?inputString=<inputMessage>
-    wserver.on("/get", HTTP_GET, [](AsyncWebServerRequest* request) {
+    wserver->on("/get", HTTP_GET, [](AsyncWebServerRequest* request) {
         if (request->hasParam("callsign"))
             ogn_callsign = request->getParam("callsign")->value().c_str();
             ogn_callsign.trim();
@@ -868,12 +1001,22 @@ void Web_setup(ufo_t* this_aircraft)
         if (ognrelay_base)  ognrelay_enable = 0;
         if (request->hasParam("relay_time"))
             ognrelay_time = request->getParam("relay_time")->value().toInt();
+        if (request->hasParam("reverse_time"))
+            ognreverse_time = request->getParam("reverse_time")->value().toInt();
         if (request->hasParam("gnss_time"))
             ogn_gnsstime = request->getParam("gnss_time")->value().toInt();
 
         if (request->hasParam("ogn_relay_key")) {
             if (request->getParam("ogn_relay_key")->value() != "hidekey") {
               ognrelay_key = request->getParam("ogn_relay_key")->value().toInt();
+            }
+        }
+
+        if (request->hasParam("webserver_port")) {
+            if (request->getParam("webserver_port")->value() != "hidekey") {
+              unsigned int port = request->getParam("webserver_port")->value().toInt();
+              if (port >= 49152 && port <= 65535)
+                  webserver_port = port;
             }
         }
 
@@ -911,10 +1054,16 @@ void Web_setup(ufo_t* this_aircraft)
 
     yield();
 
+    Serial.print("Free memory after Web_setup() free(): ");
+    Serial.println(ESP.getFreeHeap());
+
     // Start server
     Web_start();
     delay(500);
     ExportTimeWebRefresh = 0;   /* force a refresh of the stats at the top on next web_loop() */
+
+    Serial.print("Free memory after Web_start(): ");
+    Serial.println(ESP.getFreeHeap());
 }
 
 void Web_loop(void)

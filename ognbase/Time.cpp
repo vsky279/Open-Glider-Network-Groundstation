@@ -29,21 +29,28 @@
 
 #include <TimeLib.h>
 
+#include "esp_wifi.h"
+#include "esp_wifi_types.h"
+
 #if defined(TBEAM)
 extern const gnss_chip_ops_t *gnss_chip;
 #endif
 
 time_t   OurTime = 0;          /* UTC time in seconds since start of 1970 */
-uint16_t have_approx_time = 0;
+uint16_t have_reverse_time = 0;
 uint32_t base_time_ms = 0;     /* this device millis() at last verified PPS */
 uint32_t ref_time_ms = 0;      /* assumed local millis() at last PPS */
 
 #define TIME_TO_TRYSYNC 2700
 #define TIME_TO_ACKSYNC 10300
-#define TIME_TO_RE_SYNC 185000
-#define ADJ_FOR_FLARM_RECEPTION 40       /* seems to receive FLARM packets better */
+#define TIME_TO_RE_SYNC 291000    // when to start over communicating with remote station
+#define ADJ_FOR_FLARM_RECEPTION 0       /* 40-50 seems to receive FLARM packets better? */
 #define ADJ_FOR_TRANSMISSION_DELAY 10
-#define TIME_TO_NTP_AGAIN 600000
+#define TIME_TO_GNSS_TIME 151000    // how often to check GNSS
+#define TIME_TO_NTP_AGAIN 151000    // how often to check NTP
+
+uint32_t time_to_call_ntp = 0;
+int ntp_ms_adjust = 0;
 
 uint32_t when_synched = 0;
 uint32_t when_sync_tried = 0;
@@ -66,6 +73,8 @@ uint8_t remote_sats=0;
 float remote_voltage=0.0;
 
 uint32_t traffic_packets_recvd = 0;
+uint32_t old_protocol_packets_recvd = 0;
+uint32_t air_relayed_packets_recvd = 0;
 uint32_t traffic_packets_relayed = 0;
 uint32_t traffic_packets_reported = 0;
 uint16_t time_packets_sent = 0;
@@ -79,7 +88,6 @@ uint32_t other_packets_recvd = 0;
 uint32_t traffic_by_minute[TRAFFIC_MINUTES];
 int traffic_minute_pointer = 0;
 uint16_t packets_per_minute = 0;
-
 
 /********************* GNSS-time relay code ************************/
 
@@ -107,7 +115,7 @@ bool send_time(void)
     
     if (ognrelay_base && reverse_time_sync) {
 
-        mark = 0xA;     /* marks reverse-time-sync packet */
+        mark = MSG_TYPE_REV;     /* marks reverse-time-sync packet */
 
     } else {
 
@@ -115,9 +123,9 @@ bool send_time(void)
           return false;
 
 #if defined(TBEAM)
-        if (ognrelay_enable && (! isValidGNSStime()))   /* time data source needs GPS time */
-          return false;
         if (ognrelay_enable) {
+          if (! isValidGNSStime())       /* remote needs GPS to be a time data source */
+            return false;
           satellites = gnss.satellites.value();
           if (satellites > 0x0F)  satellites = 0x0F;
         }
@@ -125,12 +133,12 @@ bool send_time(void)
         if (ognrelay_enable)   /* relay station must have GPS to relay time */
           return false;
 #endif
-        mark = (got_time_ack ? 0xE : 0xC);
+        mark = (got_time_ack ? MSG_TYPE_ACK : MSG_TYPE_UNA);
     }
 
     legacy_packet_t* pkt = (legacy_packet_t *) TxBuffer;
     pkt->addr = 0xACACAC;            /* marks time-relay packets */
-    pkt->_unk0 = mark;               /* type of such packet */
+    pkt->msg_type = mark;               /* type of such packet */
 
     uint32_t* p = ( uint32_t *) TxBuffer; 
 
@@ -195,10 +203,10 @@ Serial.printf("send_time: uptime %d sent as %d %X\r\n", uptime, pkt->_unk1, pkt-
       p[3] ^= 0xACACACAC;                          /* rudimentary whitening */
       p[4] ^= 0xACACACAC;
 
-    } else if (ognrelay_base) {   /* base station sending ack - blank stats fields */
+    } else if (ognrelay_base) {   // base station sending time/ack - blank stats fields
 
       if (time_synched || reverse_time_sync) {
-          /* send base time to remote station (NTP time if reverse_time_sync) */
+          /* send base time to remote station */
           p[1] = (uint32_t) OurTime;
           p[2] = (offset & 0x0FFF);
       } else {
@@ -247,11 +255,11 @@ bool time_sync_pkt(uint8_t *raw)
     legacy_packet_t* pkt = (legacy_packet_t *) raw;
     if (pkt->addr != 0xACACAC)     /* marks time-sync packets */
         return false;
-    if (pkt->_unk0 == 0xE)         /* marks acked time-relay packets */
+    if (pkt->msg_type == MSG_TYPE_ACK)         /* marks acked time-relay packets */
         return true;
-    if (pkt->_unk0 == 0xC)         /* marks un-acked time-relay packets */
+    if (pkt->msg_type == MSG_TYPE_UNA)         /* marks un-acked time-relay packets */
         return true;
-    if (pkt->_unk0 == 0xA)         /* marks reverse-time-relay packets */
+    if (pkt->msg_type == MSG_TYPE_REV)         /* marks reverse-time-relay packets */
         return true;
     return false;
 }
@@ -290,7 +298,7 @@ Serial.printf("set_our_clock: ms=%d, ourt=%d, ofst=%d, reft=%d\r\n",
     }
 
     legacy_packet_t* pkt = (legacy_packet_t *) raw;
-    if (pkt->_unk0 == 0xE)
+    if (pkt->msg_type == MSG_TYPE_ACK)
         got_time_ack = true;    /* for base, this "sticks" */
 
     /* get stats sent from remote station */
@@ -366,30 +374,32 @@ void sync_alive_pkt(uint8_t *raw)
       return;                                   /* failed security check */
     }
 
+    time_t BaseTime = (time_t) p[1];
+    uint32_t BaseOffset = (p[2] & 0x0FFF);
+    BaseOffset += ADJ_FOR_TRANSMISSION_DELAY;
+    if (! reverse_time_sync)  BaseOffset += 40;
+    if (BaseOffset > 1000) {
+      BaseTime += 1;
+      BaseOffset -= 1000;
+    }
     when_synched = millis();
+    uint32_t base_ref_time = when_synched - BaseOffset;
+    if (BaseTime == OurTime - 1) {
+        ++BaseTime;
+        base_ref_time += 1000;
+    }
 
-    /* if relay has no time source, base sends NTP time (only with 1 or 2 channels) */
-    if (reverse_time_sync && pkt->_unk0 == 0xA) {
+    /* if remote has no time source, base sends (NTP) time */
+    if (reverse_time_sync && pkt->msg_type == MSG_TYPE_REV) {
 
-        OurTime = (time_t) p[1];
-        have_approx_time = (TIME_TO_RE_SYNC/1000);  /* decrements once per second unless reset here */
+        OurTime = BaseTime;
+        ref_time_ms = base_ref_time;     /* time of last PPS in base station */
+        have_reverse_time = (TIME_TO_RE_SYNC/1000);  /* decrements once per second unless reset here */
         Serial.println(F("received NTP time from base"));
         return;
 
     } else if (ognrelay_time && time_synched && p[1] != p[2]) {
 
-        time_t BaseTime = (time_t) p[1];
-        uint32_t BaseOffset = (p[2] & 0x0FFF);
-        BaseOffset += ADJ_FOR_TRANSMISSION_DELAY + 40;
-        if (BaseOffset > 1000) {
-          BaseTime += 1;
-          BaseOffset -= 1000;
-        }
-        uint32_t base_ref_time = when_synched - BaseOffset;
-        if (BaseTime == OurTime - 1) {
-            ++BaseTime;
-            base_ref_time += 1000;
-        }
         if (BaseTime == OurTime) {
             int32_t timediff = (int32_t)base_ref_time - (int32_t)ref_time_ms;
             Serial.printf("base-remote timediff: %d ms\r\n", timediff);
@@ -407,7 +417,7 @@ void sync_alive_pkt(uint8_t *raw)
            when_synched, p[1], p[2], total_delays/ack_packets_recvd);
     }
 
-    bool base_ack = (pkt->_unk0 == 0xE);        /* base says it got ack-ack */
+    bool base_ack = (pkt->msg_type == MSG_TYPE_ACK);        /* base says it got ack-ack */
     if (! time_synched && base_ack && p[1]==p[2]
           && (p[1] > OurTime + 8) && (p[1] < OurTime + 34)) {
         when_to_switch = p[1];                  /* base chose switch time */
@@ -433,7 +443,7 @@ bool reboot_remote(void)
 
     legacy_packet_t* pkt = (legacy_packet_t *) TxBuffer;
     pkt->addr = 0xCACACA;                 /* marks remote_reboot packets */
-    pkt->_unk0 = 0xA;
+    pkt->msg_type = MSG_TYPE_RBT;
 
     uint32_t* p = ( uint32_t *) TxBuffer; 
 
@@ -456,7 +466,7 @@ bool reboot_remote(void)
 bool maybe_remote_reboot(uint8_t *raw) {
     if (! ognrelay_enable)      return false;
     legacy_packet_t* pkt = (legacy_packet_t *) raw;
-    if (pkt->_unk0 != 0xA)      return false;
+    if (pkt->msg_type != MSG_TYPE_RBT)      return false;
     if (pkt->addr != 0xCACACA)  return false;    /* not a reboot packet */
 
     uint32_t* p = (uint32_t *) raw; 
@@ -499,102 +509,15 @@ void Timesync_restart()
 
 /********************* time loop code ************************/
 
-void Time_update()
+void Poll_GNSS()
 {
     uint32_t now_ms = millis();
-
-    if (ognrelay_time && ! time_synched && when_to_switch > 0 && OurTime > when_to_switch) {
-        /* at a per-agreed time after initial time-sync contacts */
-        time_synched = true;
-        // when_to_switch = 0;
-        Serial.printf(">>> time_synched at %d ms\r\n", now_ms);
-        String msg = "time_synched";
-        Logger_send_udp(&msg);
-    }
-
-    if (ognrelay_base && ognrelay_time && (!time_synched || OurTime==0)) {
-    /* initial time-sync when relaying time */
-
-        time_synched = false;
-        /* use free-running clock while waiting for when_to_switch */
-        if (OurTime > 0 && now_ms >= ref_time_ms + 1000) {
-          OurTime += 1;
-          ref_time_ms += 1000;
-//Serial.printf("free running clock - base still waiting to sync -> %d\r\n", OurTime);
-        }
-        /* else wait for time data from remote station */
-        return;
-        /* new time packets will be handled by set_our_clock()  */
-
-    }
-
-    if (ognrelay_base && ognrelay_time && time_synched && OurTime != 0) {
-    /* when base is getting time data periodically from remote station */
-
-        /* use free-running clock between time sync messages */
-        if (now_ms >= ref_time_ms + 1000) {
-          OurTime += 1;
-          ref_time_ms += 1000;
-//Serial.printf("free running clock - base btwn time msgs-> %d\r\n", OurTime);
-        }
-
-        return;
-    }
-
-    if (!ognrelay_enable && !ognrelay_time && !ogn_gnsstime) {
-    /* when base (or standalone) is getting time data from NTP */
-
-        if (OurTime == 0 || ! time_synched) {
-            return;
-        }
-
-        /* get fresh NTP time data periodically */
-        static uint32_t time_to_call_ntp = 0;
-        if (now_ms > time_to_call_ntp + TIME_TO_NTP_AGAIN) {
-            Time_setup();
-            time_to_call_ntp = millis();
-        }
-
-        /* use free-running clock between those times */
-        if (now_ms >= ref_time_ms + 1000) {
-          OurTime += 1;
-          ref_time_ms += 1000;
-//Serial.printf("free running clock - NTP -> %d\r\n", OurTime);
-        }
-
-        return;
-    } 
-
-    if (ognrelay_enable && ! ognrelay_time && ! ogn_gnsstime) {
-    /* when remote station is not using GNSS time */
-
-        if (OurTime == 0) {    /* starting up */
-          OurTime = 1;         /* arbitrary time, used for packet aging only */
-          ref_time_ms = now_ms;
-          time_synched = true;
-        }
-
-        /* use free-running clock */
-        if (now_ms >= ref_time_ms + 1000) {
-          OurTime += 1;
-          ref_time_ms += 1000;
-          if (have_approx_time == 0) {
-//Serial.println(F("free running clock - remote, no gnss"));
-          } else {
-              --have_approx_time;
-//Serial.println(F("have_approx_time - remote, no gnss"));
-          }
-        }
-
-        return;
-    } 
-
 #if defined(TBEAM)
 
     bool validgnss = isValidGNSStime();
 
     if ((!ognrelay_base || !ognrelay_time) && OurTime != 0
-          && (now_ms < base_time_ms + (validgnss? 1500 : TIME_TO_RE_SYNC))) {
+          && (now_ms < base_time_ms + (validgnss? TIME_TO_GNSS_TIME : TIME_TO_RE_SYNC))) {
 
         /* use free-running clock for short periods or during GPS dropouts */
         if (now_ms >= ref_time_ms + 1000) {
@@ -607,13 +530,6 @@ void Time_update()
         }
         return;
     } 
-#endif
-
-#if !defined(TBEAM)
-      //Serial.println(F("should use TBEAM with GNSS"));
-#endif
-
-#if defined(TBEAM)
 
     if (! validgnss) {      /* even after free-running for a while */
         if (ognrelay_enable && ognrelay_time) {
@@ -641,6 +557,7 @@ Serial.println(F("Lost GNSS time, will re-sync..."));
     } else {   /* PPS not available */
       time_corr_neg = gnss_chip ? gnss_chip->rmc_ms : 100;
       newtime = last_Commit_Time - time_corr_neg;
+      if (gnss_chip)  newtime -= 180;    // experimentally seen to be better
     }
     if (gnss_age < 2500 && newtime > base_time_ms) {
       static uint32_t lasttime_ms = 0;
@@ -651,7 +568,7 @@ Serial.println(F("Lost GNSS time, will re-sync..."));
     }
 
     /* between fixes (but not before first fix): free-running clock */
-    if (ref_time_ms > 0 && !newfix) {
+    if (OurTime > 0 && !newfix) {
         if (now_ms >= ref_time_ms + 1000) {
           OurTime += 1;
           ref_time_ms += 1000;
@@ -707,7 +624,122 @@ Serial.printf("PPS=%d < ref=%d ??\r\n", pps_btime_ms, ref_time_ms);
 
     OurTime = makeTime(tm) + (gnss_age + time_corr_neg) / 1000;
 
+#else // !defined(TBEAM)
+      //Serial.println(F("no GNSS, cannot set clock"));
 #endif   /* TBEAM */
+}
+
+void Time_update()
+{
+    uint32_t now_ms = millis();
+
+    if (ognrelay_time && ! time_synched && when_to_switch > 0 && OurTime > when_to_switch) {
+        /* at a per-agreed time after initial time-sync contacts */
+        time_synched = true;
+        // when_to_switch = 0;
+        Serial.printf(">>> time_synched at %d ms\r\n", now_ms);
+        String msg = "time_synched";
+        Logger_send_udp(&msg);
+    }
+
+    if (ognrelay_base && ognrelay_time && (!time_synched || OurTime==0)) {
+    /* initial time-sync when relaying time */
+
+        time_synched = false;
+        /* use free-running clock while waiting for when_to_switch */
+        if (OurTime != 0 && now_ms >= ref_time_ms + 1000) {
+          OurTime += 1;
+          ref_time_ms += 1000;
+//Serial.printf("free running clock - base still waiting to sync -> %d\r\n", OurTime);
+        }
+        /* else wait for time data from remote station */
+        return;
+        /* new time packets will be handled by set_our_clock()  */
+
+    }
+
+    if (ognrelay_base && ognrelay_time && time_synched && OurTime != 0) {
+    /* when base is getting time data periodically from remote station */
+
+        /* use free-running clock between time sync messages */
+        if (now_ms >= ref_time_ms + 1000) {
+          OurTime += 1;
+          ref_time_ms += 1000;
+//Serial.printf("free running clock - base btwn time msgs-> %d\r\n", OurTime);
+        }
+
+        return;
+    }
+
+    if (!ognrelay_enable && !ognrelay_time && !ogn_gnsstime) {
+    /* when base (or standalone) is getting time data from NTP */
+
+        if (OurTime == 0 || ! time_synched)
+            time_to_call_ntp = 0;
+
+        /* get fresh NTP time data periodically */
+        if (now_ms > time_to_call_ntp) {
+            Poll_NTP();
+            //time_to_call_ntp = millis() + TIME_TO_NTP_AGAIN;
+            return;
+        }
+
+        /* use free-running clock between those times */
+        if (OurTime != 0 && now_ms >= ref_time_ms + 1000) {
+            OurTime += 1;
+            uint32_t increment;
+            if (ntp_ms_adjust > 0) {    // NTP time is later than OurTime, speed up
+                --ntp_ms_adjust;
+                increment = 999;        // PPS was 1 ms earlier
+            } else if (ntp_ms_adjust < 0) {
+                ++ntp_ms_adjust;
+                increment = 1001;
+            } else { // if adjust=0
+                increment = 1000;
+            }
+            ref_time_ms += increment;
+//Serial.printf("free running clock - NTP -> %d\r\n", OurTime);
+        }
+
+        return;
+    } 
+
+    if (ognrelay_enable && ! ognrelay_time && ! ogn_gnsstime) {
+    /* when remote station is not using GNSS time */
+
+        if (OurTime == 0) {    /* starting up */
+          OurTime = 1;         /* arbitrary time, used for packet aging only */
+                               // >>> won't work for packet decrypting!
+          ref_time_ms = now_ms;
+          time_synched = true;
+        }
+
+        /* use free-running clock */
+        if (now_ms >= ref_time_ms + 1000) {
+          OurTime += 1;
+          ref_time_ms += 1000;
+          if (have_reverse_time == 0) {
+//Serial.println(F("free running clock - remote, no gnss"));
+          } else {
+              --have_reverse_time;
+//Serial.println(F("have_reverse_time - remote, no gnss"));
+          }
+        }
+
+        return;
+    }
+
+    // none of the above, use GNSS time
+    //if (ogn_gnsstime)
+        Poll_GNSS();
+
+#if 0
+    // continue and do NTP too for comparison test
+    if (now_ms > time_to_call_ntp) {
+        Poll_NTP();
+        //time_to_call_ntp = millis() + 30300;
+    }
+#endif
 }
 
 void Time_loop()
@@ -717,6 +749,17 @@ void Time_loop()
     if (OurTime == 0)
         return;
 
+/*
+    // NTP test code
+    static uint32_t when_to_NTP = 0;
+    if (when_to_NTP == 0) {
+        if (OurTime != 0)
+            when_to_NTP = millis();
+    } else if (millis() > when_to_NTP) {
+        when_to_NTP = millis() + 20300;    // 60000;   // once a minute
+        Poll_NTP();
+    }
+*/
     if (ThisAircraft.timestamp != OurTime) {      /* do this only once per second */
 
       if (! time_synched && ! ognrelay_time && ogn_gnsstime && ref_time_ms > 0)
@@ -819,7 +862,7 @@ void Time_loop()
        }
               /* done with ognrelay_time */
 
-    /* if base gets NTP time & relay has no time source, send approximate time */
+    /* if base gets NTP time & relay has no time source, send time from base to remote */
     } else if (ognrelay_base && reverse_time_sync && OurTime > 0
                 && now_ms > when_sync_tried + TIME_TO_ACKSYNC) {
         (void) send_time();
@@ -839,6 +882,8 @@ unsigned int localPort = 2390;      // local port to listen for UDP packets
 //IPAddress timeServer(129, 6, 15, 28); // time.nist.gov NTP server
 IPAddress timeServerIP; // time.nist.gov NTP server address
 //const char* ntpServerName = "time.nist.gov";
+// other options: ntp.my-isp.net or (fastest) its IP address
+// used here: 0.pool.ntp.org, 1.pool.ntp.org, etc - automatically finds close-by servers
 const String ntpServerName_suffix = ".pool.ntp.org";
 
 const int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of the message
@@ -848,8 +893,11 @@ byte NTPPacketBuffer[ NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing p
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP NTP_udp;
 
+static uint32_t NTP_response_time = 0;
+static uint32_t NTP_request_time  = 0;
+
 // send an NTP request to the time server at the given address
-void sendNTPpacket(IPAddress& address)
+bool sendNTPpacket(IPAddress& address)
 {
     Serial.println(F("sending NTP packet..."));
     // set all bytes in the buffer to 0
@@ -869,8 +917,244 @@ void sendNTPpacket(IPAddress& address)
     // all NTP fields have been given values, now
     // you can send a packet requesting a timestamp:
     NTP_udp.beginPacket(address, 123); //NTP requests are to port 123
-    NTP_udp.write(NTPPacketBuffer, NTP_PACKET_SIZE);
+    size_t r = NTP_udp.write(NTPPacketBuffer, NTP_PACKET_SIZE);
     NTP_udp.endPacket();
+    if (r <= 0)
+        return false;
+    return true;
+}
+
+// https://www.lectrobox.com/projects/esp32-ntp/
+// https://github.com/jelson/rulos/tree/main/src/lib/chip/esp32/periph/ntp
+void sniffer(void *buf, wifi_promiscuous_pkt_type_t type) {
+  if (type != WIFI_PKT_DATA) {
+    return;
+  }
+  wifi_promiscuous_pkt_t *p = (wifi_promiscuous_pkt_t *)buf;
+  // this is cheesy; in theory we should parse the whole packet and
+  // make sure it's UDP, destined for our port number. but this
+  // quick-and-dirty check for the right length is a quick hack which
+  // works since sniffing is only turned on after we send a request
+  if (p->rx_ctrl.sig_len != 130) {
+    return;
+  }
+  //>>> should NTP_response_time be protected with a "mutex"?
+  NTP_response_time = millis();
+}
+
+void Poll_NTP()
+{
+    char buf[32];
+    int    cb = 0;
+    String ntpServerName;
+
+    if (millis() < 20000)
+        return;   // don't even try
+
+    // Do not attempt to timesync in Soft AP mode
+    if (WiFi.getMode() == WIFI_AP) {
+        Serial.println(F("Cannot get NTP time without internet"));
+        snprintf(buf, sizeof(buf), "no internet no NTP time");
+        OLED_write(buf, 0, 54, false);
+        time_to_call_ntp = millis() + TIME_TO_NTP_AGAIN;
+        return;
+    }
+
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println(F("Cannot get NTP time: WiFi disconnected"));
+        time_to_call_ntp = millis() + TIME_TO_NTP_AGAIN;
+        return;
+    }
+
+    static int state = 0;
+
+    if (state == 0) {   // need to start up UDP
+
+        Serial.println(F("Starting NTP UDP"));
+        NTP_udp.begin(localPort);
+        Serial.print(F("Local port: "));
+        Serial.println(localPort);
+        state = 1;
+        time_to_call_ntp = millis() + 200;
+        return;
+    }
+
+    if (state == 1) {   // need to send a request to NTP server
+
+        static int server_selector = 3;
+        ++server_selector;
+        if (server_selector > 3)
+            server_selector = 0;
+        //get a random server from the pool
+        ntpServerName = String(server_selector) + ntpServerName_suffix;
+        Serial.print(F(" NTP server's name: "));
+        Serial.println(ntpServerName);
+        WiFi.hostByName(ntpServerName.c_str(), timeServerIP);   // cache this?
+        Serial.print('#');
+        Serial.print(server_selector);
+        Serial.print(F(" NTP server's IP address: "));
+        Serial.println(timeServerIP);
+
+        // send an NTP packet to a time server
+        esp_wifi_set_promiscuous(true);
+        NTP_request_time = millis();
+        NTP_response_time = 0;    // will be filled in by sniffer()
+        if (sendNTPpacket(timeServerIP) == false) { // send failed
+            esp_wifi_set_promiscuous(false);
+            Serial.println(F("sending to NTP failed"));
+            NTP_udp.stop();
+            time_to_call_ntp = millis() + 5100;   // try again in 5 seconds
+            state = 0;
+            return;
+        }
+        // sending succeeded, wait 100 ms for reply
+        state = 2;
+        time_to_call_ntp = millis() + 100;
+        return;
+
+    }
+    
+    // else if (state == 2)  // waiting for a reply from NTP server
+
+    uint32_t now_ms = millis();
+    cb = NTP_udp.parsePacket();
+    if (!cb) {
+        if (now_ms > NTP_request_time + 550) {
+            esp_wifi_set_promiscuous(false);
+            time_to_call_ntp = now_ms + 5100;   // try a new request in 5 seconds
+            Serial.println(F("No response from NTP"));
+            NTP_udp.stop();
+            state = 0;
+            return;
+        } else {
+            time_to_call_ntp = now_ms + 100;   // check again in 100 ms
+            // state remains 2
+            return;
+        }
+    } else if (NTP_response_time == 0) {
+        esp_wifi_set_promiscuous(false);
+        time_to_call_ntp = now_ms + 5100;   // try again in 5 seconds
+        Serial.println(F("NTP response not caught by sniffer"));
+        NTP_udp.stop();
+        state = 0;
+        return;
+    } else {
+        esp_wifi_set_promiscuous(false);
+        Serial.print(F("Reply packet received, length="));
+        Serial.println(cb);
+        // We've received a packet, read the data from it
+        NTP_udp.read(NTPPacketBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
+        NTP_udp.stop();
+        state = 0;
+    }
+
+    // ready to set time
+    // also prepare for the next NTP poll:
+    time_to_call_ntp = now_ms + 30300;   // in case calcs below fail
+
+    //the timestamp starts at byte 40 of the received packet and is four bytes,
+    // or two words, long. First, esxtract the two words:
+    uint32_t highWord = word(NTPPacketBuffer[40], NTPPacketBuffer[41]);
+    uint32_t lowWord  = word(NTPPacketBuffer[42], NTPPacketBuffer[43]);
+    // combine the four bytes (two words) into a long integer
+    // this is NTP time (seconds since Jan 1 1900):
+    uint32_t secsSince1900 = (highWord << 16) | lowWord;
+
+    //the sub-second timestamp starts at byte 44 of the received packet.
+    highWord = word(NTPPacketBuffer[44], NTPPacketBuffer[45]);
+    lowWord  = word(NTPPacketBuffer[46], NTPPacketBuffer[47]);
+    uint32_t frac_sec = (highWord << 16) | lowWord;
+    // this is fraction of a second in units of 2^-32 sec
+    //Serial.printf("frac_sec raw: %08X\r\n", frac_sec);
+    frac_sec = ((((frac_sec >> 16) & 0x0FFFF) * 1000) >> 16);   // milliseconds (T3)
+    //Serial.print("frac_sec: ");
+    //Serial.println(frac_sec);
+
+    // also need the received-timestamp from the NTP server (T2)
+    highWord = word(NTPPacketBuffer[32], NTPPacketBuffer[33]);
+    lowWord  = word(NTPPacketBuffer[34], NTPPacketBuffer[35]);
+    uint32_t rec_sec = (highWord << 16) | lowWord;
+    highWord = word(NTPPacketBuffer[36], NTPPacketBuffer[37]);
+    lowWord  = word(NTPPacketBuffer[38], NTPPacketBuffer[39]);
+    uint32_t rec_frac = (highWord << 16) | lowWord;
+    rec_frac = ((((rec_frac >> 16) & 0x0FFFF) * 1000) >> 16);   // milliseconds (T2)
+
+    uint32_t T1, T2, T3, T4;
+
+    T1 = NTP_request_time;                             // these are millis() values
+    T4 = NTP_response_time;
+    T2 = (rec_sec       & 0x0FFFF)*1000 + rec_frac;    // different origin
+    T3 = (secsSince1900 & 0x0FFFF)*1000 + frac_sec;    // but cancels out
+    if (T3 < T2)  // shouldn't happen unless perhaps rolled over through 0xFFFF
+        return;
+    uint32_t serverlag = (T3 - T2);
+    //Serial.print("server lag: ");  Serial.println(serverlag);
+    if (T4 < T1) {  // may happen if received a late response to an earlier request
+        Serial.printf("T1: %d  >  T4: %d\r\n", T1, T4);
+        return;
+    }
+    if (T4 - T1 < serverlag) {
+        Serial.printf("T1: %d   T4: %d  <  serverlag: %d\r\n", T1, T4, serverlag);
+        return;
+    }
+    uint32_t netlag = (T4 - T1) - serverlag;
+    Serial.print("net lag: ");
+    Serial.println(netlag);
+
+    // Time:= T3 + NetLag/2;
+    uint32_t NTP_PPS_ms = T4 - (netlag>>1) - frac_sec;   // what millis() was at beginning of NTP second
+  
+    // now convert NTP time into everyday time:
+    //Serial.print(F("Seconds since Jan 1 1900 = "));
+    //Serial.println(secsSince1900);
+    // Unix time starts on Jan 1 1970. In seconds, that's 2208988800:
+    const uint32_t seventyYears = 2208988800UL;
+    // subtract seventy years:
+    uint32_t epoch = secsSince1900 - seventyYears;
+    //Serial.print(F("Unix time = "));  Serial.println(epoch);
+    // compare NTP time with our time
+    //Serial.print(F("Our time = "));   Serial.println(OurTime);
+    int sec_diff = (int)(epoch & 0x3FFFFFFF) - (int)(OurTime & 0x3FFFFFFF);
+    int ms_diff = (int)ref_time_ms - (int)NTP_PPS_ms;   // time now is secs + (now-PPS) ms
+    if (sec_diff < 0 && ms_diff > 600) {  // OurTime rolled over to next sec but NTP hasn't yet
+        ++sec_diff;
+        ms_diff -= 1000;
+    } else if (sec_diff > 0 && ms_diff < -600) {    // vice versa
+        --sec_diff;
+        ms_diff += 1000;
+    }
+    Serial.printf("NTP time relative to OurTime: %d sec + %d ms\r\n", sec_diff, ms_diff);
+
+#if 0
+    // just for testing
+    uint32_t pps_btime_ms = SoC->get_PPS_TimeMarker();
+    Serial.printf("PPS_TimeMarker = %d   ref_time_ms = %d\r\n", pps_btime_ms, ref_time_ms);
+#endif
+
+    if (ogn_gnsstime)  // just testing
+        return;
+
+    time_to_call_ntp = now_ms + TIME_TO_NTP_AGAIN;
+    time_synched = true;
+    if (OurTime == 0) {        // time not set yet, set it all at once
+        OurTime = epoch;
+        ref_time_ms = NTP_PPS_ms;
+        return;
+    }
+    // if second is wrong, fix that right away (rarely needed)
+    if (sec_diff != 0)
+        OurTime = epoch;
+    //ref_time_ms -= ms_diff;
+    // smooth out the ms changes over time, 1 ms each second
+    if (netlag > 80)
+        ms_diff /= 4;    // discount timestamps from long netlags, they are inaccurate
+    else
+        ms_diff /= 2;
+    if (ms_diff > 0)     // NTP time is later than OurTime
+        ntp_ms_adjust = (ms_diff >  30 ?  30 : ms_diff);
+    else if (ms_diff < 0)
+        ntp_ms_adjust = (ms_diff < -30 ? -30 : ms_diff);
+    Serial.printf("NTP time adjustment: %d ms\r\n", ntp_ms_adjust);
 }
 
 #endif /* EXCLUDE_NTP */
@@ -878,128 +1162,42 @@ void sendNTPpacket(IPAddress& address)
 
 void Time_setup()
 {
-    char buf[32];
+#if 0
+    // setup for NTP - up here just for testing, later move to bottom of this function
+    const wifi_promiscuous_filter_t filt =
+             {.filter_mask = WIFI_PROMIS_FILTER_MASK_DATA};
+    esp_wifi_set_promiscuous_filter(&filt);
+    esp_wifi_set_promiscuous_rx_cb(&sniffer);    
+#endif
+
+    //if (ogn_band == RF_BAND_EU  || ogn_band > RF_BAND_AU)
+    // - now that we know how to get precise NTP time, can do this in US,AU too
+    if (ognrelay_enable && ! ogn_gnsstime) {
+        // remote expects time data from base
+        reverse_time_sync = true;
+        return;
+    }
+    if (ognrelay_base && ognreverse_time) {
+        // send time data from base to remote
+        reverse_time_sync = true;
+    }
 
     /*
-     * only use NTP in base station
+     * only use NTP in base (or single) station
      * and if not getting time from remote station
      * and if not using local GNSS time
      */
-    if (ognrelay_time || ogn_gnsstime)
+    if (ognrelay_enable || ognrelay_time || ogn_gnsstime)
         return;
 
-    if (ogn_band == RF_BAND_EU  || ogn_band > RF_BAND_AU)
-          reverse_time_sync = true;
-
-    if (ognrelay_enable)
-        return;
-
-    /* rest is only for base (or single) station that is not using GNSS time nor relay time */
-    /*   - i.e., it needs to get the UTC time from NTP to timestamp the OGN reports */
-
-#if !defined(EXCLUDE_WIFI)
-#if !defined(EXCLUDE_NTP)
-
-    int    cb = 0;
-    String ntpServerName;
-
-    // Do not attempt to timesync in Soft AP mode
-    if (WiFi.getMode() == WIFI_AP) {
-        Serial.println(F("Cannot get NTP time without internet"));
-        snprintf(buf, sizeof(buf), "no internet no NTP time");
-        OLED_write(buf, 0, 54, false);
-        return;
-    }
-
-    Serial.println(F("Starting NTP UDP"));
-    NTP_udp.begin(localPort);
-    Serial.print(F("Local port: "));
-    Serial.println(localPort);
-
-    for (int attempt = 1; attempt <= 4; attempt++) {
-        //get a random server from the pool
-        ntpServerName = String(attempt - 1) + ntpServerName_suffix;
-        WiFi.hostByName(ntpServerName.c_str(), timeServerIP);
-
-        Serial.print('#');
-        Serial.print(attempt);
-        Serial.print(F(" NTP server's IP address: "));
-        Serial.println(timeServerIP);
-
-        sendNTPpacket(timeServerIP); // send an NTP packet to a time server
-
-        // wait to see if a reply is available
-        delay(2000);
-
-        cb = NTP_udp.parsePacket();
-        if (!cb)
-        {
-            Serial.print(F("No response on request #"));
-            Serial.println(attempt);
-            continue;
-        }
-        else
-        {
-            Serial.print(F("Reply packet received, length="));
-            Serial.println(cb);
-            // We've received a packet, read the data from it
-            NTP_udp.read(NTPPacketBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
-            break;
-        }
-    }
-
-    NTP_udp.stop();
-
-    if (!cb)
-    {
-        Serial.println(F("WARNING! Unable to sync time by NTP."));
-        return;
-    }
-
-    //the timestamp starts at byte 40 of the received packet and is four bytes,
-    // or two words, long. First, esxtract the two words:
-
-    uint32_t highWord = word(NTPPacketBuffer[40], NTPPacketBuffer[41]);
-    uint32_t lowWord  = word(NTPPacketBuffer[42], NTPPacketBuffer[43]);
-    // combine the four bytes (two words) into a long integer
-    // this is NTP time (seconds since Jan 1 1900):
-    uint32_t secsSince1900 = highWord << 16 | lowWord;
-    Serial.print(F("Seconds since Jan 1 1900 = "));
-    Serial.println(secsSince1900);
-
-    // now convert NTP time into everyday time:
-    Serial.print(F("Unix time = "));
-    // Unix time starts on Jan 1 1970. In seconds, that's 2208988800:
-    const uint32_t seventyYears = 2208988800UL;
-    // subtract seventy years:
-    uint32_t epoch = secsSince1900 - seventyYears;
-    // print Unix time:
-    Serial.println(epoch);
-    setTime((time_t) epoch);
-    OurTime = (time_t) epoch;
-    time_synched = true;
-    ref_time_ms = millis();
-
-#if 0
-    // print the hour, minute and second:
-    Serial.print(F("The UTC time is "));    // UTC is the time at Greenwich Meridian (GMT)
-    Serial.print((epoch  % 86400L) / 3600); // print the hour (86400 equals secs per day)
-    Serial.print(':');
-    if (((epoch % 3600) / 60) < 10)
-        // In the first 10 minutes of each hour, we'll want a leading '0'
-        Serial.print('0');
-    Serial.print((epoch  % 3600) / 60);// print the minute (3600 equals secs per minute)
-    Serial.print(':');
-    if ((epoch % 60) < 10)
-        // In the first 10 seconds of each minute, we'll want a leading '0'
-        Serial.print('0');
-    Serial.println(epoch % 60); // print the second
+#if 1
+    /* base (or single) station that is not using GNSS time nor relay time */
+    /*   - i.e., it needs to get the UTC time from NTP */
+    // set up what's needed for NTP polling
+    const wifi_promiscuous_filter_t filt =
+             {.filter_mask = WIFI_PROMIS_FILTER_MASK_DATA};
+    esp_wifi_set_promiscuous_filter(&filt);
+    esp_wifi_set_promiscuous_rx_cb(&sniffer);        
 #endif
-    // print the hour, minute and second:
-    Serial.print(F("UTC time (from NTP) is "));    // UTC is the time at Greenwich Meridian (GMT)
-    Serial.printf("%02d:%02d:%02d\r\n", hour(epoch), minute(epoch), second(epoch));
-
-#endif /* EXCLUDE_NTP */
-#endif /* EXCLUDE_WIFI */
-
 }
+

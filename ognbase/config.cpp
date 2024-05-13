@@ -19,9 +19,9 @@
 #include "SoftRF.h"
 #include "EEPROM.h"
 #include "global.h"
-#include "Log.h"
 #include "config.h"
 #include "OLED.h"
+#include "Log.h"
 
 #include <protocol.h>
 #include <freqplan.h>
@@ -47,19 +47,23 @@ String ogn_ssid[5];
 String ogn_wpass[5];
 int    ssid_index = 0;
 
+//radio default values
+uint8_t  ogn_band        = RF_BAND_EU;
+uint8_t  ogn_protocol_1  = RF_PROTOCOL_LEGACY;
+uint8_t  ogn_protocol_2  = RF_PROTOCOL_OGNTP;
+bool     ogn_bec         = true;   // bit error correction
+
 //aprs default values
 String   ogn_callsign    = "callsign";
 String   ogn_server      = "aprs.glidernet.org";
 uint16_t ogn_port        = 14580;
-uint8_t  ogn_band        = RF_BAND_EU;
-uint8_t  ogn_protocol_1  = RF_PROTOCOL_LEGACY;
-uint8_t  ogn_protocol_2  = RF_PROTOCOL_OGNTP;
 bool     ogn_debug       = false;
 uint16_t ogn_debugport   = 12000;
 bool     ogn_itrackbit   = false;
 bool     ogn_istealthbit = false;
-uint16_t  ogn_range      = 100;
 bool     ogn_mobile      = false;
+uint16_t ogn_range       = 100;
+bool     ogn_hiderelayed = true;
 
 //sleep mode
 int8_t   ogn_sleepmode   = 0;
@@ -96,22 +100,23 @@ uint16_t  remotelogs_port = 12000;
 //oled 
 unsigned long  oled_disable = 0;
 
-//tesmode for new functions
+//test mode for new functions
 bool  testmode_enable = false;
 
 //private network
 bool  private_network = false;
 
-//new protocol
+//new protocol   (internet protocol by Manuel, not FLARM protocol)
 bool new_protocol_enable;
 String new_protocol_server;
 uint32_t new_protocol_port;
 
 //relay
-bool ognrelay_enable = false;    /* remote station */
-bool ognrelay_base = false;      /* base station */
-bool ognrelay_time = false;      /* relay time from remote to base */
-bool ogn_gnsstime = false;       /* use GNSS time rather than NTP */
+bool ognrelay_enable = false;    /* if true = remote station */
+bool ognrelay_base = false;      /* if true = base station */
+bool ognrelay_time = false;      /* if true = relay time from remote to base */
+bool ognreverse_time = false;    /* if true = relay time from base to remote */
+bool ogn_gnsstime = false;       /* if true = use GNSS time rather than NTP */
 uint32_t ognrelay_key = 12345;    /* must be same in both stations for relay_time */
 
 
@@ -247,34 +252,65 @@ bool OGN_read_config(void)
       if (!configFile)
       {
           Serial.println(F("Failed to open config.json."));
-          config_done = -3;
-          return false;
+          configFile = SPIFFS.open("/oldconf.json");
+          if (!configFile)
+          {
+              config_done = -3;
+              return false;
+          }      
+          Serial.println(F("Using oldconf.json instead."));
       }      
     } else {
         Serial.println(F("config.json doesnt exist, please upload config.json"));
         OLED_write("no config file", 0, 27, true);
         delay(1000);
-        config_done = -4;
-        return(false);
+        configFile = SPIFFS.open("/oldconf.json");
+        if (!configFile)
+        {
+            config_done = -4;
+            return(false);
+        }
+        Serial.println(F("Using oldconf.json instead."));
+        OLED_write("using oldconf", 0, 27, true);
+        delay(1000);
     }
 
     DeserializationError error = deserializeJson(baseConfig, configFile);
 
     if (error)
     {
-        Serial.println(F("Failed to parse json file, using default configuration"));
+        Serial.println(F("Failed to parse json file"));
         Serial.println(error.f_str());
         OLED_write("config file error", 0, 27, true);
         delay(1000);
         configFile.close();
-        config_done = -2;
-        return false;
+        configFile = SPIFFS.open("/oldconf.json");
+        if (!configFile)
+        {
+            Serial.println(F("using default configuration"));
+            //OLED_write("default conf", 0, 27, true);
+            //delay(1000);
+            config_done = -2;
+            return false;
+        }
+        Serial.println(F("Using oldconf.json instead."));
+        OLED_write("using oldconf", 0, 27, true);
+        delay(1000);
+        error = deserializeJson(baseConfig, configFile);
+        if (error) {
+            Serial.println(F("Failed to parse oldconf file"));
+            Serial.println(error.f_str());
+            configFile.close();
+            Serial.println(F("using default configuration"));
+            OLED_write("default conf", 0, 27, true);
+            delay(1000);
+            config_done = -2;
+            return false;
+        }
     }
-    else
-    {
-        obj = baseConfig.as<JsonObject>();
-        configFile.close();
-    }
+
+    obj = baseConfig.as<JsonObject>();
+    configFile.close();
 
     if (!obj.containsKey(F("ognbase"))){
         Serial.println("config.json not valid - version missing");
@@ -286,16 +322,16 @@ bool OGN_read_config(void)
         String jsonversion = "wrong";
         jsonversion = obj["ognbase"]["version"].as<String>();
         if (jsonversion != OGNBASE_HTML_VERSION) {
-            Serial.println("Wrong version of config.json");
+            Serial.println("Warning: wrong version of config.json");
             OLED_write("config version wrong", 0, 27, true);
             delay(1000);
             config_done = -1;
-            return false;
+            // but keep going, so as to not lose wifi contact
         }
     }
 
     if (!obj.containsKey(F("wifi"))){
-        //Serial.println("no wifi confgiuration found, return setup mode");
+        //Serial.println("no wifi configuration found, return setup mode");
         // configFile.close();        
         config_done = 0;
         return false;
@@ -323,6 +359,23 @@ bool OGN_read_config(void)
         }
     }
 
+
+    if (obj.containsKey(F("radio")))
+    {
+        //Serial.println(F("found radio config!"));
+        if (1)
+        {
+            ogn_band        = obj["radio"]["band"];
+            if (ogn_band < 1 || ogn_band > 10)    /* override invalid & AUTO with EU */
+                ogn_band = 1;
+//          ogn_protocol_1  = obj["radio"]["protocol_1"];
+ogn_protocol_1  = RF_PROTOCOL_LEGACY;  /* override - only protocol supported for now */
+//          ogn_protocol_2  = obj["radio"]["protocol_2"];
+ogn_protocol_2  = RF_PROTOCOL_OGNTP;
+            ogn_bec         = obj["radio"]["bec"];    // true = enable bit error correction
+        }
+    }
+
     if (obj.containsKey(F("aprs")))
     {
         //Serial.println(F("found aprs config!"));
@@ -338,18 +391,12 @@ bool OGN_read_config(void)
             ogn_server   = obj["aprs"]["server"].as<String>();
             ogn_port     = obj["aprs"]["port"];
 
-            ogn_band        = obj["aprs"]["band"];
-            if (ogn_band < 1 || ogn_band > 10)    /* override invalid & AUTO with EU */
-                ogn_band = 1;
-//          ogn_protocol_1  = obj["aprs"]["protocol_1"];
-ogn_protocol_1  = RF_PROTOCOL_LEGACY;  /* override - only protocol supported for now */
-//          ogn_protocol_2  = obj["aprs"]["protocol_2"];
-ogn_protocol_2  = RF_PROTOCOL_OGNTP;
             ogn_debug       = obj["aprs"]["debug"];
             ogn_debugport   = obj["aprs"]["debugport"];
             ogn_itrackbit   = obj["aprs"]["itrackbit"];
             ogn_istealthbit = obj["aprs"]["istealthbit"];
             ogn_range       = obj["aprs"]["range"];
+            ogn_hiderelayed = obj["aprs"]["hiderelayed"];
         }
     }
 
@@ -409,26 +456,29 @@ ogn_protocol_2  = RF_PROTOCOL_OGNTP;
     {
         //Serial.println(F("found relay config!"));
         ognrelay_base = obj["ognrelay"]["basestation"];
-        if(ognrelay_base)
+        if (ognrelay_base)
             ognrelay_enable = false;                          /* "base" overrides */
         else
             ognrelay_enable = obj["ognrelay"]["enable"];
-        if(ognrelay_enable || ognrelay_base)
+        if (ognrelay_enable || ognrelay_base)
             ognrelay_time = obj["ognrelay"]["relaytime"];
         else
             ognrelay_time = false;
-        if (ognrelay_time) {
-            ognrelay_key = obj["aprs"]["relaykey"];
-            // String key_str = obj["aprs"]["relaykey"].as<String>();
-            // ognrelay_key = (uint32_t) std::stoi(key_str,nullptr,16);
-        }
+        ognreverse_time = obj["ognrelay"]["reversetime"];
+        if (ognreverse_time)
+            ognrelay_time = false;
+        ognrelay_key = obj["aprs"]["relaykey"];
+        // String key_str = obj["aprs"]["relaykey"].as<String>();
+        // ognrelay_key = (uint32_t) std::stoi(key_str,nullptr,16);
 #if defined(TBEAM)
         if (ognrelay_base && ognrelay_time)                     /* gets time from remote */
             ogn_gnsstime = false;
         else if (ognrelay_enable && ognrelay_time)              /* sends time to base */
             ogn_gnsstime = true;
-        else if (ogn_band==RF_BAND_AU || ogn_band==RF_BAND_US)  /* if more than 2 channels */
-            ogn_gnsstime = true;                                /* must use GNSS time */
+        else if (ognrelay_enable && ognreverse_time)            /* gets time from base */
+            ogn_gnsstime = false;
+//      else if (ogn_band==RF_BAND_AU || ogn_band==RF_BAND_US)  /* if more than 2 channels */
+//          ogn_gnsstime = true;                                /* must use GNSS time - no longer! */
         else
             ogn_gnsstime = obj["ognrelay"]["gnsstime"];
         if (ognrelay_enable || ognrelay_base || (! ogn_gnsstime))
@@ -436,11 +486,13 @@ ogn_protocol_2  = RF_PROTOCOL_OGNTP;
 #else
         ogn_gnsstime = false;                                /* no GNSS hardware */
         ogn_mobile = false;
-        if (ogn_band==RF_BAND_AU || ogn_band==RF_BAND_US) {  /* if more than 2 channels */
-            ognrelay_enable = false;               /* remote station must use GNSS time */
+        /*
+        if (ogn_band==RF_BAND_AU || ogn_band==RF_BAND_US) {  // more than 2 channels
+            ognrelay_enable = false;
             if(ognrelay_base)
                 ognrelay_time = true;
         }
+        */
 #endif
     }
 
@@ -467,7 +519,18 @@ ogn_protocol_2  = RF_PROTOCOL_OGNTP;
     {
         //Serial.println(F("found private network config!"));
         if (1)
-            private_network = obj["private"]["enable"];
+            private_network = obj["private"]["encrypt"];
+        if (1) {
+            webserver_port = obj["private"]["webport"];
+            // should be in the range 49152 to 65535
+            //   "not assigned, controlled, or registered, used for private ports"
+            if (webserver_port < 49152 || webserver_port > 65535) {
+                if (private_network)
+                    webserver_port = 443;   // <<< is this necessary?
+                else
+                    webserver_port = 80;    // this is the default if no "private" JSON key
+            }
+        }
     }
 
     /*new binary prot*/
@@ -482,7 +545,8 @@ ogn_protocol_2  = RF_PROTOCOL_OGNTP;
     if (obj.containsKey(F("beers")))
         beers_show = obj["beers"]["show"];
 
-    config_done = 1;
+    if (config_done == 0)
+        config_done = 1;
     return true;
 }
 
@@ -568,19 +632,22 @@ bool OGN_save_config(void)
     obj["coordinates"]["geoidsep"] = ogn_geoid_separation;
     obj["coordinates"]["mobile"]   = ogn_mobile;
 
+    //radio config
+    obj["radio"]["band"]       = ogn_band;
+    obj["radio"]["protocol_1"] = ogn_protocol_1;
+    obj["radio"]["protocol_2"] = ogn_protocol_2;
+    obj["radio"]["bec"]        = ogn_bec;
+
     //aprs config
     obj["aprs"]["callsign"] = ogn_callsign;
     obj["aprs"]["server"]   = ogn_server;
     obj["aprs"]["port"]     = ogn_port;
-
-    obj["aprs"]["band"]        = ogn_band;
-    obj["aprs"]["protocol_1"]  = ogn_protocol_1;
-    obj["aprs"]["protocol_2"]  = ogn_protocol_2;
     obj["aprs"]["debug"]       = ogn_debug;
     obj["aprs"]["debugport"]   = ogn_debugport;
     obj["aprs"]["itrackbit"]   = ogn_itrackbit;
     obj["aprs"]["istealthbit"] = ogn_istealthbit;
     obj["aprs"]["range"]       = ogn_range;
+    obj["aprs"]["hiderelayed"] = ogn_hiderelayed;
 
     //sleep config
     obj["sleep"]["mode"]        = ogn_sleepmode;
@@ -592,10 +659,16 @@ bool OGN_save_config(void)
     //wifi config
     obj["wifi"]["ssid"][0] = ogn_ssid[0];
     obj["wifi"]["pass"][0] = ogn_wpass[0];
+    // save 2 additional entries not shown in web UI
     if (ogn_ssid[1].length() > 0) {
         obj["wifi"]["ssid"][1] = ogn_ssid[1];
         obj["wifi"]["pass"][1] = ogn_wpass[1];
     }
+    if (ogn_ssid[2].length() > 0) {
+        obj["wifi"]["ssid"][2] = ogn_ssid[2];
+        obj["wifi"]["pass"][2] = ogn_wpass[2];
+    }
+    // 2 more may be in original config but won't be saved here
 
     //fanet config
     obj["fanetservice"]["enable"] = (int) fanet_enable;
@@ -606,15 +679,20 @@ bool OGN_save_config(void)
     obj["zabbix"]["port"]   = zabbix_port;
     obj["zabbix"]["key"]    = zabbix_key;
 
-    // test mode
     obj["testmode"]["enable"] = testmode_enable;
+
+    obj["private"]["webport"] = webserver_port;
+
+    obj["oled"]["disable"] = (int) oled_disable;
 
     // relay config
     obj["ognrelay"]["enable"]      = (int) ognrelay_enable;
     obj["ognrelay"]["basestation"] = (int) ognrelay_base;
     obj["ognrelay"]["relaytime"]   = (int) ognrelay_time;
+    obj["ognrelay"]["reversetime"] = (int) ognreverse_time;
     obj["ognrelay"]["gnsstime"]    = (int) ogn_gnsstime;
     obj["ognrelay"]["relaykey"]    = ognrelay_key;
+
     // snprintf(buf, sizeof(buf), "%06X", ognrelay_key);
     // buf[8] = '\0';
     // char *key_cstr = &buf[2];   /* skip the "0x" */

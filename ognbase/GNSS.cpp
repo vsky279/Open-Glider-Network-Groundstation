@@ -565,8 +565,10 @@ byte GNSS_setup()
         delay(500);
     }
 
-    if (!GNSS_probe())
+    if (!GNSS_probe()) {
         return rval;
+        Serial.println("GNSS module not found");
+    }
 
     rval = GNSS_MODULE_NMEA;
 
@@ -575,16 +577,21 @@ byte GNSS_setup()
         hw_info.model == SOFTRF_MODEL_UNI)
     {
         rval = GNSS_version();
+        Serial.print("found GNSS type: ");
+        Serial.println(rval);
 
         if (rval == GNSS_MODULE_U6 ||
             rval == GNSS_MODULE_U7 ||
-            rval == GNSS_MODULE_U8)
+            rval == GNSS_MODULE_U8) {
 
             // Set the navigation mode (Airborne, 1G)
             // Turning off some GPS NMEA sentences on the uBlox modules
+            Serial.println("setup_UBX()...");
             setup_UBX();
-        else
+        } else {
             setup_NMEA();
+            Serial.println("setup_NMEA()...");
+        }
     }
 
     if (SOC_GPIO_PIN_GNSS_PPS != SOC_UNUSED_PIN)
@@ -592,6 +599,9 @@ byte GNSS_setup()
         pinMode(SOC_GPIO_PIN_GNSS_PPS, SOC_GPIO_PIN_MODE_PULLDOWN);
         attachInterrupt(digitalPinToInterrupt(SOC_GPIO_PIN_GNSS_PPS),
                         SoC->GNSS_PPS_handler, RISING);
+        Serial.println("attached PPS interrupt");
+    } else {
+        Serial.println("PPS GPIO pin not available");
     }
 
     return rval;

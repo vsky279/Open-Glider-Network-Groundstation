@@ -21,11 +21,13 @@
 
 extern time_t OurTime;    /* derived from GNSS */
 extern uint32_t ref_time_ms;
-extern uint16_t have_approx_time;
+extern uint16_t have_reverse_time;
 extern bool reverse_time_sync;
 
 extern bool time_synched;
 extern uint32_t traffic_packets_recvd;
+extern uint32_t old_protocol_packets_recvd;
+extern uint32_t air_relayed_packets_recvd;
 extern uint32_t traffic_packets_relayed;
 extern uint32_t traffic_packets_reported;
 extern uint32_t other_packets_recvd;
@@ -52,5 +54,6 @@ void Timesync_restart(void);
 
 void Time_setup(void);
 void Time_loop(void);
+void Poll_NTP(void);
 
 #endif /* TIMEHELPER_H */

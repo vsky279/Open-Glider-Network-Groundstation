@@ -259,8 +259,8 @@ void ParseData()
     // memset(fo.raw, 0, sizeof(fo.raw));
     memcpy(fo.raw, RxBuffer, rx_size);
 
-//legacy_packet_t* p = (legacy_packet_t *) fo.raw;
-//Serial.printf("parsing packet: %X %06X\r\n", p->_unk0, p->addr);
+legacy_packet_t* p = (legacy_packet_t *) fo.raw;
+//Serial.printf("parsing packet: %X %06X\r\n", p->msg_type, p->addr);
 
     if (time_sync_pkt(fo.raw)) {
 //Serial.println("handling time-sync packet");
@@ -329,7 +329,7 @@ Serial.println("too far, rejected");
             cip = &Container[i];
             if (cip->addr == fo.addr) {               /* this aircraft already tracked */
 
-              if (! (ognrelay_enable && !ogn_gnsstime && have_approx_time==0)) {   /* packet is de-crypted */
+              if (! (ognrelay_enable && !ogn_gnsstime && have_reverse_time==0)) {   /* packet is de-crypted */
                 /* ignore duplicate FLARM packets (there are many!) */
                 if (fo.altitude == cip->altitude &&
                     fo.latitude == cip->latitude &&
@@ -402,7 +402,7 @@ Serial.println("duplicate packet, rejected");
                 age = 0;                              /* do not overwrite */
             if (! cip->waiting)                       /* treat non-waiting as older */
                 age += ENTRY_EXPIRATION_TIME;
-//if (! (ognrelay_enable && !ogn_gnsstime && have_approx_time==0)) {  /* could decode these fields */
+//if (! (ognrelay_enable && !ogn_gnsstime && have_reverse_time==0)) {  /* could decode these fields */
             if (cip->stealth)
                 age += ENTRY_EXPIRATION_TIME;     /* treat stealth as older yet */
             if (cip->no_track)
@@ -414,7 +414,7 @@ Serial.println("duplicate packet, rejected");
             }
         }
 
-//if (! (ognrelay_enable && !ogn_gnsstime && have_approx_time==0)) {  /* could decode these fields */
+//if (! (ognrelay_enable && !ogn_gnsstime && have_reverse_time==0)) {  /* could decode these fields */
         if (oldest_age < ENTRY_EXPIRATION_TIME && fo.stealth)
             return;   /* drop the new traffic instead of replacing old traffic */
         if (oldest_age < 2*ENTRY_EXPIRATION_TIME && fo.no_track)
@@ -507,7 +507,7 @@ void Traffic_loop()
     }
 
     static uint32_t traffic_msg_time = 0;
-    if (millis() > traffic_msg_time + 6000) {
+    if (millis() > traffic_msg_time + 60000) {
         Serial.printf("%d recvd, %d trkd, %d waiting, oldest: %d\r\n",
               traffic_packets_recvd, numtracked, waiting, oldest_age);
         traffic_msg_time = millis();

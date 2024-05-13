@@ -33,6 +33,7 @@
 #include "Log.h"
 #include "GNSS.h"
 #include "PNET.h"
+#include <lib_crc_bec.h>
 #include <fec.h>
 
 #if LOGGER_IS_ENABLED
@@ -47,10 +48,15 @@ uint32_t tx_packets_counter = 0;
 uint32_t rx_packets_counter = 0;
 uint32_t txms = 0;
 
+uint32_t packets_failed_crc = 0;
+uint32_t packets_corrected = 0;
+
 int8_t RF_last_rssi = 0;
+int8_t RF_last_bec  = 0;
 
 FreqPlan    RF_FreqPlan;
 static bool RF_ready = false;
+time_t RF_time;
 
 static size_t RF_tx_size    = 0;
 
@@ -186,6 +192,8 @@ byte RF_setup(void)
         uint16_t duration = ts->s0.duration + ts->s1.duration;
         ts->adj = duration > ts->interval_mid ? 0 : (ts->interval_mid - duration) / 2;
 
+        crc_setup();  // in lib_crc_bec - sets up lookup tables
+
         return rf_chip->type;
     }
     else
@@ -294,7 +302,7 @@ void RF_loop()
       return;
     }
 
-    time_t RF_time = OurTime;
+    RF_time = OurTime;
     uint32_t slot_base_ms = ref_time_ms;
     if (ms_since_pps < 300) {  /* does not happen often, since normally RF_OK_until 300 */
       /* channel does _NOT_ change at PPS rollover in middle of slot 1 */
@@ -920,9 +928,9 @@ static void sx12xx_rx_func(osjob_t* job)
     {
         case RF_PROTOCOL_LEGACY:
             /* take in account NRF905/FLARM "address" bytes */
-            crc16 = update_crc_ccitt(crc16, 0x31);
-            crc16 = update_crc_ccitt(crc16, 0xFA);
-            crc16 = update_crc_ccitt(crc16, 0xB6);
+            crc16 = update_crc_ccitt_16(crc16, 0x31);
+            crc16 = update_crc_ccitt_16(crc16, 0xFA);
+            crc16 = update_crc_ccitt_16(crc16, 0xB6);
             break;
         case RF_PROTOCOL_P3I:
         case RF_PROTOCOL_OGNTP:
@@ -945,7 +953,7 @@ static void sx12xx_rx_func(osjob_t* job)
             case RF_CHECKSUM_TYPE_CCITT_FFFF:
             case RF_CHECKSUM_TYPE_CCITT_0000:
             default:
-                crc16 = update_crc_ccitt(crc16, (u1_t)(LMIC.frame[i]));
+                crc16 = update_crc_ccitt_16(crc16, (u1_t)(LMIC.frame[i]));
                 break;
         }
 
@@ -977,6 +985,7 @@ static void sx12xx_rx_func(osjob_t* job)
                               LMIC.frame[i], LMIC.frame[i + 1], LMIC.frame[i + 2],
                               LMIC.frame[i + 3], LMIC.frame[i + 4], LMIC.frame[i + 5]);
 #endif
+                ++packets_failed_crc;
                 sx12xx_receive_complete = false;
             }
             else
@@ -987,14 +996,15 @@ static void sx12xx_rx_func(osjob_t* job)
 #if DEBUG
             if (crc8 == pkt_crc8)
                 Serial.printf(" %02x is valid crc", pkt_crc8);
-            else
+            else {
                 Serial.printf(" %02x is wrong crc", pkt_crc8);
-
 #endif
-            if (crc8 == pkt_crc8)
+            if (crc8 == pkt_crc8) {
                 sx12xx_receive_complete = true;
-            else
+            } else {
                 sx12xx_receive_complete = false;
+                ++packets_failed_crc;
+            }
             break;
         case RF_CHECKSUM_TYPE_CCITT_FFFF:
         case RF_CHECKSUM_TYPE_CCITT_0000:
@@ -1007,10 +1017,24 @@ static void sx12xx_rx_func(osjob_t* job)
                 Serial.printf(" %04x is wrong crc", pkt_crc16);
 
 #endif
-            if (crc16 == pkt_crc16)
+            if (crc16 == pkt_crc16) {
                 sx12xx_receive_complete = true;
-            else
+                RF_last_bec = 0;
+            } else {
+                ++packets_failed_crc;
                 sx12xx_receive_complete = false;
+                if (ogn_bec) {
+                    // include the packet's CRC bytes in the computed CRC
+                    crc16 = update_crc_ccitt_16(crc16, (u1_t)(LMIC.frame[i]));
+                    crc16 = update_crc_ccitt_16(crc16, (u1_t)(LMIC.frame[i+1]));
+                    // try bit error correction
+                    RF_last_bec = bec_correct_errors( crc16, &LMIC.frame[LMIC.protocol->payload_offset] );
+                    if (RF_last_bec != 0) {
+                        ++packets_corrected;
+                        sx12xx_receive_complete = true;
+                    }
+                }
+            }
             break;
     }
 
@@ -1053,9 +1077,9 @@ static void sx12xx_tx(unsigned char* buf, size_t size, osjobcb_t func)
     {
         case RF_PROTOCOL_LEGACY:
             /* take in account NRF905/FLARM "address" bytes */
-            crc16 = update_crc_ccitt(crc16, 0x31);
-            crc16 = update_crc_ccitt(crc16, 0xFA);
-            crc16 = update_crc_ccitt(crc16, 0xB6);
+            crc16 = update_crc_ccitt_16(crc16, 0x31);
+            crc16 = update_crc_ccitt_16(crc16, 0xFA);
+            crc16 = update_crc_ccitt_16(crc16, 0xB6);
             break;
         case RF_PROTOCOL_P3I:
             /* insert Net ID */
@@ -1100,7 +1124,7 @@ static void sx12xx_tx(unsigned char* buf, size_t size, osjobcb_t func)
             case RF_CHECKSUM_TYPE_CCITT_FFFF:
             case RF_CHECKSUM_TYPE_CCITT_0000:
             default:
-                crc16 = update_crc_ccitt(crc16, (u1_t)(LMIC.frame[LMIC.dataLen]));
+                crc16 = update_crc_ccitt_16(crc16, (u1_t)(LMIC.frame[LMIC.dataLen]));
                 break;
         }
 

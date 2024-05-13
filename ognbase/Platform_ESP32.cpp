@@ -182,6 +182,7 @@ static void ESP32_setup()
         case MakeFlashId(BOYA_ID, BOYA_BY25Q32AL):
         default:
           hw_info.model = SOFTRF_MODEL_PRIME_MK2;
+          heap_caps_malloc_extmem_enable(8000);    // <<< try and keep the "dense" BEC table in regular RAM
 #else
 #error "This ESP32 family build variant is not supported!"
 #endif
@@ -211,10 +212,11 @@ static void ESP32_setup()
     {
         esp32_board = ESP32_TTGO_T_WATCH;
 
-    Wire1.begin(SOC_GPIO_PIN_TWATCH_SEN_SDA , SOC_GPIO_PIN_TWATCH_SEN_SCL);
-    Wire1.beginTransmission(AXP202_SLAVE_ADDRESS);
-    bool has_axp202 = (Wire1.endTransmission() == 0);
-    if (has_axp202) {
+        Wire1.begin(SOC_GPIO_PIN_TWATCH_SEN_SDA , SOC_GPIO_PIN_TWATCH_SEN_SCL);
+        Wire1.beginTransmission(AXP202_SLAVE_ADDRESS);
+        bool has_axp202 = false;
+        has_axp202 = (Wire1.endTransmission() == 0);
+        if (has_axp202) {
 
           hw_info.pmu = PMU_AXP202;
 
@@ -246,12 +248,15 @@ static void ESP32_setup()
     {
         esp32_board = ESP32_TTGO_T_BEAM;
 
+        bool has_axp192 = false;
+        bool has_axp2101 = false;
+
         Wire1.begin(TTGO_V2_OLED_PIN_SDA , TTGO_V2_OLED_PIN_SCL);
         Wire1.beginTransmission(AXP192_SLAVE_ADDRESS);
         int Wire_Trans_rval = Wire1.endTransmission();
 
         bool has_axp = (Wire_Trans_rval == 0);
-        bool has_axp192 = false;
+        //bool has_axp192 = false;
         if (has_axp)
           has_axp192 = (axp_xxx.begin(Wire1, AXP192_SLAVE_ADDRESS) == AXP_PASS);
 
@@ -280,7 +285,7 @@ static void ESP32_setup()
           axp_xxx.enableIRQ(AXP202_PEK_LONGPRESS_IRQ | AXP202_PEK_SHORTPRESS_IRQ, true);
           axp_xxx.clearIRQ();
         } else {
-          bool has_axp2101 = has_axp && axp_2xxx.begin(Wire1,
+          has_axp2101 = has_axp && axp_2xxx.begin(Wire1,
                                                        AXP2101_SLAVE_ADDRESS,
                                                        TTGO_V2_OLED_PIN_SDA,
                                                        TTGO_V2_OLED_PIN_SCL);
@@ -330,6 +335,18 @@ static void ESP32_setup()
             hw_info.revision = 2;
           }
         }
+
+#if defined(TBEAM)
+        // (actually this is also inside if(hw_info.model == SOFTRF_MODEL_PRIME_MK2))
+        // set up 2nd I2C port - in case OLED is actually there
+        Wire.begin(SOC_GPIO_PIN_TBEAM_SDA, SOC_GPIO_PIN_TBEAM_SCL);
+#endif
+
+    } else {
+        // other than SOFTRF_MODEL_PRIME_MK2
+        // initialize Wire1 for the OLED library
+        // (since OLED library was changed to expect this to be done outside)
+        Wire1.begin(TTGO_V2_OLED_PIN_SDA , TTGO_V2_OLED_PIN_SCL);
     }
 
     lmic_pins.rst  = SOC_GPIO_PIN_TBEAM_RF_RST_V05;
@@ -1110,7 +1127,8 @@ static float ESP32_Battery_voltage()
 static void IRAM_ATTR ESP32_GNSS_PPS_Interrupt_handler()
 {
     portENTER_CRITICAL_ISR(&GNSS_PPS_mutex);
-    PPS_TimeMarker = millis();  /* millis() has IRAM_ATTR */
+    //if (millis() > PPS_TimeMarker + 600)
+        PPS_TimeMarker = millis();  /* millis() has IRAM_ATTR */
     portEXIT_CRITICAL_ISR(&GNSS_PPS_mutex);
 }
 

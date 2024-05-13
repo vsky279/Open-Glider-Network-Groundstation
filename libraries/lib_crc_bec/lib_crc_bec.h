@@ -1,0 +1,16 @@
+#ifdef __cplusplus
+extern "C"{
+#endif
+
+void crc_setup( void );
+
+void               init_crc_ccitt_tab( void );
+unsigned short     update_crc_ccitt_16( unsigned short crc, unsigned char c );
+
+void               init_crc_bec_tab( unsigned short PacketSize );
+unsigned short     bec_correct_errors( unsigned short crc , unsigned char *pkt );
+
+#ifdef __cplusplus
+}
+#endif
+

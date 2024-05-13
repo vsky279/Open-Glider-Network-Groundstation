@@ -5,6 +5,21 @@
 Besides the binary here, download the files in the "data" folder: config.json (template), index.html, style.css.
 
 
+## revision MB136
+
+### Major improvements
+* Support the new (March 2024) radio protocol.  Still supports the old protocol too.
+* GNSS no longer needed.  Base station can get accurate time from NTP, and optionally send it to the remote station.
+* Correction of 1-4 bit burst errors, to increase reporting range and frequency.
+
+### Minor improvements
+* Turn GNSS module off if not needed.
+* Improved handling of packets air-relayed by SoftRF.
+* Can set a custom private port for (remotely) accessing the web interface.
+* Detect and use OLED display on either I2C port.
+* Report the radio chip type on the web page and in APRS status messages.
+
+
 ## revision MB128
 
 ### Major improvements

@@ -12,19 +12,22 @@ extern int16_t ogn_geoid_separation;
 extern uint8_t largest_range;
 extern bool    ogn_mobile;
 
+extern uint8_t  ogn_band;
+extern uint8_t  ogn_protocol_1;
+extern uint8_t  ogn_protocol_2;
+extern bool     ogn_bec;
+
 extern String   ogn_callsign;
 extern String   ogn_server;
 extern uint16_t ogn_port;
 extern bool     use_glidern;
 
-extern uint8_t  ogn_band;
-extern uint8_t  ogn_protocol_1;
-extern uint8_t  ogn_protocol_2;
 extern bool     ogn_debug;
 extern uint16_t ogn_debugport;
 extern bool     ogn_itrackbit;
 extern bool     ogn_istealthbit;
 extern uint16_t ogn_range;
+extern bool     ogn_hiderelayed;
 
 extern int8_t   ogn_sleepmode;
 extern int8_t   ogn_timezone;
@@ -49,6 +52,7 @@ extern unsigned long   oled_disable;
 
 extern bool  testmode_enable;
 extern bool  private_network;
+extern unsigned int  webserver_port;
 extern bool  new_protocol_enable;
 extern String new_protocol_server;
 extern uint32_t new_protocol_port;
@@ -56,5 +60,6 @@ extern uint32_t new_protocol_port;
 extern bool ognrelay_enable;
 extern bool ognrelay_base;
 extern bool ognrelay_time;
+extern bool ognreverse_time;
 extern bool ogn_gnsstime;
 extern uint32_t ognrelay_key;

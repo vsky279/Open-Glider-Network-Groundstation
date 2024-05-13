@@ -1,6 +1,6 @@
 {
    "ognbase":{
-      "version":"MB104"
+      "version":"MB106"
    },
    "wifi":{
       "ssid":[
@@ -39,24 +39,28 @@
       "enable":false,
       "server":"10.0.1.200",
       "port":12014
-   },      
+   },
+   "radio":{
+      "band":2,
+      "bec":true
+   },
    "aprs":{
       "callsign":"MyCallSign",
       "server":"aprs.glidernet.org",
       "port":14580,
-      "band":2,
       "debug":false,
       "debugport":12000,
       "itrackbit":false,
       "istealthbit":false,
       "range":200
+      "hiderelayed":true
    },
    "sleep":{
-      "mode":0,
-      "rxidle":180,
+      "mode":1,
+      "rxidle":0,
       "wakeuptimer":0,
-      "morning":10,
-      "evening":17
+      "morning":8,
+      "evening":20
    },
    "fanetservice":{
       "enable":0
@@ -65,10 +69,11 @@
       "enable":0,
       "server":"10.0.1.200",
       "port":12012
-   },      
+   },
    "private":{
-      "enable":0
-   },   
+      "encrypt":0,
+      "webport":80
+   },
    "oled":{
       "disable":0
    },
@@ -76,9 +81,10 @@
       "enable":0,
       "basestation":0,
       "relaytime":0,
+      "reversetime":0,
       "gnsstime":0,
-      "relaykey":12345
-   },   
+      "relaykey":54321
+   },
    "beers":{
       "show":0
    }
