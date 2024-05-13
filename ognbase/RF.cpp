@@ -33,7 +33,6 @@
 #include "Log.h"
 #include "GNSS.h"
 #include "PNET.h"
-#include <lib_crc_bec.h>
 #include <fec.h>
 
 #if LOGGER_IS_ENABLED

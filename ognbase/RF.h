@@ -30,7 +30,7 @@
 #include <lmic.h>
 #endif
 #include <hal/hal.h>
-#include <lib_crc.h>
+#include <lib_crc_bec.h>
 #include <protocol.h>
 #include <freqplan.h>
 
