@@ -330,9 +330,10 @@ static void ESP32_setup()
             hw_info.revision = 12;
             hw_info.pmu = PMU_AXP2101;
 
-          } else {
-            WIRE_FINI(Wire1);
+          } else {  // neither type of AXP
+
             hw_info.revision = 2;
+            // and leave Wire1 active for OLED
           }
         }
 
@@ -340,10 +341,14 @@ static void ESP32_setup()
         // (actually this is also inside if(hw_info.model == SOFTRF_MODEL_PRIME_MK2))
         // set up 2nd I2C port - in case OLED is actually there
         Wire.begin(SOC_GPIO_PIN_TBEAM_SDA, SOC_GPIO_PIN_TBEAM_SCL);
+
+        Serial.print(F("INFO: TTGO T-Beam rev "));
+        Serial.print(hw_info.revision);
+        Serial.println(F(" is detected."));
 #endif
 
     } else {
-        // other than SOFTRF_MODEL_PRIME_MK2
+        // other than SOFTRF_MODEL_PRIME_MK2 - namely the TTGO Paxcounter
         // initialize Wire1 for the OLED library
         // (since OLED library was changed to expect this to be done outside)
         Wire1.begin(TTGO_V2_OLED_PIN_SDA , TTGO_V2_OLED_PIN_SCL);
@@ -1034,10 +1039,6 @@ static void ESP32_swSer_begin(unsigned long baud)
 {
     if (hw_info.model == SOFTRF_MODEL_PRIME_MK2)
     {
-        Serial.print(F("INFO: TTGO T-Beam rev. 0"));
-        Serial.print(hw_info.revision);
-        Serial.println(F(" is detected."));
-
         if (hw_info.revision >= 8)
             swSer.begin(baud, SERIAL_IN_BITS, SOC_GPIO_PIN_TBEAM_V08_RX, SOC_GPIO_PIN_TBEAM_V08_TX);
         else
