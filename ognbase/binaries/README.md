@@ -5,6 +5,13 @@
 Besides the binary here, download the files in the "data" folder: config.json (template), index.html, style.css.
 
 
+## revision MB137
+
+### Minor improvements
+
+Save settings from web page into config.json in "pretty" human-readable format
+
+
 ## revision MB136
 
 ### Major improvements

@@ -552,7 +552,7 @@ ogn_protocol_2  = RF_PROTOCOL_OGNTP;
 
 bool OGN_save_config(void)
 {
-    const size_t        capacity = 2560;
+    const size_t        capacity = 2752;
     DynamicJsonDocument baseConfig(capacity);
     JsonObject          obj;
     char buf[32];
@@ -563,7 +563,6 @@ bool OGN_save_config(void)
         return false;
     }
 
-
     File configFile = SPIFFS.open("/config.json", "r");
     if (!configFile)
     {
@@ -571,43 +570,45 @@ bool OGN_save_config(void)
         return false;
     }
 
-    DeserializationError error = deserializeJson(baseConfig, configFile);
-    bool success = true;
-    if (error) {
-        Serial.println(F("Failed to read config.json file"));
-        success = false;
-    } else if (!obj.containsKey(F("ognbase"))) {
-        Serial.println("config.json not valid - version missing");
-        success = false;
+    DeserializationError ds_error = deserializeJson(baseConfig, configFile);
+    configFile.close();
+    obj = baseConfig.as<JsonObject>();
+
+    bool error = false;
+    if (ds_error) {
+        Serial.println(F("Failed to parse config.json file"));
+        error = true;
     } else {
-        String jsonversion = "wrong";
-        jsonversion = obj["ognbase"]["version"].as<String>();
-        if (jsonversion != OGNBASE_HTML_VERSION) {
+        if (!obj.containsKey(F("ognbase"))) {
+          Serial.println("config.json not valid - version missing");
+          error = true;
+        } else {
+          String jsonversion = "wrong";
+          jsonversion = obj["ognbase"]["version"].as<String>();
+          if (jsonversion != OGNBASE_HTML_VERSION) {
             Serial.println("Wrong version of config.json");
-            success = false;
+            error = true;
+          }
         }
     }
 
-    configFile.close();
-
-    obj = baseConfig.as<JsonObject>();
-
-    if (success) {
-        // obj = baseConfig.as<JsonObject>();
-    } else {
-        // Serial.println(F("- using default configuration, format spiffs"));
-        // SPIFFS.format();
-        // return false;
-        Serial.println(F("- using default configuration"));
+    if (error) {
+        Serial.println(F("- creating new configuration"));
         /* try and write out a new config file */
         obj["ognbase"]["version"] = OGNBASE_HTML_VERSION;
     }
 
+    // keep a copy of the existing config file if it exists
+    if (SPIFFS.exists("/config.json")) {
+        if (SPIFFS.exists("/oldconf.json"))
+            SPIFFS.remove("/oldconf.json");
+        SPIFFS.rename("/config.json", "/oldconf.json");
+    }
 
     configFile = SPIFFS.open("/config.json", "w");
     if (!configFile)
     {
-        Serial.println(F("Failed to open config.json write operation"));
+        Serial.println(F("Failed to open config.json for writing"));
         return false;
     }
 
@@ -699,7 +700,8 @@ bool OGN_save_config(void)
     // String key_str = key_cstr;
     // obj["ognrelay"]["relaykey"]    = key_str;
 
-    if (serializeJson(obj, configFile) == 0)
+    // >>> added Pretty to try and get line breaks:
+    if (serializeJsonPretty(obj, configFile) == 0)
         Serial.println(F("Failed to write to file"));
 
     configFile.close();

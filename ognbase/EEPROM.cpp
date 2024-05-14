@@ -54,7 +54,7 @@ void EEPROM_setup()
 
     if (eeprom_block.field.magic != SOFTRF_EEPROM_MAGIC)
     {
-        Serial.println(F("WARNING! User defined settings are not initialized yet. Loading defaults..."));
+        //Serial.println(F("WARNING! User defined settings are not initialized yet. Loading defaults..."));
 
         EEPROM_defaults();
     }

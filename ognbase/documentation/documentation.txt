@@ -3,7 +3,7 @@ Documentation for OGNbase
 
 By Moshe Braner
 
-This version last updated May 12 2024 to fit software version MB136
+This version last updated May 14 2024 to fit software version MB137
 
 
 HISTORY
@@ -220,7 +220,7 @@ Other features of the web interface
 
 The status page shows the OGNbase settings in effect, and a few statistics on its operation.  Near the top the OGNbase version and the operational mode will be displayed.  If there was a problem reading or interpreting the configuration file, a note about that will appear in the "Mode:" line.  The buttons and links at the bottom allow resetting the local or remote device, or reaching the statistics page, the file upload page, the firmware update page.  The "clear" button removes all the files stored in the device - there is normally no need to do that, since uploading a file overwrites the previous version.  But if you accidentally uploaded a wrong file, perhaps a large one that fills the space, this button may be useful.  Also a future version of the firmware may be incompatible with the existing uploaded files, so it may be a good idea to clear the files before updating the firmware.  (See later section about firmware updates.)
 
-The OGNbase settings visible in the status page can be changed there, and a "save" button can save them to the stored configuration file within the device.  But it is best to edit the configuration file outside of the device and then upload it.  If you want to download the current configuration file stored on the device, click the "Download Config" button on the status page.
+The OGNbase settings visible in the status page can be changed there, and the "save config" button can save them to the stored configuration file within the device and reboot.  But it is best to edit the configuration file outside of the device and then upload it.  If you want to download the current configuration file stored on the device, click the "Download Config" button on the status page.
 
 If in relay mode, the "Remote Reboot" button sends a radio packet from the base station that tells the remote station to reboot.  The reboot only happens under some conditions: The remote station has been running for at least 10 minutes and has already turned off its WiFi server, and the packet arrived ungarbled and passed a security check based on the secret "relay key".  Not every click of the button actually sends such a packet.  It is safe to press this button a few times, just in case, since the remote station will not reboot again for 10 minutes.  Every time this button - or the "Refresh" button - is clicked, the statistics at the top of the status page refresh, if in time-relay mode the number of (remote) GNSS satellites received are displayed, which shows whether the remote station has finished rebooting and establishing communications.
 
@@ -431,5 +431,5 @@ SoftRF (from version MB09x) optionally relays radio packets from landed (or far 
 
 Compiling OGNbase
 
-At this time I compile it under Ubuntu 20.04 using the Arduino IDE verion 1.8.16, and the ESP32 board support version 2.0.3.  If you use any other versions, especially of the ESP32 support, expect to spend some time fixing library incompatibilities.
+At this time I compile it under Ubuntu 20.04 using the Arduino IDE verion 1.8.16, and the ESP32 board support version 2.0.3.  If you use any other versions, especially of the ESP32 support, expect to spend some time fixing library incompatibilities.  The file build_opt.h must include either -DTTGO or -DTBEAM.  Disable PSRAM when compiling for TTGO.
 

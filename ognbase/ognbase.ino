@@ -463,11 +463,18 @@ void ground()
       //ThisAircraft.speed = gnss.speed.knots();
       ThisAircraft.hdop = (uint16_t) gnss.hdop.value();
       ThisAircraft.geoid_separation = gnss.separation.meters();
-
+#if !defined(EXCLUDE_EGM96)
+      if (ThisAircraft.geoid_separation == 0) {   // faulty GNSS modules
+          ThisAircraft.geoid_separation = LookupSeparation(ThisAircraft.latitude, ThisAircraft.longitude);
+          // assume the altitude reported by such GNSS modules is ellipsoid
+          // so correct it to MSL
+          ThisAircraft.altitude -= ThisAircraft.geoid_separation;
+      }
+#endif
       ogn_lat = gnss.location.lat();
       ogn_lon = gnss.location.lng();
       ogn_alt = gnss.altitude.meters();
-      ogn_geoid_separation = gnss.separation.meters();
+      ogn_geoid_separation = ThisAircraft.geoid_separation;
 
       Serial.println("Position set from GNSS");
 

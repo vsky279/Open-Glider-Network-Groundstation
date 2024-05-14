@@ -52,7 +52,7 @@
       "debugport":12000,
       "itrackbit":false,
       "istealthbit":false,
-      "range":200
+      "range":200,
       "hiderelayed":true
    },
    "sleep":{

@@ -474,7 +474,7 @@ void Web_stop()
     wserver->end();
 }
 
-/* if no config, just offer to upload config */
+/* if no config, just offer to upload config (and a few other ops) */
 void mini_server()
 {
     // wserver->on("/", HTTP_GET, [upload_html](AsyncWebServerRequest* request){
@@ -492,6 +492,7 @@ void mini_server()
 
     wserver->on("/doUpload", HTTP_POST, [](AsyncWebServerRequest* request) {}, DoUpload);
 
+    // download config even though it is invalid - so can fix it
     wserver->on("/dnload", HTTP_GET, [](AsyncWebServerRequest* request){
       handleDnload(request);
     });
