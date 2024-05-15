@@ -5,6 +5,13 @@
 Besides the binary here, download the files in the "data" folder: config.json (template), index.html, style.css.
 
 
+## revision MB138
+
+### Major improvements
+* Fixed bugs that prevented decryption of FLARM packets in Europe
+* Fixed: no charging of the battery in T-Beam v1.2
+
+
 ## revision MB137
 
 ### Minor improvements

@@ -238,6 +238,8 @@ void RF_loop()
       return;
     }
 
+    RF_time = OurTime;   // may be adjusted later
+
     /* if only one channel is allowed... */
 
     if (ogn_band > RF_BAND_AU) {
@@ -251,21 +253,12 @@ void RF_loop()
     }
 
     /* Only 2 channels in Europe, listening to only one of them is good enough */
-    /* Thus if no GNSS time, use channel 0 for receiving FLARM, channel 1 for relay */
+    /* Thus if no exact time, use channel 0 for receiving FLARM, channel 1 for relay */
 
-    if (ogn_band == RF_BAND_EU &&
-           ((!ognrelay_enable && !ognrelay_time && !ogn_gnsstime)  /* base using NTP */
-             || (ognrelay_enable && !ogn_gnsstime))) {             /* remote using approximate time */
-        if (ognrelay_enable) {
-          txchan = 1;
-          rxchan = 0;
-        } else if (ognrelay_base) {
-          txchan = 0;
-          rxchan = 1;
-        } else {
-          txchan = 0;
-          rxchan = 0;
-        }
+    if (ogn_band == RF_BAND_EU && ognrelay_enable
+              && !ogn_gnsstime && !reverse_time_sync) {    // remote without exact time
+        txchan = 1;
+        rxchan = 0;
         RF_OK_until = now_ms + 1000;
         TxTimeMarker = now_ms + SoC->random(0, 995);
         TxEndMarker  = now_ms + 995;

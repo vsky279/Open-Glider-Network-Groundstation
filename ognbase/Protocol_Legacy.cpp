@@ -285,8 +285,22 @@ bool latest_decode(void* buffer, ufo_t* this_aircraft, ufo_t* fop)
     // so far it seems that the last byte of the packet is always 0 if decrypted correctly
     // do not insist on exact timebits if relayed in original encryption
     // note: normal relaying (with time stamp) is re-encoded in the old protocol
-    if (pkt->lastbyte != 0 || pkt->needs3 != 3 || (original && pkt->timebits != (timestamp & 0x0F))) {
+    if (pkt->lastbyte != 0 || pkt->needs3 != 3) {
         Serial.println("rejecting bad decrypt");
+        return false;
+    }
+    unsigned int timebits = pkt->timebits;
+    unsigned int localbits = (timestamp & 0x0F);
+    bool time_error = true;
+    // allow being off-by-one (but not at the rollover)
+    if (localbits == timebits)
+        time_error = false;
+    else if (localbits + 1 == timebits)
+        time_error = false;
+    else if (localbits == timebits + 1)
+        time_error = false;
+    if (time_error) {
+        Serial.println("decryption time error");
         return false;
     }
 
