@@ -12,6 +12,13 @@ Besides the binary here, download the files in the "data" folder: config.json (t
 * Fixed: no charging of the battery in T-Beam v1.2
 
 
+## revision MB139
+
+### Minor improvements
+
+Measure radio noise level and use it for calculating SNR and to collect noise statistics
+
+
 ## revision MB137
 
 ### Minor improvements

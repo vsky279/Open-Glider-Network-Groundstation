@@ -403,7 +403,7 @@ bool latest_decode(void* buffer, ufo_t* this_aircraft, ufo_t* fop)
 
 bool legacy_decode(void* buffer, ufo_t* this_aircraft, ufo_t* fop)
 {
-    String msg;
+    //String msg;
 
     legacy_packet_t* pkt = (legacy_packet_t *) buffer;
 
@@ -413,6 +413,7 @@ bool legacy_decode(void* buffer, ufo_t* this_aircraft, ufo_t* fop)
     fop->relayed = false;
 
     fop->rssi  = RF_last_rssi;
+    fop->snr   = RF_last_snr;
     fop->bec   = RF_last_bec;
 
     bool traffic_msg = (pkt->msg_type == MSG_TYPE_OLD || pkt->msg_type == MSG_TYPE_NEW);
@@ -469,6 +470,13 @@ Serial.printf("received non-relay pkt, msg_type=%X, addr=%06X\r\n", pkt->msg_typ
             return true;        // will relay the encrypted packet
     }
 
+#if 1
+    if (pkt->msg_type == MSG_TYPE_NEW || pkt->msg_type == MSG_TYPE_RAW) {
+        // original packet in new protocol, or relayed in original encryption
+        return latest_decode(buffer, this_aircraft, fop);
+    }
+#endif
+
     if (pkt->addr_type > 3) {
         // probably air-relayed by SoftRF
         //   but do some sanity checks below
@@ -479,10 +487,12 @@ Serial.printf("received non-relay pkt, msg_type=%X, addr=%06X\r\n", pkt->msg_typ
         }
     }
 
+#if 0
     if (pkt->msg_type == MSG_TYPE_NEW || pkt->msg_type == MSG_TYPE_RAW) {
         // original packet in new protocol, or relayed in original encryption
         return latest_decode(buffer, this_aircraft, fop);
     }
+#endif
 
     if (pkt->msg_type == MSG_TYPE_OLD && !fop->relayed)     // original in old protocol
         ++old_protocol_packets_recvd;

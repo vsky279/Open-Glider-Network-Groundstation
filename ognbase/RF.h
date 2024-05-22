@@ -143,6 +143,10 @@ extern uint32_t packets_failed_crc;
 extern uint32_t packets_corrected;
 
 extern int8_t RF_last_rssi;
+extern int8_t RF_last_snr;
 extern int8_t RF_last_bec;
+
+extern int32_t noise_data[65];
+extern uint16_t noise_count[65];
 
 #endif /* RFHELPER_H */

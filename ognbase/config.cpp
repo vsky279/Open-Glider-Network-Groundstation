@@ -52,6 +52,7 @@ uint8_t  ogn_band        = RF_BAND_EU;
 uint8_t  ogn_protocol_1  = RF_PROTOCOL_LEGACY;
 uint8_t  ogn_protocol_2  = RF_PROTOCOL_OGNTP;
 bool     ogn_bec         = true;   // bit error correction
+uint8_t  noise_sampling  = 2;       // 2=collect background RSSI *not* just between time slots
 
 //aprs default values
 String   ogn_callsign    = "callsign";
@@ -373,6 +374,12 @@ ogn_protocol_1  = RF_PROTOCOL_LEGACY;  /* override - only protocol supported for
 //          ogn_protocol_2  = obj["radio"]["protocol_2"];
 ogn_protocol_2  = RF_PROTOCOL_OGNTP;
             ogn_bec         = obj["radio"]["bec"];    // true = enable bit error correction
+            noise_sampling  = obj["radio"]["noise"];
+            // 0 = skip background RSSI data sampling
+            // 1 = only sample in the idle time between slot 1 & slot 0
+            // 2 = sample at any time
+            //Serial.print(F("noise_sampling="));
+            //Serial.println(noise_sampling);
         }
     }
 
@@ -638,6 +645,7 @@ bool OGN_save_config(void)
     obj["radio"]["protocol_1"] = ogn_protocol_1;
     obj["radio"]["protocol_2"] = ogn_protocol_2;
     obj["radio"]["bec"]        = ogn_bec;
+    obj["radio"]["noise"]      = noise_sampling;
 
     //aprs config
     obj["aprs"]["callsign"] = ogn_callsign;

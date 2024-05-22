@@ -16,11 +16,11 @@ extern uint8_t  ogn_band;
 extern uint8_t  ogn_protocol_1;
 extern uint8_t  ogn_protocol_2;
 extern bool     ogn_bec;
+extern uint8_t  noise_sampling;
 
 extern String   ogn_callsign;
 extern String   ogn_server;
 extern uint16_t ogn_port;
-extern bool     use_glidern;
 
 extern bool     ogn_debug;
 extern uint16_t ogn_debugport;

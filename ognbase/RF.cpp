@@ -50,7 +50,12 @@ uint32_t txms = 0;
 uint32_t packets_failed_crc = 0;
 uint32_t packets_corrected = 0;
 
+int32_t noise_data[65];
+uint16_t noise_count[65];
+
 int8_t RF_last_rssi = 0;
+int8_t avg_idle_rssi = -100;    // running average used for SNR calc
+int8_t RF_last_snr  = 0;
 int8_t RF_last_bec  = 0;
 
 FreqPlan    RF_FreqPlan;
@@ -132,6 +137,11 @@ uint8_t parity(uint32_t x)
 
 byte RF_setup(void)
 {
+    for (int i=0; i<65; i++) {
+        noise_count[i] = 0;
+        noise_data[i] = 0;
+    }
+
     if (rf_chip == NULL)
     {
         if (sx1276_ops.probe())
@@ -497,7 +507,7 @@ void os_getDevEui(u1_t* buf)
 { }
 u1_t os_getRegion(void)
 {
-    return REGCODE_EU868;
+    return REGCODE_EU868;     // <<< should this be set according to configured band?
 }
 
 #else
@@ -507,7 +517,10 @@ u1_t os_getRegion(void)
 #endif
 #endif
 
+// >>> these ops should really be hidden within SX12XX_LL in the library: <<<
+
 #define SX1276_RegVersion          0x42 // common
+#define SX1276_FSKRegRssiValue     0x11
 
 static u1_t sx1276_readReg(u1_t addr)
 {
@@ -564,6 +577,21 @@ static bool sx1276_probe()
 #define CMD_READREGISTER                0x1D
 #define REG_LORASYNCWORDLSB         0x0741
 #define SX126X_DEF_LORASYNCWORDLSB  0x24
+
+#define sx1262_GetRssiInst 0x15
+
+static uint8_t sx1262_readcmd (uint8_t cmd, uint8_t* data, uint8_t len) {
+    hal_spi_select(1);
+    hal_pin_busy_wait();
+    hal_spi(cmd);
+    uint8_t stat = hal_spi(0x00);
+    uint8_t i;
+    for (i = 0; i < len; i++) {
+        data[i] = hal_spi(0x00);
+    }
+    hal_spi_select(0);
+    return stat;
+}
 
 static void sx1262_ReadRegs(uint16_t addr, uint8_t* data, uint8_t len)
 {
@@ -777,10 +805,55 @@ static void sx12xx_setvars()
        }*/
 }
 
+static void get_idle_rssi()
+{
+    static int8_t last_rssi = 0;   // queue of one
+    static uint32_t next_ms = 0;
+    uint32_t now_ms = millis();
+    if (now_ms < next_ms)
+        return;
+    next_ms = now_ms + 7;     // long enough to span a packet reception
+    uint8_t noise = 200;
+    if (rf_chip->type == RF_IC_SX1276)
+        noise = sx1276_readReg(SX1276_FSKRegRssiValue);
+    else if (rf_chip->type == RF_IC_SX1262)
+        sx1262_readcmd(sx1262_GetRssiInst, &noise, 1);
+    int8_t rssi = -(int)(noise>>1);   // RSSI as dBm
+    // once packet reception starts, apparently the sx1276 RSSI register
+    //    returns signal strength at first, and zero later
+    //if (rssi == 0) {
+        // packet has been received
+        //if (testmode_enable) {
+        //    Serial.print("rssi=0, avg_rssi=");
+        //    Serial.print((int)avg_idle_rssi);
+        //    Serial.print(", last_rssi=");
+        //    Serial.println((int)last_rssi);
+        //}
+        // discard previous reading (perhaps from during packet reception):
+        // - achieved by setting last_rssi = rssi = 0 below
+    //}
+    if (rssi != 0 && last_rssi != 0) {
+        if (noise_sampling && noise_count[rxchan] < 0x1000) {
+            bool take_sample = true;
+            if (noise_sampling == 1) {
+                // only sample in the idle time between slots 1 & 0 
+                uint32_t ms_since_pps = now_ms - ref_time_ms;
+                take_sample = (ms_since_pps > 240 && ms_since_pps < 390);
+            }
+            if (take_sample) {
+                noise_data[rxchan] += last_rssi;
+                ++noise_count[rxchan];
+            }
+        }
+        avg_idle_rssi = ((3*avg_idle_rssi + last_rssi) >> 2);   // running average
+    }
+    last_rssi = rssi;     // used for sample & averaging next time
+}
+
 static bool sx12xx_receive()
 {
     bool success = false;
-    String msg;
+    //String msg;
 
     sx12xx_receive_complete = false;
 
@@ -791,6 +864,10 @@ static bool sx12xx_receive()
         sx12xx_setvars();
         sx12xx_rx(sx12xx_rx_func);
         sx12xx_receive_active = true;
+
+    } else if (sx12xx_receive_complete == false) {
+        // receiver was already active, but has not received a packet
+        get_idle_rssi();     // sample, and side effect: updates avg_idle_rssi
     }
 
     if (sx12xx_receive_complete == false){
@@ -810,15 +887,22 @@ static bool sx12xx_receive()
         //}
         memcpy(RxBuffer, &LMIC.frame[LMIC.protocol->payload_offset], (size_t) size);
 
-        RF_last_rssi = LMIC.rssi;
+        RF_last_rssi = LMIC.rssi;    // signal strength during packet reception
+
+        // compute an SNR based on RSSI during reception and average RSSI in preceding 30 ms or so
+//Serial.print("pkt_rssi=");
+//Serial.print((int)RF_last_rssi);
+//Serial.print("  idle_rssi=");
+//Serial.println((int)avg_idle_rssi);
+        RF_last_snr = (RF_last_rssi - avg_idle_rssi);
 
         // msg = "Receive complete...";
         // Logger_send_udp(&msg);    
 
+#if 0
         /*decrypt payload for private network*/
-        /*if packet is bigger , maybe its encryptedr*/
+        /*if packet is bigger , maybe its encrypted*/
         /*V0.1.0-25*/
-        if(false)
           if(size > RF_Payload_Size(ogn_protocol_1)){
             char *decrypted;
             size_t decrypted_len;
@@ -839,7 +923,7 @@ static bool sx12xx_receive()
                     break;
               }
           }
-        
+#endif
         rx_packets_counter++;
         success = true;
     }

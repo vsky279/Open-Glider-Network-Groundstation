@@ -70,9 +70,10 @@ static String getWW(String data)
     return tmp;
 }
 
-static float SnrCalc(float rssi)
+// not used, instead compute SNR from RSSIs during and after reception of each packet
+static int SnrCalc(int rssi)
 {
-    float noise = -108.0;
+    int noise = -108;
     return rssi - (noise);
 }
 
@@ -338,7 +339,9 @@ void OGN_APRS_Export(void)
             APRS_AIRC.symbol_table = String(symbol_table[Container[i].aircraft_type]);
             APRS_AIRC.symbol       = String(symbol[Container[i].aircraft_type]);
 
-            APRS_AIRC.snr = String(SnrCalc(Container[i].rssi), 1);
+            //APRS_AIRC.snr = String((float)SnrCalc(Container[i].rssi), 1);
+            APRS_AIRC.snr = String((float)Container[i].snr, 1);
+            
             if (Container[i].bec > 0) {
                 APRS_AIRC.bec = " ";
                 APRS_AIRC.bec += String(Container[i].bec);

@@ -464,6 +464,28 @@ void update_stats()
 //Serial.println(stats_html);
 }
 
+#define NOISE_SIZE 1199
+char noise_text[NOISE_SIZE+1];
+
+void update_noise()
+{
+    char *p = noise_text;
+    int n = NOISE_SIZE;
+    int nchans = (ogn_band==RF_BAND_US? 65 : ogn_band==RF_BAND_AU? 24 : ogn_band==RF_BAND_EU? 2 : 1);
+    for (int i=0; i<nchans; i++) {
+        int count = noise_count[i];
+        int data = noise_data[i];
+        noise_count[i] = 0;
+        noise_data[i] = 0;
+        snprintf(p, n, "%d,%d,%d\r\n", i, count, data);
+        int m = strlen(p);
+        p += m;
+        n -= m;
+    }
+    noise_text[NOISE_SIZE] = '\0';
+//Serial.println(noise_text);
+}
+
 void Web_start()
 {
     wserver->begin();
@@ -843,6 +865,12 @@ void Web_setup(ufo_t* this_aircraft)
         update_stats();
         Serial.println(F("requesting stats page..."));
         request->send(200, "text/html", String(stats_html));
+    });
+
+    wserver->on("/noise", HTTP_GET, [](AsyncWebServerRequest* request){
+        update_noise();
+        Serial.println(F("requesting noise page..."));
+        request->send(200, "text/plain", String(noise_text));
     });
 
     wserver->on("/refresh", HTTP_GET, [](AsyncWebServerRequest* request){
