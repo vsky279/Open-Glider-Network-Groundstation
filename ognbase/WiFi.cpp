@@ -65,8 +65,8 @@ IPAddress subnet(255, 255, 255, 0);
  *
  */
 
-String station_ssid = "ognbase";
-String station_psk  = "123456789";
+//String station_ssid = "ognbase";
+//String station_psk  = "123456789";
 
 const char* ap_default_psk = "987654321"; ///< Default PSK.
 
@@ -125,13 +125,17 @@ void WiFi_setup()
 {
     char buf[32];
     static bool configged = false;
+
+    host_name += String((SoC->getChipId() & 0xFFFFFF), HEX);
+    SoC->WiFi_hostname(host_name);
+
     //static bool reconnecting = false;
 
-      if (WiFi.getMode() != WIFI_STA)
-      {
-          WiFi.mode(WIFI_STA);
-          delay(500);
-      }
+    if (WiFi.getMode() != WIFI_STA)
+    {
+        WiFi.mode(WIFI_STA);
+        delay(500);
+    }
 
     if (! configged) {
       configged = OGN_read_config();
@@ -169,7 +173,7 @@ void WiFi_setup()
                 snprintf(buf, sizeof(buf), " at %s",
                 WiFi.localIP().toString().c_str());
                 OLED_write(buf, 0, 54, false);
-                host_name += String((SoC->getChipId() & 0xFFFFFF), HEX);
+                //host_name += String((SoC->getChipId() & 0xFFFFFF), HEX);
                 SoC->WiFi_hostname(host_name);
 
                 // Print hostname.
@@ -192,8 +196,9 @@ void WiFi_setup()
 
     } else {  /* not configged */
 
-        station_ssid = MY_ACCESSPOINT_SSID;
-        station_psk  = MY_ACCESSPOINT_PSK;
+        //station_ssid = MY_ACCESSPOINT_SSID;
+        //station_psk  = MY_ACCESSPOINT_PSK;
+        SoC->WiFi_hostname(host_name);
         WiFi.begin();
         delay(1000);
     }
@@ -203,7 +208,7 @@ void WiFi_setup()
         //if (reconnecting)
         //    return;      // do not go into AP mode if temporarily disconnected
 
-        host_name += String((SoC->getChipId() & 0xFFFFFF), HEX);
+        //host_name += String((SoC->getChipId() & 0xFFFFFF), HEX);
         SoC->WiFi_hostname(host_name);
 
         // Print hostname.
@@ -223,9 +228,12 @@ void WiFi_setup()
         Serial.println(WiFi.softAPConfig(local_IP, gateway, subnet) ?
                        F("Ready") : F("Failed!"));
 
-        Serial.print(F("Setting soft-AP ... "));
+        Serial.print(F("Setting soft-AP: ssid: "));
+        Serial.print(host_name.c_str());
+        Serial.print(F(" psk: "));
+        Serial.print(ap_default_psk);
         Serial.println(WiFi.softAP(host_name.c_str(), ap_default_psk) ?
-                       F("Ready") : F("Failed!"));
+                       F(" - Ready") : F(" - Failed!"));
         Serial.print(F("IP address: "));
         Serial.println(WiFi.softAPIP());
     }
@@ -281,8 +289,8 @@ void WiFi_loop()
 
 #ifdef TBEAM
               turn_LED_off();   /* turn off bright blue LED to save power and signal end of WiFi */
-              OLED_disable();
 #endif
+              OLED_disable();
               if (settings->nmea_p)
                   StdOut.println(F("$PSRFS,WIFI_OFF"));
               //NMEA_fini();

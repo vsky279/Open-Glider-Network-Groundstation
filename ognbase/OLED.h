@@ -31,7 +31,7 @@ void OLED_write(const char *, short, short, bool);
 void OLED_clear(void);
 
 void OLED_bar(uint8_t, uint8_t);
-void OLED_info(bool);
+void OLED_info(void);
 
 void OLED_update(void);
 

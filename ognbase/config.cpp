@@ -79,7 +79,6 @@ float   ogn_lat              = 0;
 float   ogn_lon              = 0;
 int     ogn_alt              = 0;
 int16_t ogn_geoid_separation = 0;
-uint8_t largest_range        = 0;
 
 //fanet service
 bool fanet_enable = false;
@@ -120,8 +119,12 @@ bool ognreverse_time = false;    /* if true = relay time from base to remote */
 bool ogn_gnsstime = false;       /* if true = use GNSS time rather than NTP */
 uint32_t ognrelay_key = 12345;    /* must be same in both stations for relay_time */
 
+// time-relay (derived)
+bool time_master = false;        /* if true = this station sends time */
+bool time_client = false;        /* if true = this station receives time */
 
-#ifdef TTGO
+
+#if defined(TTGO) || defined (T3S3)
 
 void performUpdate(Stream &updateSource, size_t updateSize) {
 
@@ -186,15 +189,22 @@ bool OGN_read_config(void)
         return false;
     }
 
-#ifdef TTGO    
+#if defined(TTGO) || defined (T3S3)
     /*READ SD Card - config.json & firmware update*/
 
     char buf[32];
 
+#if defined(T3S3)
+    SPI.begin(T3S3_SD_CLK, T3S3_SD_MISO, T3S3_SD_MOSI);
+    if(!SD.begin(T3S3_SD_CS)){
+      Serial.println("Card Mount Failed");
+    }
+#else
     SPI.begin(SD_SCK, SD_MISO, SD_MOSI); // TTGO V2   >>> this failed with Core 2.0.2, works with Core 2.0.3
     if(!SD.begin(SD_CS)){                          // >>> 13 - examples on web have no argument passed here?
       Serial.println("Card Mount Failed");
     }
+#endif
     else{
       uint8_t cardType = SD.cardType();
       uint64_t cardSize = SD.cardSize() / (1024 * 1024);
@@ -551,6 +561,9 @@ ogn_protocol_2  = RF_PROTOCOL_OGNTP;
 
     if (obj.containsKey(F("beers")))
         beers_show = obj["beers"]["show"];
+
+    time_master = (ognrelay_enable && ognrelay_time) || (ognrelay_base && ognreverse_time);
+    time_client = (ognrelay_base && ognrelay_time) || (ognrelay_enable && ognreverse_time);
 
     if (config_done == 0)
         config_done = 1;

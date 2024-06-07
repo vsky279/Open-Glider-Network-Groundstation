@@ -456,7 +456,7 @@ Serial.printf("received non-relay pkt, msg_type=%X, addr=%06X\r\n", pkt->msg_typ
     //uint32_t timestamp = (uint32_t) this_aircraft->timestamp;
     uint32_t timestamp = (uint32_t) RF_time;
 
-    if (ognrelay_enable && ! ogn_gnsstime && ! have_reverse_time) {
+    if (ognrelay_enable && ! ogn_gnsstime && ! ognreverse_time) {
         /* no time data, cannot decrypt */
         fop->timestamp = timestamp;
         fop->stealth  = 0;          /* for queueing in traffic.cpp */
@@ -465,10 +465,10 @@ Serial.printf("received non-relay pkt, msg_type=%X, addr=%06X\r\n", pkt->msg_typ
         return true;
     }
 
-    if (pkt->msg_type == MSG_TYPE_NEW) {
-        if (ognrelay_enable && !ogn_gnsstime && !have_reverse_time)
-            return true;        // will relay the encrypted packet
-    }
+    //if (pkt->msg_type == MSG_TYPE_NEW) {
+    //    if (ognrelay_enable && !ogn_gnsstime && !ognreverse_time)
+    //        return true;        // will relay the encrypted packet
+    //}
 
 #if 1
     if (pkt->msg_type == MSG_TYPE_NEW || pkt->msg_type == MSG_TYPE_RAW) {
@@ -477,6 +477,7 @@ Serial.printf("received non-relay pkt, msg_type=%X, addr=%06X\r\n", pkt->msg_typ
     }
 #endif
 
+#if 0
     if (pkt->addr_type > 3) {
         // probably air-relayed by SoftRF
         //   but do some sanity checks below
@@ -487,15 +488,11 @@ Serial.printf("received non-relay pkt, msg_type=%X, addr=%06X\r\n", pkt->msg_typ
         }
     }
 
-#if 0
     if (pkt->msg_type == MSG_TYPE_NEW || pkt->msg_type == MSG_TYPE_RAW) {
         // original packet in new protocol, or relayed in original encryption
         return latest_decode(buffer, this_aircraft, fop);
     }
 #endif
-
-    if (pkt->msg_type == MSG_TYPE_OLD && !fop->relayed)     // original in old protocol
-        ++old_protocol_packets_recvd;
 
     fop->msg_type = MSG_TYPE_OLD;   // old protocol, either original or relayed
 
@@ -544,7 +541,6 @@ Serial.println("bad checksum in relayed packet");
         return false;
 
     fop->timestamp = timestamp;
-    fop->addr_type = pkt->addr_type;
     fop->stealth   = pkt->stealth;
     fop->no_track  = pkt->no_track;
 
@@ -578,6 +574,9 @@ Serial.println("bad checksum in relayed packet");
     int32_t ilon = ((int32_t)pkt->lon - round_lon) & 0x0FFFFF;
     if (ilon >= 0x080000) ilon -= 0x0100000;
     float lon = (float)((ilon + round_lon) << 7) * 1e-7;
+    if (fabs(lat - this_aircraft->latitude) > 2.0
+     || fabs(lon - this_aircraft->longitude) > 3.0)
+        return false;
 
     int32_t ns = (((int32_t) pkt->ns[0]) << pkt->smult);      /* quarter-meters per sec */
     int32_t ew = (((int32_t) pkt->ew[0]) << pkt->smult);
@@ -607,16 +606,27 @@ Serial.println("bad checksum in relayed packet");
 
     // additional sanity checks
     if (speed4 > 600.0)
-            return false;
+        return false;
     if (abs(vs10) > 300)
-            return false;
+        return false;
     if (fabs(turnrate) > 60.0)
-            return false;
+        return false;
 
     int16_t alt = pkt->alt;  /* relative to WGS84 ellipsoid */
 
-    fop->protocol = RF_PROTOCOL_LEGACY;
 
+    if (pkt->addr_type > 3) {        // probably air-relayed by SoftRF
+        ++air_relayed_packets_recvd;
+        if (!ognrelay_enable) {
+            fop->relayed = true;
+            pkt->addr_type &= 3;
+        }
+    }
+
+    if (pkt->msg_type == MSG_TYPE_OLD && !fop->relayed)     // original in old protocol
+        ++old_protocol_packets_recvd;
+
+    fop->protocol      = RF_PROTOCOL_LEGACY;
     fop->addr_type     = pkt->addr_type;
     fop->latitude      = lat;
     fop->longitude     = lon;
@@ -792,7 +802,7 @@ size_t legacy_encode(void* buffer, ufo_t* fop)
 {
     legacy_packet_t* pkt = (legacy_packet_t *) buffer;
 
-    if (ognrelay_enable && (ogn_gnsstime || have_reverse_time)) {
+    if (ognrelay_enable && (ogn_gnsstime || ognreverse_time)) {
 
         // re-encode the data into the old protocol (even if arrived in new protocol)
         legacy_encode_data(buffer, fop);

@@ -30,7 +30,11 @@
 #include <axp20x.h>
 #define  XPOWERS_CHIP_AXP2102
 #include <XPowersLib.h>
+#if defined(T3S3)
+// error: 'VSPI' was not declared
+#else
 #include <TFT_eSPI.h>
+#endif
 
 #include "Platform_ESP32.h"
 #include "SoC.h"
@@ -69,7 +73,9 @@ XPowersPMU   axp_2xxx;
 WiFiClient   client;
 WiFiClient   zclient;
 
-static TFT_eSPI*                              tft  = NULL;
+#if !defined(T3S3)
+static TFT_eSPI*  tft  = NULL;
+#endif
 
 static int esp32_board = ESP32_DEVKIT; /* default */
 
@@ -119,6 +125,8 @@ static uint32_t ESP32_getFlashId()
     return g_rom_flashchip.device_id;
 }
 
+uint32_t flash_id_;
+
 static void ESP32_setup()
 {
 #if !defined(SOFTRF_ADDRESS)
@@ -152,6 +160,7 @@ static void ESP32_setup()
     if (psramFound())
     {
         uint32_t flash_id = ESP32_getFlashId();
+        flash_id_ = flash_id;
 
         /*
          *    Board         |   Module   |  Flash memory IC
@@ -166,10 +175,13 @@ static void ESP32_setup()
          *  TTGO T5S V1.9   |            | WINBOND_NEX_W25Q32_V
          *  TTGO T5S V2.8   |            | BOYA_BY25Q32AL
          *  TTGO T-Watch    |            | WINBOND_NEX_W25Q128_V
+         *  Ai-T NodeMCU-S3 | ESP-S3-12K | GIGADEVICE_GD25Q64C
+         *  TTGO S3 Core    |            | GIGADEVICE_GD25Q64C
          */
 
         switch(flash_id)
         {
+#if defined(CONFIG_IDF_TARGET_ESP32)
         case MakeFlashId(GIGADEVICE_ID, GIGADEVICE_GD25LQ32):
           /* ESP32-WROVER module with ESP32-NODEMCU-ADAPTER */
           hw_info.model = SOFTRF_MODEL_STANDALONE;
@@ -177,20 +189,37 @@ static void ESP32_setup()
         case MakeFlashId(WINBOND_NEX_ID, WINBOND_NEX_W25Q128_V):
           hw_info.model = SOFTRF_MODEL_SKYWATCH;
           break;
-#if defined(CONFIG_IDF_TARGET_ESP32)
         case MakeFlashId(WINBOND_NEX_ID, WINBOND_NEX_W25Q32_V):
         case MakeFlashId(BOYA_ID, BOYA_BY25Q32AL):
         default:
           hw_info.model = SOFTRF_MODEL_PRIME_MK2;
           heap_caps_malloc_extmem_enable(8000);    // <<< try and keep the "dense" BEC table in regular RAM
+          break;
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
+#if defined(T3S3)
+        case 2113558:                              // = 0x204016, by experiment, GD25Q32 & similar?
+          esp32_board = ESP32_TTGO_T3S3;
+          hw_info.model = OGNBASE_MODEL_T3S3;
+          heap_caps_malloc_extmem_enable(8000);    // <<< try and keep the "dense" BEC table in regular RAM
+          break;
+        default:
+          esp32_board = ESP32_S3_DEVKIT;
+          hw_info.model = OGNBASE_MODEL_ESP32S3_PSRAM;
+          heap_caps_malloc_extmem_enable(8000);
+          break;
 #else
+        default:
+#error "compiling for ESP32-S3 but T3S3 not #defined!"
+#endif
+#else
+        default:
 #error "This ESP32 family build variant is not supported!"
 #endif
           break;
         }
 
     }
-    else
+    else   // no PSRAM
     {
 
 #if defined(CONFIG_IDF_TARGET_ESP32)
@@ -204,9 +233,13 @@ static void ESP32_setup()
         }
 #endif /* CONFIG_IDF_TARGET_ESP32 */
 
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+        esp32_board = ESP32_S3_DEVKIT;
+        hw_info.model = OGNBASE_MODEL_ESP32S3_NO_PSRAM;
+#endif
     }
 
-    ledcSetup(LEDC_CHANNEL_BUZZER, 0, LEDC_RESOLUTION_BUZZER);
+    //ledcSetup(LEDC_CHANNEL_BUZZER, 0, LEDC_RESOLUTION_BUZZER);
 
     if (hw_info.model == SOFTRF_MODEL_SKYWATCH)
     {
@@ -342,25 +375,56 @@ static void ESP32_setup()
           }
         }
 
-#if defined(TBEAM)
-        // (actually this is also inside if(hw_info.model == SOFTRF_MODEL_PRIME_MK2))
         // set up 2nd I2C port - in case OLED is actually there
         Wire.begin(SOC_GPIO_PIN_TBEAM_SDA, SOC_GPIO_PIN_TBEAM_SCL);
+        
+    } else {
+        // other than SOFTRF_MODEL_PRIME_MK2 - namely the TTGO Paxcounter or T3S3
+        // initialize Wire1 for the OLED library
+        // (since OLED library was changed to expect this to be done outside)
+#if defined(T3S3)
+        Wire1.begin(T3S3_OLED_PIN_SDA, T3S3_OLED_PIN_SCL);
+        pinMode(T3S3_GREEN_LED, OUTPUT);
+        digitalWrite(T3S3_GREEN_LED, LOW);
+#elif defined(TTGO)
+        Wire1.begin(TTGO_V2_OLED_PIN_SDA, TTGO_V2_OLED_PIN_SCL);
+        pinMode(PAXCOUNTER_GREEN_LED, OUTPUT);
+        digitalWrite(PAXCOUNTER_GREEN_LED, LOW);
+#endif
+    }
 
+#if defined(T3S3)
+    lmic_pins.nss  = T3S3_SX12xx_SEL;
+    lmic_pins.rst  = T3S3_SX12xx_RST;
+    lmic_pins.busy = T3S3_SX1262_BUSY;   // <<< this is also T3S3_SX1276_IO2
+#else
+    lmic_pins.rst  = SOC_GPIO_PIN_TBEAM_RF_RST_V05;
+    lmic_pins.busy = SOC_GPIO_PIN_TBEAM_RF_BUSY_V08;
+#endif
+}
+
+// report detected hardware after Serial has been started
+void ESP32_post_setup()
+{
+#if defined(TBEAM)
         Serial.print(F("INFO: TTGO T-Beam rev "));
         Serial.print(hw_info.revision);
         Serial.println(F(" is detected."));
 #endif
-
-    } else {
-        // other than SOFTRF_MODEL_PRIME_MK2 - namely the TTGO Paxcounter
-        // initialize Wire1 for the OLED library
-        // (since OLED library was changed to expect this to be done outside)
-        Wire1.begin(TTGO_V2_OLED_PIN_SDA , TTGO_V2_OLED_PIN_SCL);
-    }
-
-    lmic_pins.rst  = SOC_GPIO_PIN_TBEAM_RF_RST_V05;
-    lmic_pins.busy = SOC_GPIO_PIN_TBEAM_RF_BUSY_V08;
+#if defined(T3S3)
+        if (hw_info.model == OGNBASE_MODEL_T3S3)
+            Serial.println(F("T3S3 with PSRAM is detected"));
+        else if (hw_info.model == OGNBASE_MODEL_ESP32S3_PSRAM)
+            Serial.println(F("ESP32-S3, PSRAM enabled"));
+        else if (hw_info.model == OGNBASE_MODEL_ESP32S3_NO_PSRAM)
+            Serial.println(F("ESP32-S3, PSRAM not enabled"));
+#endif
+#if defined(TTGO)
+        if (esp32_board == ESP32_TTGO_V2_OLED)
+            Serial.println(F("TTGO paxcounter detected"));
+        else
+            Serial.println(F("TTGO paxcounter not detected"));
+#endif
 }
 
 static void ESP32_loop()
@@ -436,6 +500,7 @@ static void ESP32_loop()
 
 #if defined(TBEAM)
 
+#if 0
 bool on_ext_power()
 {
 //>>> is this OK for the AXP2101?
@@ -455,6 +520,7 @@ bool on_ext_power()
         break;
     }
 }
+#endif
 
 void turn_LED_on()
 {
@@ -524,6 +590,19 @@ void turn_GNSS_off()
 
 #endif   /* TBEAM */
 
+#if defined(T3S3) || defined(TTGO)
+void green_LED(bool state)
+{
+#if defined(T3S3)
+    digitalWrite(T3S3_GREEN_LED, state? HIGH : LOW);
+#elif defined(TTGO)
+    digitalWrite(PAXCOUNTER_GREEN_LED, state? HIGH : LOW);
+#endif
+Serial.print("green LED -> ");
+Serial.println(state);
+}
+#endif
+
 static void ESP32_fini()
 {
     SPI.end();
@@ -543,6 +622,10 @@ static void ESP32_fini()
 
     esp_sleep_enable_ext1_wakeup(1ULL << SOC_GPIO_PIN_TWATCH_PMU_IRQ,
                                  ESP_EXT1_WAKEUP_ALL_LOW);
+
+// >>> warning: 'ESP_EXT1_WAKEUP_ALL_LOW' is deprecated:
+//     wakeup mode "ALL_LOW" is no longer supported after ESP32,
+//     please use ESP_EXT1_WAKEUP_ANY_LOW instead
 
   } else if (hw_info.model == SOFTRF_MODEL_PRIME_MK2) {
 
@@ -619,17 +702,28 @@ static void * ESP32_getResetInfoPtr()
         case POWERON_RESET:
             reset_info.reason = REASON_DEFAULT_RST;
             break;
+#if !defined(T3S3)
         case SW_RESET:
             reset_info.reason = REASON_SOFT_RESTART;
             break;
         case OWDT_RESET:
             reset_info.reason = REASON_WDT_RST;
             break;
-        case DEEPSLEEP_RESET:
-            reset_info.reason = REASON_DEEP_SLEEP_AWAKE;
-            break;
         case SDIO_RESET:
             reset_info.reason = REASON_EXCEPTION_RST;
+            break;
+        case TGWDT_CPU_RESET:
+            reset_info.reason = REASON_WDT_RST;
+            break;
+        case SW_CPU_RESET:
+            reset_info.reason = REASON_SOFT_RESTART;
+            break;
+        case EXT_CPU_RESET:
+            reset_info.reason = REASON_EXT_SYS_RST;
+            break;
+#endif
+        case DEEPSLEEP_RESET:
+            reset_info.reason = REASON_DEEP_SLEEP_AWAKE;
             break;
         case TG0WDT_SYS_RESET:
             reset_info.reason = REASON_WDT_RST;
@@ -643,17 +737,8 @@ static void * ESP32_getResetInfoPtr()
         case INTRUSION_RESET:
             reset_info.reason = REASON_EXCEPTION_RST;
             break;
-        case TGWDT_CPU_RESET:
-            reset_info.reason = REASON_WDT_RST;
-            break;
-        case SW_CPU_RESET:
-            reset_info.reason = REASON_SOFT_RESTART;
-            break;
         case RTCWDT_CPU_RESET:
             reset_info.reason = REASON_WDT_RST;
-            break;
-        case EXT_CPU_RESET:
-            reset_info.reason = REASON_EXT_SYS_RST;
             break;
         case RTCWDT_BROWN_OUT_RESET:
             reset_info.reason = REASON_EXT_SYS_RST;
@@ -678,14 +763,22 @@ static String ESP32_getResetInfo()
     {
         case POWERON_RESET:
             return F("Vbat power on reset");
+#if !defined(T3S3)
         case SW_RESET:
             return F("Software reset digital core");
         case OWDT_RESET:
             return F("Legacy watch dog reset digital core");
-        case DEEPSLEEP_RESET:
-            return F("Deep Sleep reset digital core");
         case SDIO_RESET:
             return F("Reset by SLC module, reset digital core");
+        case TGWDT_CPU_RESET:
+            return F("Time Group reset CPU");
+        case SW_CPU_RESET:
+            return F("Software reset CPU");
+        case EXT_CPU_RESET:
+            return F("for APP CPU, reseted by PRO CPU");
+#endif
+        case DEEPSLEEP_RESET:
+            return F("Deep Sleep reset digital core");
         case TG0WDT_SYS_RESET:
             return F("Timer Group0 Watch dog reset digital core");
         case TG1WDT_SYS_RESET:
@@ -694,14 +787,8 @@ static String ESP32_getResetInfo()
             return F("RTC Watch dog Reset digital core");
         case INTRUSION_RESET:
             return F("Instrusion tested to reset CPU");
-        case TGWDT_CPU_RESET:
-            return F("Time Group reset CPU");
-        case SW_CPU_RESET:
-            return F("Software reset CPU");
         case RTCWDT_CPU_RESET:
             return F("RTC Watch dog Reset CPU");
-        case EXT_CPU_RESET:
-            return F("for APP CPU, reseted by PRO CPU");
         case RTCWDT_BROWN_OUT_RESET:
             return F("Reset when the vdd voltage is not stable");
         case RTCWDT_RTC_RESET:
@@ -717,14 +804,22 @@ static String ESP32_getResetReason()
     {
         case POWERON_RESET:
             return F("POWERON_RESET");
+#if !defined(T3S3)
         case SW_RESET:
             return F("SW_RESET");
         case OWDT_RESET:
             return F("OWDT_RESET");
-        case DEEPSLEEP_RESET:
-            return F("DEEPSLEEP_RESET");
         case SDIO_RESET:
             return F("SDIO_RESET");
+        case TGWDT_CPU_RESET:
+            return F("TGWDT_CPU_RESET");
+        case SW_CPU_RESET:
+            return F("SW_CPU_RESET");
+        case EXT_CPU_RESET:
+            return F("EXT_CPU_RESET");
+#endif
+        case DEEPSLEEP_RESET:
+            return F("DEEPSLEEP_RESET");
         case TG0WDT_SYS_RESET:
             return F("TG0WDT_SYS_RESET");
         case TG1WDT_SYS_RESET:
@@ -733,14 +828,8 @@ static String ESP32_getResetReason()
             return F("RTCWDT_SYS_RESET");
         case INTRUSION_RESET:
             return F("INTRUSION_RESET");
-        case TGWDT_CPU_RESET:
-            return F("TGWDT_CPU_RESET");
-        case SW_CPU_RESET:
-            return F("SW_CPU_RESET");
         case RTCWDT_CPU_RESET:
             return F("RTCWDT_CPU_RESET");
-        case EXT_CPU_RESET:
-            return F("EXT_CPU_RESET");
         case RTCWDT_BROWN_OUT_RESET:
             return F("RTCWDT_BROWN_OUT_RESET");
         case RTCWDT_RTC_RESET:
@@ -1033,11 +1122,16 @@ static bool ESP32_EEPROM_begin(size_t size)
 
 static void ESP32_SPI_begin()
 {
+#if defined(T3S3)
+    //if (esp32_board == ESP32_TTGO_T3S3)
+        SPI.begin(T3S3_SX12xx_SCK, T3S3_SX12xx_MISO, T3S3_SX12xx_MOSI, T3S3_SX12xx_SEL);
+#else
     if (esp32_board != ESP32_TTGO_T_WATCH)
         SPI.begin(SOC_GPIO_PIN_SCK, SOC_GPIO_PIN_MISO, SOC_GPIO_PIN_MOSI, SOC_GPIO_PIN_SS);
     else
         SPI.begin(SOC_GPIO_PIN_TWATCH_TFT_SCK, SOC_GPIO_PIN_TWATCH_TFT_MISO,
                   SOC_GPIO_PIN_TWATCH_TFT_MOSI, -1);
+#endif
 }
 
 static void ESP32_swSer_begin(unsigned long baud)
@@ -1083,7 +1177,7 @@ static void ESP32_swSer_enableRx(boolean arg)
 static void ESP32_Battery_setup()
 {
     if ((hw_info.model == SOFTRF_MODEL_PRIME_MK2 &&
-         hw_info.revision == 8)                     ||
+         hw_info.revision >= 8)                     ||
         hw_info.model == SOFTRF_MODEL_SKYWATCH)
     {
         /* T-Beam v08 and T-Watch have PMU */
@@ -1091,9 +1185,13 @@ static void ESP32_Battery_setup()
         /* TBD */
     }
     else
+#if defined(T3S3)
+        calibrate_voltage(ADC1_GPIO1_CHANNEL);
+#else
         calibrate_voltage(hw_info.model == SOFTRF_MODEL_PRIME_MK2 ||
                           (esp32_board == ESP32_TTGO_V2_OLED && hw_info.revision == 16) ?
                           ADC1_GPIO35_CHANNEL : ADC1_GPIO36_CHANNEL);
+#endif
 }
 
 static float ESP32_Battery_voltage()
@@ -1121,7 +1219,8 @@ static float ESP32_Battery_voltage()
 
       /* T-Beam v02-v07 and T3 V2.1.6 have voltage divider 100k/100k on board */
       if (hw_info.model == SOFTRF_MODEL_PRIME_MK2   ||
-         (esp32_board   == ESP32_TTGO_V2_OLED && hw_info.revision == 16)) {
+         (esp32_board   == ESP32_TTGO_V2_OLED && hw_info.revision == 16)  ||
+          esp32_board   == ESP32_TTGO_T3S3 || esp32_board == ESP32_S3_DEVKIT) {
         voltage += voltage;
       }
       break;

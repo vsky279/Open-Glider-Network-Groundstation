@@ -80,6 +80,7 @@ bool OLED_probe() {
   if (Wire1.endTransmission() == 0) {
     display.setWire(&Wire1);
     return true;
+#if defined(TBEAM)
   } else {
     // look for OLED on second I2C port
     Wire.beginTransmission(SSD1306_OLED_I2C_ADDR);
@@ -87,6 +88,7 @@ bool OLED_probe() {
       display.setWire(&Wire);
       return true;
     }
+#endif
   }
   return false;
 }
@@ -147,12 +149,12 @@ void OLED_draw_Bitmap(int16_t x, int16_t y, uint8_t bm, bool clear)
 
 void OLED_display()
 {
+    //display.displayOn();
     display.display();
-    display.displayOn();
 //Serial.println("... OLED_info returning");
 }
 
-void OLED_info(bool ntp)
+void OLED_info()
 {
     if (!display_enabled){return;}
 
@@ -183,12 +185,9 @@ void OLED_info(bool ntp)
 
     if (display_init)
     {
-        display.displayOff();
+        //display.displayOff();
+        display.displayOn();
         display.clear();
-
-
-        for (int b=0; b <= bars; b++)
-            display.fillRect(100 + (b * 5), 65 - (b * 3), 3, b * 3);
 
         display.setFont(ArialMT_Plain_24);
         display.drawString(95, 0, "RX");
@@ -217,6 +216,8 @@ void OLED_info(bool ntp)
                 snprintf(buf, sizeof(buf), "IP: %s", WiFi.localIP().toString().c_str());
             display.drawString(0, 9, buf);
             Serial.println(buf);
+            Serial.print("MAC Address: ");
+            Serial.println(WiFi.macAddress());
 
             if(ognrelay_enable)
               snprintf(buf, sizeof(buf), "CS-R: %s", ogn_callsign);
@@ -237,25 +238,22 @@ void OLED_info(bool ntp)
             Serial.println(buf);
 
             //snprintf(buf, sizeof(buf), "UTC: %02d:%02d", hour(now()), minute(now()));
-            snprintf(buf, sizeof(buf),
-                ((ognrelay_enable && ! ogn_gnsstime)? "Time %02d:%02d:%02d" : "UTC: %02d:%02d:%02d"),
+            snprintf(buf, sizeof(buf), "UTC: %02d:%02d:%02d",
                 ThisAircraft.hour, ThisAircraft.minute, ThisAircraft.second);
             display.drawString(0, 45, buf);
             Serial.println(buf);
 
-            if (ntp)
+            if (!ognrelay_enable && !ogn_gnsstime) {
                 //display.drawString(0, 54, "NTP: True");
-                display.drawString(0, 54, "Position Set");
-            else
-            {
-#if defined(TBEAM)
+                //display.drawString(0, 54, "Position Set");
+                snprintf(buf, sizeof(buf), "MAC: %s", WiFi.macAddress().c_str());
+                display.drawString(0, 54, buf);
+                //Serial.println(buf);
+            } else {
                 if (ognrelay_base & ognrelay_time)
                   snprintf(buf, sizeof(buf), "R-GNSS: %d", remote_sats);
                 else
                   snprintf(buf, sizeof(buf), "GNSS: %d", gnss.satellites.value());
-#else
-                snprintf(buf, sizeof(buf), "R-GNSS: %d", remote_sats);
-#endif
                 display.drawString(0, 54, buf);
                 Serial.println(buf);
             }
@@ -271,6 +269,9 @@ void OLED_info(bool ntp)
         }
         if (oled_site == 1)
         {
+            for (int b=0; b <= bars; b++)
+                display.fillRect(100 + (b * 5), 65 - (b * 3), 3, b * 3);
+
             //version
             // snprintf(buf, sizeof(buf), "Version: %s", _VERSION);
             snprintf(buf, sizeof(buf), "Version: %s", SOFTRF_FIRMWARE_VERSION);
@@ -323,7 +324,7 @@ void OLED_info(bool ntp)
 
         if (oled_site == 2)
         {
-            display.clear();
+            //display.clear();
             snprintf(buf, sizeof(buf), "SSID List");
             display.drawString(0, 0, buf);
             Serial.println(buf);
@@ -336,8 +337,8 @@ void OLED_info(bool ntp)
                     Serial.println(buf);
                 }
 
-            for (int b=0; b <= bars; b++)
-                display.fillRect(100 + (b * 5), 40 - (b * 6), 3, b * 6);
+            //for (int b=0; b <= bars; b++)
+            //    display.fillRect(100 + (b * 5), 40 - (b * 6), 3, b * 6);
 
             snprintf(buf, sizeof(buf), "connected to %s", WiFi.SSID().c_str());
             display.drawString(0, 54, buf);
@@ -350,7 +351,7 @@ void OLED_info(bool ntp)
 
         if (oled_site == 3)
         {
-            display.clear();
+            //display.clear();
             snprintf(buf, sizeof(buf), "POSITION DATA");
             display.drawString(0, 0, buf);
             //Serial.println(buf);
@@ -412,7 +413,7 @@ void OLED_info(bool ntp)
 
             OLED_draw_Bitmap(75, 0, 100, false);
             oled_site = 0;
-            OLED_display();
+            //OLED_display();
             return;
         }
     }

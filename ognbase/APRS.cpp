@@ -44,6 +44,12 @@ uint32_t wifi_outage  = 0;
 int  last_packet_time = 0; // seconds
 int  ap_uptime        = 0;
 
+int largest_range = 0;
+uint32_t farthest_ID;
+float farthest_lat;
+float farthest_lon;
+float farthest_alt;
+
 #define seconds() (millis() / 1000)
 
 // const unsigned long seventyYears = 2208988800UL;
@@ -276,7 +282,7 @@ void OGN_APRS_Export(void)
                 continue;
             }
 
-            uint16_t distance = (uint16_t) (Container[i].distance * 0.001);
+            uint16_t distance = (uint16_t) (Container[i].distance * 0.001);   // km
 
 //Serial.printf("export? [%d] t=%d d=%d\r\n", i, Container[i].timestamp, distance);
 
@@ -303,10 +309,16 @@ void OGN_APRS_Export(void)
                 continue;
             }
 
-            if (distance > largest_range)  largest_range = distance;
-
             float LAT = fabs(Container[i].latitude);
             float LON = fabs(Container[i].longitude);
+
+            if (distance > largest_range) {
+                largest_range = distance;
+                farthest_ID = Container[i].addr;
+                farthest_lat = LAT;
+                farthest_lon = LON;
+                farthest_alt = Container[i].altitude * 3.28084;
+            }
 
             APRS_AIRC.callsign = zeroPadding(String(Container[i].addr, HEX), 6);
             APRS_AIRC.callsign.toUpperCase();
@@ -549,7 +561,7 @@ bool OGN_APRS_Location(ufo_t* this_aircraft)
 
     APRS_REG.origin   = ogn_callsign;
     APRS_REG.alt       = zeroPadding(String(int(this_aircraft->altitude * 3.28084)), 6);
-    if (OurTime == 0) {
+    if (OurTime < 1000000) {
         APRS_REG.timestamp = "000000h";
     } else {
         APRS_REG.timestamp = zeroPadding(String(this_aircraft->hour), 2)
@@ -621,7 +633,7 @@ bool OGN_APRS_Status(ufo_t* this_aircraft, bool first_time, String resetReason)
     // time_t APRStime = OurTime; // - seventyYears;
     struct aprs_stat_packet APRS_STAT;
     APRS_STAT.origin   = ogn_callsign;
-    if (OurTime == 0) {
+    if (OurTime < 1000000) {
         APRS_STAT.timestamp = "000000h";
     } else {
         APRS_STAT.timestamp = zeroPadding(String(this_aircraft->hour), 2)
@@ -661,31 +673,30 @@ bool OGN_APRS_Status(ufo_t* this_aircraft, bool first_time, String resetReason)
     //StatusPacket += " ";
     StatusPacket += APRS_STAT.platform;
 
-    if ((! ognrelay_time) || time_synched) {
-        int v;
-        if (time_synched) {
-            v = (int)(10.0 * remote_voltage + 0.5);
-        } else {
-#if defined(TBEAM)
-            if (on_ext_power())   // USB powered
-                v = 0;
-            else
-#endif
-            v = (int)(10.0 * Battery_voltage() + 0.5);
-            // standalone station reports local voltage
-        }
-        if (v > 20)
-            StatusPacket += " " + String(v/10) + "." + String(v%10) + "V";
-        if (sleep_length == 0 && remote_sleep_length == 0) {
-            StatusPacket += " ";
-            // added packets per minute and IDs seen in last hour
-            StatusPacket += String(packets_per_minute) + "/min ";
-            StatusPacket += String(numvisible) + "/" + String(numseen_1hr) + "Acfts[1h]";
-        }
+    int v;
+    if (time_synched) {
+        v = (int)(10.0 * remote_voltage + 0.5);
+    } else {
+        v = (int)(10.0 * Battery_voltage() + 0.5);
+        // standalone station reports local voltage
     }
+    if (v > 20)
+        StatusPacket += " " + String(v/10) + "." + String(v%10) + "V";
+    if (sleep_length == 0 && remote_sleep_length == 0) {
+        StatusPacket += " ";
+        // added packets per minute and IDs seen in last hour
+        StatusPacket += String(packets_per_minute) + "/min ";
+        StatusPacket += String(numvisible) + "/" + String(numseen_1hr) + "Acfts[1h]";
+    }
+
 #if 1  // OGNbase specific fields
     StatusPacket += " ";
-    if (ognrelay_time) {
+    if (ognreverse_time) {
+        if (time_synched)
+            StatusPacket += "time_synched ";
+        else
+            StatusPacket += "time_not_synched ";
+    } else if (ognrelay_time) {
         if (time_synched) {
             StatusPacket += String(remote_sats);
             StatusPacket += "sat time_synched ";
@@ -709,7 +720,7 @@ bool OGN_APRS_Status(ufo_t* this_aircraft, bool first_time, String resetReason)
          StatusPacket += "_m_WiFi_outage_ended\r\n";
     } else if (wifi_reconnected) {
         StatusPacket += "wifi_reconnected\r\n";
-    } else if (ognrelay_time && time_synched) {
+    } else if ((ognrelay_time || ognreverse_time) && time_synched) {
         if (remote_sleep_length == 0) {
             StatusPacket += String(remote_uptime);
             StatusPacket += "_m_r_uptime\r\n";
@@ -738,7 +749,7 @@ bool OGN_APRS_Status(ufo_t* this_aircraft, bool first_time, String resetReason)
         return false;
     }
 
-    if (OurTime == 0) {      /* no GNSS time available yet */
+    if (OurTime < 1000000) {      /* no GNSS time available yet */
       Serial.println(F("sent status packet without time stamp"));
       return false;
     }

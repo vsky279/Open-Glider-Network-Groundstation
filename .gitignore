@@ -1,6 +1,6 @@
 # binaries
 *.bin
-*.zip
+# *.zip
 
 .vscode
 

@@ -41,6 +41,15 @@
 #define UATSerial               Serial2
 #define EEPROM_commit()         EEPROM.commit()
 
+// this may allow USB logging in non-CDC mode
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+#if ARDUINO_USB_CDC_ON_BOOT
+// leave Serial as is
+#else
+#define Serial                  USBSerial
+#endif
+#endif
+
 #define isValidFix()            isValidGNSSFix()
 
 #if defined(ESP_IDF_VERSION_MAJOR) && ESP_IDF_VERSION_MAJOR>=4
@@ -50,13 +59,16 @@
 #endif
 
 /* Adafruit_NeoPixel still has "flickering" issue of ESP32 caused by 1 ms scheduler */
-//#define USE_ADAFRUIT_NEO_LIBRARY
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+#define USE_ADAFRUIT_NEO_LIBRARY
+#else
 
 /*
  * NeoPixelBus is already "flickering-free" on ESP32 (with I2S)
  * but the "Core" needs update onto the most recent one
  */
 #define USE_NEOPIXELBUS_LIBRARY
+#endif
 
 #if defined(USE_NEOPIXELBUS_LIBRARY)
 #include <NeoPixelBus.h>
@@ -196,18 +208,54 @@ extern Adafruit_NeoPixel strip;
 #define HELTEC_OLED_PIN_SDA     4
 #define HELTEC_OLED_PIN_SCL     15
 
+// Hardware pin definitions for TTGO T3S3 LORA Board with OLED
+#define T3S3_BATTERY        1   // battery voltage (ADC)
+#define T3S3_USB_DP        20
+#define T3S3_USB_DN        19
+#define T3S3_OLED_PIN_RST  U8X8_PIN_NONE
+#define T3S3_OLED_PIN_SDA  18   // 1st I2C bus
+#define T3S3_OLED_PIN_SCL  17
+#define T3S3_GREEN_LED     37   // active high
+#define T3S3_SD_MISO        2
+#define T3S3_SD_MOSI       11
+#define T3S3_SD_CLK        14
+#define T3S3_SD_CS         13
+#define T3S3_SD_SD1         4
+#define T3S3_SD_SD2        12
+#define T3S3_SX1276_IO0     9
+#define T3S3_SX1276_IO1    33
+#define T3S3_SX1276_IO2    34
+#define T3S3_SX1276_IO3    21
+#define T3S3_SX1276_IO4    10
+#define T3S3_SX1276_IO5    36
+#define T3S3_SX12xx_RST     8
+#define T3S3_SX12xx_SEL     7
+#define T3S3_SX12xx_SCK     5
+#define T3S3_SX12xx_MOSI    6
+#define T3S3_SX12xx_MISO    3
+#define T3S3_SX1262_IO1    33
+#define T3S3_SX1262_BUSY   34
+
+#define PAXCOUNTER_GREEN_LED     25   // active high
+
 extern WebServer server;
 
 #if defined(TBEAM)
 bool on_ext_power(void);
 extern int tbeam_button;
-#endif
 
 void turn_LED_on(void);
 void turn_LED_off(void);
 
 void turn_GNSS_on(void);
 void turn_GNSS_off(void);
+#endif
+
+#if defined(T3S3) || defined(TTGO)
+void green_LED(bool state);
+#endif
+
+void ESP32_post_setup(void);
 
 enum rst_reason
 {
@@ -229,6 +277,7 @@ enum esp32_board_id {
   ESP32_TTGO_T_WATCH,
   ESP32_S2_T8_V1_1,
   ESP32_S3_DEVKIT,
+  ESP32_TTGO_T3S3
 };
 
 struct rst_info

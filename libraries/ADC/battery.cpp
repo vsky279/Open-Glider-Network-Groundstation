@@ -12,7 +12,9 @@ esp_adc_cal_characteristics_t *adc_characs =
     (esp_adc_cal_characteristics_t *)calloc(
         1, sizeof(esp_adc_cal_characteristics_t));
 
-static adc1_channel_t adc_channel = ADC1_GPIO36_CHANNEL;
+//static adc1_channel_t adc_channel = ADC1_GPIO36_CHANNEL;
+static adc1_channel_t adc_channel = (adc1_channel_t) 0;
+
 static const adc_atten_t atten = ADC_ATTEN_DB_11;
 static const adc_unit_t unit = ADC_UNIT_1;
 

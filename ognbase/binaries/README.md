@@ -5,6 +5,18 @@
 Besides the binary here, download the files in the "data" folder: config.json (template), index.html, style.css.
 
 
+## revision MB140
+
+### Major improvements
+
+* Support the LilyGo T3S3 board
+* Re-organize time-relay to be symmetric in both directions
+
+### Minor improvements
+
+Report remote station stats even when it is not sending time to base station
+
+
 ## revision MB139
 
 ### Minor improvements

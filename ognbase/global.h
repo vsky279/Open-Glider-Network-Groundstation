@@ -9,9 +9,14 @@ extern float   ogn_lat;
 extern float   ogn_lon;
 extern int     ogn_alt;
 extern int16_t ogn_geoid_separation;
-extern uint8_t largest_range;
-extern bool    ogn_mobile;
 
+extern int largest_range;
+extern uint32_t farthest_ID;
+extern float farthest_lat;
+extern float farthest_lon;
+extern float farthest_alt;
+
+extern bool    ogn_mobile;
 extern uint8_t  ogn_band;
 extern uint8_t  ogn_protocol_1;
 extern uint8_t  ogn_protocol_2;
@@ -63,3 +68,6 @@ extern bool ognrelay_time;
 extern bool ognreverse_time;
 extern bool ogn_gnsstime;
 extern uint32_t ognrelay_key;
+
+extern bool time_master;
+extern bool time_client;

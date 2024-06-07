@@ -66,7 +66,7 @@ enum
     MSG_TYPE_7,
     MSG_TYPE_ORG,    // 8 = original message was in old protocol
     MSG_TYPE_9,
-    MSG_TYPE_REV,    // 0xA marks reverse-time-sync packet (also remote_reboot packets)
+    MSG_TYPE_A,
     MSG_TYPE_RAW,    // 0xB = relayed in original encryption
     MSG_TYPE_UNA,    // 0xC marks un-acked time-relay packets
     MSG_TYPE_REL,    // 0xD = relayed re-encoded & with a timestamp

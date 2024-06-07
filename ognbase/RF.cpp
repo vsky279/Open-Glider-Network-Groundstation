@@ -266,7 +266,7 @@ void RF_loop()
     /* Thus if no exact time, use channel 0 for receiving FLARM, channel 1 for relay */
 
     if (ogn_band == RF_BAND_EU && ognrelay_enable
-              && !ogn_gnsstime && !reverse_time_sync) {    // remote without exact time
+              && !ogn_gnsstime && !ognreverse_time) {    // remote without exact time
         txchan = 1;
         rxchan = 0;
         RF_OK_until = now_ms + 1000;
@@ -277,7 +277,7 @@ void RF_loop()
 
     /* until time is synched use channel 0 to communicate between relay ends  */
 
-    if (OurTime == 0 || ((ognrelay_enable || ognrelay_base) && ognrelay_time && !time_synched)) {
+    if (OurTime < 1000000 || ((time_master || time_client) && !time_synched)) {
         txchan = 0;
         rxchan = 0;
         RF_OK_until = now_ms + 1000;
@@ -413,7 +413,7 @@ bool RF_Transmit(size_t size, bool wait)
             /* exception: when remote relay is not using GNSS time - in that case */
             /*   in Europe try and transmit on ch1 when FLARMs are not using ch1  */
             /*   - assume this transmission is soon after a reception on ch0      */
-            if (ogn_band == RF_BAND_EU && ognrelay_enable && !ogn_gnsstime) {
+            if (ogn_band == RF_BAND_EU && ognrelay_enable && !ogn_gnsstime && !ognreverse_time) {
                 RF_OK_until = now_ms + 1000;
                 TxTimeMarker = now_ms + SoC->random(800, 995);
                 TxEndMarker  = now_ms + 995;

@@ -98,6 +98,10 @@ static const char stats_templ[] PROGMEM =
  <p>&nbsp;\r\n Traffic packets reported: %d</p>\
  <p>&nbsp;\r\n Aircraft seen ever: %d, today: %d</p>\
  <p>&nbsp;\r\n Largest Range: %d km</p>\
+ <p>&nbsp; &nbsp; &nbsp;\r\n lat: %.4f</p>\
+ <p>&nbsp; &nbsp; &nbsp;\r\n lon: %.4f</p>\
+ <p>&nbsp; &nbsp; &nbsp;\r\n alt: %d</p>\
+ <p>&nbsp; &nbsp; &nbsp;\r\n ID: %06X</p>\
  <p>&nbsp;\r\n Corrupt packets: %d</p>\
  <p>&nbsp;\r\n Other packets: %d</p>\
  <p>&nbsp;\r\n Time-sync restarts: %d</p>\
@@ -357,13 +361,17 @@ void handleDoUpdate(AsyncWebServerRequest* request, const String& filename, size
     }
 }
 
-#define STATS_SIZE 1999
+#define STATS_SIZE 2199
 char stats_html[STATS_SIZE+1];
 
 void update_stats()
 {
   uint32_t zero = 0;
   if (ognrelay_base && ognrelay_time) {
+     if (time_synched)
+        ognopmode = "Base station, got time from remote";
+     else
+        ognopmode = "Base station awaiting time from remote";
      snprintf(stats_html, STATS_SIZE, stats_templ,
         ognopmode,
         uptime, ESP.getFreeHeap(),
@@ -376,6 +384,10 @@ void update_stats()
         (uint32_t) numseen_ever,
         (uint32_t) numseen_today,
         (uint32_t) largest_range,
+        farthest_lat,
+        farthest_lon,
+        (uint32_t) farthest_alt,
+        (uint32_t) farthest_ID,
         (uint32_t) bad_packets_recvd,
         other_packets_recvd,
         (uint32_t) sync_restarts,
@@ -403,28 +415,34 @@ void update_stats()
         (uint32_t) numseen_ever,
         (uint32_t) numseen_today,
         (uint32_t) largest_range,
+        farthest_lat,
+        farthest_lon,
+        (uint32_t) farthest_alt,
+        (uint32_t) farthest_ID,
         (uint32_t) bad_packets_recvd,
         other_packets_recvd,
         zero, zero, zero, zero, zero,
         remote_traffic,
-        zero, zero, zero,
+        (uint32_t) packets_per_minute,
+        zero, zero,
         (uint32_t) remote_pctrel,
         zero, zero, zero, zero, zero,
-        (float) 0.0);
+        remote_voltage);
   } else if (ognrelay_enable) {
-     if (! ogn_gnsstime && ! ognrelay_time) {
-        if (have_reverse_time > 0)
-           ognopmode = "Remote station, time relayed from base";
-        else if (reverse_time_sync)
-           ognopmode = "Remote station, awaiting time from base";
-        else
-           ognopmode = "Remote station, no time source";
+     if (ognreverse_time) {
+         if (time_synched)
+             ognopmode = "Remote station, got time from base";
+         else
+             ognopmode = "Remote station awaiting time from base";
      }
      snprintf(stats_html, STATS_SIZE, stats_templ,
         ognopmode,
         zero, zero, zero, zero, zero,
         zero, zero, zero, zero, zero,
-        zero, zero, zero, zero, zero,
+        zero, zero,
+        (float) 0, (float) 0,
+        zero, zero,
+        zero, zero, zero,
         uptime, ESP.getFreeHeap(),
         packets_failed_crc,
         packets_corrected,
@@ -454,6 +472,10 @@ void update_stats()
         (uint32_t) numseen_ever,
         (uint32_t) numseen_today,
         (uint32_t) largest_range,
+        farthest_lat,
+        farthest_lon,
+        (uint32_t) farthest_alt,
+        (uint32_t) farthest_ID,
         (uint32_t) bad_packets_recvd,
         other_packets_recvd,
         zero, zero, zero, zero, zero, zero, zero,
@@ -461,6 +483,7 @@ void update_stats()
         (float) Battery_voltage());
   }
   stats_html[STATS_SIZE] = '\0';
+Serial.print("stats_html size: ");  Serial.println(strlen(stats_html));
 //Serial.println(stats_html);
 }
 
@@ -687,8 +710,10 @@ void Web_setup(ufo_t* this_aircraft)
         ognopmode = "Remote station, relaying GNSS time";
     else if (ognrelay_enable && ogn_gnsstime)
         ognopmode = "Remote station, time from GNSS"; 
-    else if (ognrelay_enable)
+    else if (ognrelay_enable && ognreverse_time)
         ognopmode = "Remote station, expecting time from base";
+    else if (ognrelay_enable)
+        ognopmode = "Remote station, no time source";
     else if (ogn_gnsstime)
         ognopmode = "Single station, time from GNSS";
     else
@@ -1104,7 +1129,7 @@ void Web_loop(void)
 #if defined(TBEAM)
         values = (ognrelay_base && ognrelay_time) ? remote_sats : gnss.satellites.value();
 #else
-        values = remote_sats;   // was: power
+        values = remote_sats;   // was: power  <<< can put something more useful here
 #endif
         values += "_";
         if (ognrelay_base)
@@ -1113,7 +1138,7 @@ void Web_loop(void)
             values += "--";
         values += "_";
         uint16_t reported_uptime =
-            (ognrelay_base && ognrelay_time && time_synched) ? remote_uptime : uptime;
+            (ognrelay_base && (ognrelay_time || ognreverse_time) && time_synched) ? remote_uptime : uptime;
         if (reported_uptime < 60) {
             values += reported_uptime;
             values += "m";

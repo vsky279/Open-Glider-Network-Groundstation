@@ -265,10 +265,10 @@ legacy_packet_t* p = (legacy_packet_t *) fo.raw;
     if (time_sync_pkt(fo.raw)) {
 //Serial.println("handling time-sync packet");
 
-        if (ognrelay_base)
+        if (time_client)
             set_our_clock(fo.raw);    /* may set time_synched */
 
-        if (ognrelay_enable)
+        else if (time_master)
             sync_alive_pkt(fo.raw);   /* may set time_synched */
 
         return;
@@ -285,7 +285,7 @@ Serial.println("got a reboot packet, but did not reboot");
     }
 
     /* until time-synched any received packets other than time-sync are ignored */
-    if (OurTime == 0 || (ognrelay_time && ! time_synched)) {
+    if (OurTime < 1000000 || ((ognrelay_time || ognreverse_time) && ! time_synched)) {
         // ++other_packets_recvd;
 Serial.println("ignoring non-time-sync packet");
         return;
@@ -329,7 +329,7 @@ Serial.println("too far, rejected");
             cip = &Container[i];
             if (cip->addr == fo.addr) {               /* this aircraft already tracked */
 
-              if (! (ognrelay_enable && !ogn_gnsstime && have_reverse_time==0)) {   /* packet is de-crypted */
+              if (!ognrelay_enable || ogn_gnsstime || ognreverse_time) {   /* packet is de-crypted */
                 /* ignore duplicate FLARM packets (there are many!) */
                 if (fo.altitude == cip->altitude &&
                     fo.latitude == cip->latitude &&
@@ -402,24 +402,20 @@ Serial.println("duplicate packet, rejected");
                 age = 0;                              /* do not overwrite */
             if (! cip->waiting)                       /* treat non-waiting as older */
                 age += ENTRY_EXPIRATION_TIME;
-//if (! (ognrelay_enable && !ogn_gnsstime && have_reverse_time==0)) {  /* could decode these fields */
             if (cip->stealth)
                 age += ENTRY_EXPIRATION_TIME;     /* treat stealth as older yet */
             if (cip->no_track)
                 age += 2 * ENTRY_EXPIRATION_TIME; /* treat no_track as very old */
-//}
             if (age > oldest_age) {
                 oldest_age = age;
                 oldest = i;
             }
         }
 
-//if (! (ognrelay_enable && !ogn_gnsstime && have_reverse_time==0)) {  /* could decode these fields */
         if (oldest_age < ENTRY_EXPIRATION_TIME && fo.stealth)
             return;   /* drop the new traffic instead of replacing old traffic */
         if (oldest_age < 2*ENTRY_EXPIRATION_TIME && fo.no_track)
             return;   /* drop it */
-//}
 
         if (oldest_age > 0) {
             Container[oldest] = fo;        /* overwrites older data */

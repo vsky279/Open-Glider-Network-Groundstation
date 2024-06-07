@@ -92,14 +92,18 @@
 #include <TimeLib.h>
 
 //one of the following needs to be defined in build_opt.h (not here):
-//#define TBEAM
-//#define TTGO
 
-#if !defined(TBEAM) && !defined(TTGO)
+#if !defined(TBEAM) && !defined(TTGO) && !defined(T3S3)
 #error No board defined
 #endif
 
 #if defined(TBEAM) && defined(TTGO)
+#error Multiple boards defined
+#endif
+#if defined(TBEAM) && defined(T3S3)
+#error Multiple boards defined
+#endif
+#if defined(TTGO) && defined(T3S3)
 #error Multiple boards defined
 #endif
 
@@ -221,7 +225,12 @@ void setup()
 
   resetInfo = (rst_info *) SoC->getResetInfoPtr();
 
-  Serial.begin(SERIAL_OUT_BR, SERIAL_OUT_BITS);
+  //Serial.begin(SERIAL_OUT_BR, SERIAL_OUT_BITS);
+  Serial.begin(SERIAL_OUT_BR);    // this may be USBSerial if ESP32S3 & not CDC
+  for (int i=0; i < 20; i++) {if (Serial) break; else delay(100);}
+
+  Serial.println();
+  ESP32_post_setup();   // report detected hardware
   Serial.println();
 
   if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER) {
@@ -262,9 +271,10 @@ void setup()
 
   EEPROM_setup();
 
-  if (! OLED_probe())
+  if (OLED_probe())
+    OLED_setup();
+  else
     Serial.println("OLED not found");
-  OLED_setup();   // should this be conditional on the probe()?
 
   WiFi_setup();
 
@@ -328,12 +338,12 @@ void pre_shutdown()
 void shutdown(const char *msg)
 {
   OLED_enable();
-
   Serial.println(msg);
   OLED_write(msg, 0, 27, true);
-  delay(500);
-
   pre_shutdown();
+  delay(1500);
+  OLED_disable();
+
   SoC_fini();
 }
 
@@ -498,11 +508,11 @@ void ground()
 
   if(!position_is_set){
     Serial.println(F("still no position..."));
-    OLED_write("no position data found", 0, 18, true);
+    OLED_write("no position data", 0, 18, true);
     delay(600);
     OLED_write("waiting for GPS fix", 0, 18, true);
     delay(600);
-    OLED_info(false);
+    OLED_info();
   }
 
   }
@@ -510,9 +520,10 @@ void ground()
 #else
 
   if(!position_is_set){
-    Serial.println(F("TTGO - no position"));
+    Serial.println(F(">>> no position data found"));
     OLED_write("no position data found", 0, 18, true);
-    delay(600);
+    delay(1000);
+    OLED_info();
   }
 
 #endif
@@ -638,7 +649,7 @@ void ground()
       }
       // OLED_info(position_is_set);
       if (! OLED_blank)
-        OLED_info(false);
+        OLED_info();
       ExportTimeOGN = seconds();
     }
 
@@ -737,7 +748,7 @@ void ground()
   if (TimeToExportOGN() && ognrelay_enable) {
     // OLED_info(position_is_set);
     if (! OLED_blank)
-      OLED_info(false);
+      OLED_info();
     ExportTimeOGN = seconds();
   }
 
@@ -781,8 +792,8 @@ void ground()
 
 #ifdef TBEAM
       turn_LED_off();   /* turn off bright blue LED to save power and signal end of WiFi */
-      OLED_disable();
 #endif
+      OLED_disable();
       if (settings->nmea_p)
           StdOut.println(F("$PSRFS,WIFI_OFF"));
       Serial.println(F("[ino] shutting down WiFI & LED..."));
@@ -844,7 +855,7 @@ sleep_check()
 
     bool low_bat = false;
     static uint32_t low_bat_time = 0;
-#if defined(TBEAM)
+//#if defined(TBEAM)
     if (Battery_voltage() < 3.65 && Battery_voltage() > 2.0) {
         low_bat = true;
         if (low_bat_time == 0) {
@@ -857,7 +868,7 @@ sleep_check()
 //        if (! gnss_ready)      // UBLOX NEO-6M refuses to sleep until it has a fix
 //            low_bat = false;
     }
-#endif
+//#endif
 
     bool will_sleep = false;
 

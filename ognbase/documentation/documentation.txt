@@ -3,7 +3,7 @@ Documentation for OGNbase
 
 By Moshe Braner
 
-This version last updated May 22 2024 to fit software version MB139
+This version last updated June 7 2024 to fit software version MB140
 
 
 HISTORY
@@ -25,7 +25,7 @@ Future development may include support for other radio protocols besides FLARM, 
 
 HARDWARE AND SOFTWARE PLATFORMS
 
-At this time OGNbase runs specifically on devices based on the ESP32 "system on a chip" CPU.  Namely two devices from the LilyGo (TTGO) company, the "T-Beam" (with a GNSS module) and the "Paxcounter" (without GNSS).  These devices use so little power that the "remote relay" station can run on a solar panel about 20 cm (8 inches) across.  They can go into "sleep mode" at night to conserve power, and automatically wake up the next day.
+At this time OGNbase runs specifically on devices based on the ESP32 "system on a chip" CPU.  Namely three devices from the LilyGo (TTGO) company, the "T-Beam" (with a GNSS module), and the "T3S3" or the LORA32 "Paxcounter" (without GNSS).  These devices use so little power that the "remote relay" station can run on a solar panel about 20 cm (8 inches) across.  They can go into "sleep mode" at night to conserve power, and automatically wake up the next day.
 
 Software for the ESP32 is "embedded", i.e., runs on the bare hardware without an operating system, although it incorporates software libraries from the hardware manufacturers and from third parties.  The software is developed on other systems (e.g., Linux or Windows) and then copied ("flashed") into the flash memory of the IoT devices, via a USB cable, Wifi, or an SD card.  The size of this compiled firmware is less than 2 megabytes, as compared with about 4000 megabytes (4GB) for the "image" installed on a Raspberry Pi for a conventional OGN ground station (which includes the Linux operating system within the image).
 
@@ -44,34 +44,34 @@ HOW TO USE OGNBASE
 
 Hardware choices
 
-The LilyGo "T-Beam" includes a GNSS (GPS) module and can also be used for the SoftRF FLARM-compatible collision avoidance system.  It also has an integrated holder for an 18650 li-ion battery.  Be sure to get the model for the frequency used in your region, e.g., 915 MHz in North America and 868 MHz in Europe.  Only the older "T-Beam" is supported at this time, not the "T-Beam Supreme".
-https://www.lilygo.cc/search?q=t-beam&options%5Bprefix%5D=last
-https://www.amazon.com/LILYGO-Meshtastic-Development-CH9102F-Soldered/dp/B09VLFQQG4
-https://www.amazon.com/LILYGO-Meshtastic-Development-CH9102F-Soldered/dp/B0B63FV7FR
+The LilyGo (TTGO) "T3S3" and "Paxcounter" do not have a GNSS module, but can be used in a relay setup, or using the time data from internet (NTP) servers.  The recommended current product is the T3S3.  It is available with either the sx1276 or sx1262 radio module - the latter is theoretically a better receiver.  Either the 915 or 868 MHz version will do, they are identical AFAIK other than the little antenna which will not be used anyway.
+https://www.lilygo.cc/products/t3s3-v1-0?variant=42740446331061
+https://www.lilygo.cc/products/t3s3-v1-0?variant=42586879721653
+https://www.lilygo.cc/products/t3s3-v1-0?variant=42740446298293
+https://www.lilygo.cc/products/t3s3-v1-0?variant=42586879688885
+
+The LilyGo "T-Beam" includes a GNSS (GPS) module and can also be used for the SoftRF FLARM-compatible collision avoidance system.  It also has an integrated holder for an 18650 li-ion battery.  Be sure to get the model for the frequency used in your region, e.g., 915 MHz in North America and 868 MHz in Europe.  Only the plain (older) "T-Beam" is supported at this time, not the "T-Beam Supreme".
 
 Note: to turn off the T-Beam, press and hold the button closest to the USB jack until the dim red LED turns off.
 
-The LilyGo (TTGO) "Paxcounter" does not have a GNSS module, but can be used in a relay setup, or using the time data from internet (NTP) servers.  Its reception range may be shorter than the T-Beam's, this is under investigation.
-https://www.lilygo.cc/products/lora3?variant=43365007425717
-https://www.amazon.com/LILYGO-LoRa32-915Mhz-Development-Paxcounter-Module/dp/B09SHRWVNB
-
-Note: One needs to install different binaries on the two hardware models, due to the absence of "PSRAM" on the Paxcounter.
+Note: One needs to install different firmware binaries on the different hardware models.
 
 Other hardware models could potentially be used, but have not been tested at this point.  See the long list of models that SoftRF runs on:  https://github.com/lyusupov/SoftRF#models
 
-The remote station of a relay setup can run on solar power.  The T-Beam needs an 18650 lithium ion battery, and includes a circuit for regulating the charging of the battery from a 5V source via the USB jack. Alternatively, can power the T-Beam or Paxcounter using a 5V USB "power bank", which in turn is charged from the solar panel, but then the OGNbase software cannot detect a medium-low-battery situation.  A step-down module from the voltage of the solar panel to 5 volts should be placed between the solar panel and the USB charging jack.  A solar charging current of only 100 mA or so during sunlight hours should suffice, especially if the software is set up to put the processor into sleep mode at night or when there is no glider traffic.
+The remote station of a relay setup can run on solar power.  The T-Beam needs an 18650 lithium ion battery, and includes a circuit for regulating the charging of the battery from a 5V source via the USB jack.  The T3S3 has a jack for connecting an off-board lithium battery, and includes a charge controller chip.  Alternatively, can power the board using a 5V USB "power bank", which in turn is charged from the solar panel, but then the OGNbase software cannot detect a medium-low-battery situation.  In either case, a step-down module from the voltage of the solar panel to 5 volts should be placed between the solar panel and the USB charging jack.  A solar charging current of only 100 mA or so during sunlight hours should suffice, especially if the software is set up to put the processor into sleep mode at night or when there is no glider traffic.
 
 A better antenna is needed than the tiny whip that is included with these boards.  See OGN guide pages for recommendations.  For example:  https://www.amazon.com/Signalplus-Omni-Directional-Antenna-824-960MHZ-Outdoor-Verizon/dp/B0917CPP84
-For a standalone station, or the remote station of a relay setup, an omnidirectional antenna is needed, to be able to receive signals from gliders in any direction.  For a base station with one remote station, a directional antenna pointed towards the remote station may work better than an omnidirectional once.  Either way, the antenna is much more expensive than the circuit board!  Maybe if the "Helium mining" craze dies out, there will be used antennas on the market.
+For a standalone station, or the remote station of a relay setup, an omnidirectional antenna is needed, to be able to receive signals from gliders in any direction.  For a base station with one remote station, a directional antenna pointed towards the remote station may work better than an omnidirectional once.  Either way, the antenna is much more expensive than the circuit board!  Now that the "Helium mining" craze is fading, there are used and closeout antennas on the market.
 
 
 Installing firmware for the first time
 
 The T-Beam often arrives from the factory with SoftRF installed.  That allows installation of OGNbase, just like updated versions of SoftRF, via Wifi.  See instructions here: https://github.com/lyusupov/SoftRF/wiki/Firmware-update-%28Web-method%29#esp32
 
-On the Paxcounter, or a T-Beam without a working version of SoftRF or OGNbase already installed, OGNbase needs to be installed via the USB jack.  Follow the same instructions as for SoftRF, here: https://github.com/lyusupov/SoftRF/blob/master/software/firmware/binaries/README.md#esp32 - substituting the OGNbase .bin file for the SoftRF.ino.bin file.  A ZIP file with the needed files and more detailed instructions is available here: https://github.com/moshe-braner/Open-Glider-Network-Groundstation/tree/main/ognbase/binaries
+Remember to use the correct OGNbase .bin file for the hardware, there are a T3S3 version,  T-Beam version, and a "TTGO" version for the Paxcounter.
 
-Remember to use the correct OGNbase .bin file for the hardware, there are a T-Beam version, and a "TTGO" version for the Paxcounter.
+On the T3S3, Paxcounter, or a T-Beam without a working version of SoftRF or OGNbase already installed, OGNbase needs to be initially installed via the USB jack.  For the T-Beam or paxcounter, follow the same instructions as for SoftRF, here: https://github.com/lyusupov/SoftRF/blob/master/software/firmware/binaries/README.md#esp32 - substituting the OGNbase .bin file for the SoftRF.ino.bin file.  A ZIP file with the needed files and more detailed instructions is available here: https://github.com/moshe-braner/Open-Glider-Network-Groundstation/tree/main/ognbase/binaries
+For the T3S3 need different files and flash addresses, see the file T3S3_flashing.zip in that same folder.  The T3S3 does not have a USB-serial adapter chip like the older boards, instead the ESP32-S3 processor has a built-in USB CDC interface.  Windows 10 knows to assign it a "COM port" that can then be selected within the flashing tool.
 
 After firmware installation OGNbase will start up waiting for upload of a configuration file.  The next two sections describe the configuration file, and the web interface that allows uploading it and other files.  Note that a later update of the OGNbase firmware normally does not require uploading the configuration file again.  The configuration file, and other small files, remain intact in the small file-storage area (called "SPIFFS") reserved in the flash memory of the device.  But, some firmware version updates require the config file and the index.html file to be updated too, in which case should upload these files first and then do the firmware update.
 
@@ -233,7 +233,9 @@ The web interface can be set up to be accessible remotely.  Choose a "webport" i
 
 OLED display
 
-The small display that is part of the Paxcounter hardware, and can optionally be soldered to the T-Beam hardware, shows some information about OGNbase operation.  It cycles between 3 or 4 pages.  And sometimes clears the display and shows just one line for a short time.  It shows the number of radio packets received, the wifi network connected to and the IP address, the OGNbase operational mode, the GNSS satellite reception status, current time, station location, and so forth.  Note: on the T-Beam now now has the choice of attaching the OLED display to pins 21,22 or to pins 2,13, the software automatically detects it.
+The small display that is part of the T3S3 and Paxcounter hardware, and can optionally be soldered to the T-Beam hardware, shows some information about OGNbase operation.  It cycles between 3 or 4 pages.  And sometimes clears the display and shows just one line for a short time.  It shows the number of radio packets received, the wifi network connected to and the IP address, the OGNbase operational mode, the GNSS satellite reception status, current time, station location, and so forth.  The OLED is turned off after 10 minutes of operation.  Note: on the T-Beam now now has the choice of attaching the OLED display to pins 21,22 or to pins 2,13, the software automatically detects it.
+
+On the T3S3 board there is also a tiny green LED (besides the blue one which is always lit).  OGNbase will turn on the green LED once NTP time is available (in single-station mode) or once the two stations' time is synchronized (in two-station mode, in the base station only).
 
 
 Serial output
@@ -243,13 +245,13 @@ The USB port of the device can be connected to a computer, and by running a suit
 
 Updating the OGNbase firmware
 
-There are 3 ways to "flash" a new (or old) version of the OGNbase firmware, replacing the existing version on the device.  Remember to use the correct OGNbase .bin file for the hardware, there are a T-Beam version, and a "TTGO" version for the Paxcounter.
+There are 3 ways to "flash" a new (or old) version of the OGNbase firmware, replacing the existing version on the device.  Remember to use the correct OGNbase .bin file for the hardware, there are a T3S3 version, a T-Beam version, and a "TTGO" version for the Paxcounter.
 
 It may be necessary to replace the configuration and/or index.html files at the same time as updating the firmware, since new versions of the firmware may expect different or additional settings.  The best approach is to upload the new files first, and then update the firmware, all within the same session in the web interface, without rebooting until after the firmware update.  One can optionally clear the stored files via the "clear" button in the status page first.  But if you reboot with the files cleared, you will need to connect to the wifi network generated by the device in order to upload the new files, a bit annoying.  The worst case is if the old files are there, it is possible that the new version of OGNbase firmware will not be able to fully start up the web interface, and one must then re-flash the firmware via the USB port.  OGNbase tries to avoid that situation by checking this line in the index.html file:   meta name="OGNbase-Version" content="MB104"  - if the version is wrong it ignores the index.html file and loads the upload-files page.  Similarly, OGNbase checks for the same version number near the top of the config.json file.  (If the version number is wrong, it will still try and connect to the wifi network specified in it, to preserve remote access.)  That is why it is best to upload the files first before updating the firmware.
 
 "On The Air" (OTA) firmware update is done via WiFi, whether within the network the device connects to as directed by the existing confifuration, or via the hotspot it generates.  In a web browser, click the "update" button in the status page and then select the .bin file to upload, similar to the uploading of configuration files.  Once you click "update" it takes about a minute, do not disturb it.  After that, you may need to press the reset button on the device (or power it off and on again).
 
-On the Paxcounter hardware it is also possible to update the firmware (and/or configuration files) via an SD card.  Put the files on the SD card as seen here: https://github.com/moshe-braner/Open-Glider-Network-Groundstation/tree/main/ognbase/sdcard - all in the root folder, except for the "ognbase.bin" firmware file which should be in the "firmware" folder.  Insert the SD card into the SD card slot on the Paxcounter and power it on.  The OLED display will show what it is doing.
+On the T3S3 or Paxcounter hardware it is also possible to update the firmware (and/or configuration files) via an SD card.   Format the SD card as FAT or FAT32, and put the files on it as seen here: https://github.com/moshe-braner/Open-Glider-Network-Groundstation/tree/main/ognbase/sdcard - all in the root folder, except for the "ognbase.bin" firmware file which should be in the "firmware" folder.  Insert the SD card into the SD card slot on the Paxcounter and power it on.  The OLED display will show what it is doing.  Upon successful firmware update the ognbase.bin file is deleted from the SD card.
 
 Finally, firmware update via the USB port is always possible, see the section above about "Installing firmware for the first time".
 
@@ -431,14 +433,22 @@ SoftRF (from version MB09x) optionally relays radio packets from landed (or far 
 
 Noise measurement
 
-Version MB139 introduced measurement of the background radio noise (whether random or unwanted signals), for the sx1276 and sx1262 radio types.  This serves two purposes:  The SNR reported to OGN used to be the RSSI minus a constant.  Now it is the RSSI of the signal minus the RSSI of the background noise sampled several times in the preceding 30 milliseconds or so.  E.g., if you add an LNA between the antenna and the device OGNbase runs on, and it makes the signal stronger, but also makes the noise floor higher, the reported SNR is not biased.  The sampled noise level can also be collected over time for comparison between different antenna locations, LNA vs. no-LNA, etc.  A sample of the RSSI (dBm) is read every 7 ms.  Up to 4096 samples are collected in each channel - with 65 channels in North America, it takes hours to reach that maximum.  To turn on the data collection, add this line to the "radio" section of config.json:
+Version MB139 introduced measurement of the background radio noise (whether random or unwanted signals), for the sx1276 and sx1262 radio types.  This serves two purposes:  The SNR reported to OGN used to be the RSSI minus a constant.  Now it is the RSSI of the signal minus the RSSI of the background noise sampled several times in the preceding 30 milliseconds or so.  E.g., if you add an LNA between the antenna and the device OGNbase runs on, and it makes the signal stronger, but also makes the noise floor higher, the reported SNR is not biased.  The sampled noise level can also be collected over time for comparison between different antenna locations, LNA vs. no-LNA, etc.  A sample of the RSSI (dBm) is read every 7 ms.  Up to 4096 samples are collected in each channel - with 65 channels in North America, it takes a while to reach that maximum.  To turn on the data collection, add this line to the "radio" section of config.json:
    "noise":2
 or
    "noise":1
-The value 2 means: collect noise samples at all times, but only if the receiver was already set up previously, and no packet has arrived meanwhile.  The value 1 means: collect noise samples only between 240 (after time slot 1 ended) and 390 (before time slot 0 starts) ms after PPS - that is, during a period when valid radio packets cannot arrive.  Use the value 0 (or omit that line) to not collect noise data.  To extract the data, access the URL "base_url/noise" within the web interface (where "base_url" is the URL you use to access the status page).  Then you can "save page as".  When the /noise page is accessed, the data is also reset to all zeros and new data is collected afterwards.  The data is plain text, comma separated, with the fields: channel number (0-64), count of samples within that channel, and the sum of the RSSI readings in that channel.  Divide the sum by the count to get the average reading, e.g., with 451 samples and a sum of -49429 that is -109.6 dBm.
+The value 2 means: collect noise samples at all times, but only if the receiver was already set up previously, and no packet has arrived meanwhile.  The value 1 means: collect noise samples only between 240 and 390 ms after PPS - that is, during a period when valid radio packets cannot arrive (after time slot 1 ended, and before time slot 0 starts).  Use the value 0 (or omit that line) to not collect noise data.  To extract the data, access the URL "base_url/noise" within the web interface (where "base_url" is the URL you use to access the status page).  Then you can "save page as".  When the /noise page is accessed, the data is also reset to all zeros and new data is collected afterwards.  The data is plain text, comma separated, with the fields: channel number (0-64), count of samples within that channel, and the sum of the RSSI readings in that channel.  Divide the sum by the count to get the average reading, e.g., with 451 samples and a sum of -49429 that is -109.6 dBm.
 
 
 Compiling OGNbase
 
-At this time I compile it under Ubuntu 20.04 using the Arduino IDE verion 1.8.16, and the ESP32 board support version 2.0.3.  If you use any other versions, especially of the ESP32 support, expect to spend some time fixing library incompatibilities.  The file build_opt.h must include either -DTTGO or -DTBEAM.  Disable PSRAM when compiling for TTGO.
-
+Until recently I compiled it under Ubuntu 20.04 using the Arduino IDE verion 1.8.16, and the ESP32 board support version 2.0.3.  Bugs in the ESP32-S3 support in 2.0.3 forced me to shift to the ESP32 board support version 2.0.17, using the Arduino IDE verion 1.8.19 running on Windows 10.  The file build_opt.h must include either -DT3S3 or -DTTGO or -DTBEAM.  Disable PSRAM when compiling for TTGO.  For the T3S3 use these settings:
+Board: ESP32S3 dev module
+USB method: hardware CDC
+USB CDC on boot: enabled
+MSC and DFU: disabled
+CPU: 80 MHz
+Flash: QIO 80 MHz
+Flash size: 4MB
+Partition: minimal SPIFFS with OTA
+PSRAM: QSPI
