@@ -9,9 +9,21 @@ Besides the binary here, download the files in the "data" folder: config.json (t
 
 ### Major improvements
 
+Corrected the processing of some data fields that were not being passed correctly in the 2-station mode
+
+### Minor improvements
+
+* Report to OGN the SNR (and BEC) of the original signal received by the remote station
+* Removed the "ignore no-track" setting - no-track is never reported, stealth is always reported
+
+
+## revision MB140
+
+### Major improvements
+
 * Support the LilyGo T3S3 board
 * Re-organize time-relay to be symmetric in both directions
-
+ 
 ### Minor improvements
 
 Report remote station stats even when it is not sending time to base station

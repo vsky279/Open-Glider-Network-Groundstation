@@ -50,8 +50,6 @@
       "port":14580,
       "debug":false,
       "debugport":12000,
-      "itrackbit":false,
-      "istealthbit":false,
       "range":200,
       "hiderelayed":true
    },

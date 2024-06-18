@@ -3,7 +3,7 @@ Documentation for OGNbase
 
 By Moshe Braner
 
-This version last updated June 7 2024 to fit software version MB140
+This version last updated June 11 2024 to fit software version MB141
 
 
 HISTORY
@@ -144,8 +144,6 @@ The "aprs" section is about the OGN server that OGNbase will send APRS data pack
       "port":14580,
       "debug":false,
       "debugport":12000,
-      "itrackbit":false,
-      "istealthbit":false,
       "range":200
       "hiderelayed":true
    },
@@ -348,7 +346,7 @@ OGNbase receives FLARM signals as they arrive, and keeps a list of aircraft alre
 
 The following aircraft are NOT reported to OGN:
 * those who have been last heard from more than 60 seconds ago ("expired")
-* those who have the no-track flag set, subject to the OGNbase setting to ignore the flag
+* those who have the no-track flag set (the OGNbase setting to ignore the flag is now disabled)
 * those who are farther away from the station than the "range" setting
 * FLARM packets that look like GNSS noise or corrupted transmission - location shifted too far too fast
 

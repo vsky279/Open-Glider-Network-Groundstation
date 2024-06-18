@@ -981,11 +981,11 @@ void Web_setup(ufo_t* this_aircraft)
         if (request->hasParam("ogn_nmea"))
             settings->nmea_out = request->getParam("ogn_nmea")->value().toInt();
 
-        if (request->hasParam("ogn_no_track_bit"))
-            settings->no_track = request->getParam("ogn_no_track_bit")->value().toInt();
-
-        if (request->hasParam("ogn_stealth_bit"))
-            settings->stealth = request->getParam("ogn_stealth_bit")->value().toInt();
+//        if (request->hasParam("ogn_no_track_bit"))
+//            settings->no_track = request->getParam("ogn_no_track_bit")->value().toInt();
+//
+//        if (request->hasParam("ogn_stealth_bit"))
+//            settings->stealth = request->getParam("ogn_stealth_bit")->value().toInt();
 
         if (request->hasParam("ogn_aprs_debug"))
             ogn_debug= request->getParam("ogn_aprs_debug")->value().toInt();
@@ -1014,11 +1014,11 @@ void Web_setup(ufo_t* this_aircraft)
             }
         }
 
-        if (request->hasParam("ogn_ignore_track"))
-            ogn_itrackbit= request->getParam("ogn_ignore_track")->value().toInt();
-
-        if (request->hasParam("ogn_ignore_stealth"))
-            ogn_istealthbit= request->getParam("ogn_ignore_stealth")->value().toInt();
+//        if (request->hasParam("ogn_ignore_track"))
+//            ogn_itrackbit= request->getParam("ogn_ignore_track")->value().toInt();
+//
+//        if (request->hasParam("ogn_ignore_stealth"))
+//            ogn_istealthbit= request->getParam("ogn_ignore_stealth")->value().toInt();
 
         if (request->hasParam("ogn_deep_sleep"))
             ogn_sleepmode = request->getParam("ogn_deep_sleep")->value().toInt();

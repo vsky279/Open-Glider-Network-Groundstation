@@ -144,14 +144,16 @@ typedef struct legacy_packet
     unsigned int stealth : 1;
     unsigned int no_track : 1;
     unsigned int parity : 1;
-    unsigned int gps : 12;
+    unsigned int gpsA : 6;
+    unsigned int gpsB : 6;
     unsigned int aircraft_type : 4;
     /********************/
     unsigned int lat : 19;
     unsigned int alt : 13;
     /********************/
     unsigned int lon : 20;
-    unsigned int _unk3 : 10;
+    unsigned int snr : 7;
+    unsigned int bec : 3;
     unsigned int smult : 2;
     /********************/
     int8_t ns[4];

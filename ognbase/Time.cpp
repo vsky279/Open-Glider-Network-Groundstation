@@ -369,14 +369,18 @@ void sync_alive_pkt(uint8_t *raw)
       return;                                   /* failed security check */
     }
 
+    time_t ClientTime;
+    uint32_t ClientOffset;
+    int32_t timediff;
+
     if (p[1] == 0) {   /* this packet reports intended sleep */
 
         remote_sleep_length = (uint16_t)(p[2] & 0x0FFF);   /* minutes */
 
     } else {
 
-        time_t ClientTime = (time_t) p[1];
-        uint32_t ClientOffset = (p[2] & 0x0FFF);
+        ClientTime = (time_t) p[1];
+        ClientOffset = (p[2] & 0x0FFF);
         ClientOffset += ADJ_FOR_TRANSMISSION_DELAY;
         if (! ognreverse_time)  ClientOffset += 40;
         if (ClientOffset > 1000) {
@@ -389,16 +393,7 @@ void sync_alive_pkt(uint8_t *raw)
             ++ClientTime;
             client_ref_time += 1000;
         }
-
-        if (time_synched && p[1] != p[2]) {
-
-            if (ClientTime == OurTime) {
-                int32_t timediff = (int32_t)client_ref_time - (int32_t)ref_time_ms;
-                Serial.printf("client-master timediff: %d ms\r\n", timediff);
-            } else if (when_synched - when_sync_sent < 1000) {
-                Serial.printf("client time: %d != master time: %d ??\r\n", ClientTime, OurTime);
-            }
-        }
+        timediff = (int32_t)client_ref_time - (int32_t)ref_time_ms;
 
         if (ognrelay_base)
             get_remote_stats(p);
@@ -408,8 +403,10 @@ void sync_alive_pkt(uint8_t *raw)
     if (delay < 1000) {
         ++ack_packets_recvd;
         total_delays += delay;
-        Serial.printf("received timesync ack: ms=%d, time=%d, ofst=%d, avg round %d ms\r\n",
-           when_synched, p[1], p[2], total_delays/ack_packets_recvd);
+        Serial.printf("received timesync ack: ms=%d, time=%d, diff=%d ms, avg round %d ms\r\n",
+           when_synched, p[1], timediff, total_delays/ack_packets_recvd);
+        if (ClientTime != OurTime && time_synched && p[1] != p[2])
+            Serial.printf("client time: %d != master time: %d ??\r\n", ClientTime, OurTime);
     }
 
     bool client_ack = (pkt->msg_type == MSG_TYPE_ACK);        /* client says it got ack-ack */

@@ -52,7 +52,7 @@
 #include "global.h"
 
 #include <battery.h>
-#include <U8x8lib.h>
+//#include <U8x8lib.h>
 
 // RFM95W pin mapping
 lmic_pinmap lmic_pins = {
@@ -598,8 +598,8 @@ void green_LED(bool state)
 #elif defined(TTGO)
     digitalWrite(PAXCOUNTER_GREEN_LED, state? HIGH : LOW);
 #endif
-Serial.print("green LED -> ");
-Serial.println(state);
+//Serial.print("green LED -> ");
+//Serial.println(state);
 }
 #endif
 

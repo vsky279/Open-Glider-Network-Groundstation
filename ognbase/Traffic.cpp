@@ -19,6 +19,7 @@
  */
 
 #include "Traffic.h"
+#include "ApproxMath.h"
 #include "EEPROM.h"
 #include "RF.h"
 #include "Time.h"
@@ -243,11 +244,9 @@ void calc_distance(ufo_t* fop)
 //                                       ThisAircraft.longitude,
 //                                       fop->latitude,
 //                                       fop->longitude);
-  static float coslat = 0;
-  if (coslat == 0)  coslat = cosf(ThisAircraft.latitude * 0.0174533);
   float dy = 111300.0 * (fop->latitude - ThisAircraft.latitude);     /* meters */
-  float dx = 111300.0 * (fop->longitude - ThisAircraft.longitude) * coslat;
-  fop->distance = sqrtf(dx*dx + dy*dy);
+  float dx = 111300.0 * (fop->longitude - ThisAircraft.longitude) * CosLat(ThisAircraft.latitude);
+  fop->distance = approxHypotenuse(dx, dy);
 }
 
 void ParseData()
@@ -450,14 +449,6 @@ void Traffic_setup()
 
 void Traffic_Relay(ufo_t* fop)
 {
-    if (settings->no_track || settings->stealth || ogn_itrackbit || ogn_istealthbit) {
-        fop->waiting = false;
-        fop->timereported = OurTime;
-        ++traffic_packets_relayed;      /* pretend relaying - for testing */
-//Serial.println("pretend relaying...");
-        return;
-    }
-
     if (RF_Transmit(RF_Encode(fop), true)) {   /* success transmitting */
         fop->waiting = false;
 //Serial.printf("... relayed at %d, prev report %d, timestamp %02d:%02d:%02d\r\n",

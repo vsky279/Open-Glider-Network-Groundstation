@@ -666,8 +666,8 @@ bool OGN_save_config(void)
     obj["aprs"]["port"]     = ogn_port;
     obj["aprs"]["debug"]       = ogn_debug;
     obj["aprs"]["debugport"]   = ogn_debugport;
-    obj["aprs"]["itrackbit"]   = ogn_itrackbit;
-    obj["aprs"]["istealthbit"] = ogn_istealthbit;
+    //obj["aprs"]["itrackbit"]   = ogn_itrackbit;
+    //obj["aprs"]["istealthbit"] = ogn_istealthbit;
     obj["aprs"]["range"]       = ogn_range;
     obj["aprs"]["hiderelayed"] = ogn_hiderelayed;
 

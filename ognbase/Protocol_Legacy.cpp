@@ -25,6 +25,7 @@
 
 #include "SoftRF.h"
 #include "global.h"
+#include "ApproxMath.h"
 #include "Time.h"
 #include "RF.h"
 #include "Protocol_Legacy.h"
@@ -267,6 +268,7 @@ bool latest_decode(void* buffer, ufo_t* this_aircraft, ufo_t* fop)
         // restore original contents of first word in packet
         pkt->_unk1 = 0;
         pkt->msg_type = MSG_TYPE_NEW;
+        fop->snr = 0;   // meaning not available - remote didn't add into relayed packet
     }
 
     /* decrypt packet */
@@ -430,15 +432,14 @@ Serial.printf("received non-traffic pkt, msg_type=%X\r\n", pkt->msg_type);
 
     } else if (ognrelay_base) {
 
-        if (pkt->msg_type == MSG_TYPE_ORG) {    // original was in old protocol
-            ++old_protocol_packets_recvd;
-            pkt->msg_type = MSG_TYPE_REL;
-        }
-        if (pkt->msg_type != MSG_TYPE_RAW && pkt->msg_type != MSG_TYPE_REL) {  /* other than relayed packets */
+        if (pkt->msg_type != MSG_TYPE_REL && pkt->msg_type != MSG_TYPE_ORG && pkt->msg_type != MSG_TYPE_RAW) {
+          // other than relayed packets
           ++other_packets_recvd;
 Serial.printf("received non-relay pkt, msg_type=%X, addr=%06X\r\n", pkt->msg_type, pkt->addr);
           return false;          /* ignore normal packets */
         }
+        if (pkt->msg_type == MSG_TYPE_ORG)                      // original was in old protocol
+            ++old_protocol_packets_recvd;
         /* fall through and decode relayed packets */
 
     } else {    /* single station mode */
@@ -458,45 +459,23 @@ Serial.printf("received non-relay pkt, msg_type=%X, addr=%06X\r\n", pkt->msg_typ
 
     if (ognrelay_enable && ! ogn_gnsstime && ! ognreverse_time) {
         /* no time data, cannot decrypt */
-        fop->timestamp = timestamp;
-        fop->stealth  = 0;          /* for queueing in traffic.cpp */
-        fop->no_track = 0;
-//Serial.println("returning un-decrypted packet");
-        return true;
-    }
-
-    //if (pkt->msg_type == MSG_TYPE_NEW) {
-    //    if (ognrelay_enable && !ogn_gnsstime && !ognreverse_time)
-    //        return true;        // will relay the encrypted packet
-    //}
-
-#if 1
-    if (pkt->msg_type == MSG_TYPE_NEW || pkt->msg_type == MSG_TYPE_RAW) {
-        // original packet in new protocol, or relayed in original encryption
-        return latest_decode(buffer, this_aircraft, fop);
-    }
-#endif
-
-#if 0
-    if (pkt->addr_type > 3) {
-        // probably air-relayed by SoftRF
-        //   but do some sanity checks below
-        ++air_relayed_packets_recvd;
-        if (!ognrelay_enable) {
-            fop->relayed = true;
-            pkt->addr_type &= 3;
+        if (pkt->msg_type == MSG_TYPE_NEW) {
+            fop->timestamp = timestamp;
+            fop->stealth  = 0;          /* for queueing in traffic.cpp */
+            fop->no_track = 0;
+            return true;
         }
+        return false;
     }
 
     if (pkt->msg_type == MSG_TYPE_NEW || pkt->msg_type == MSG_TYPE_RAW) {
         // original packet in new protocol, or relayed in original encryption
         return latest_decode(buffer, this_aircraft, fop);
     }
-#endif
 
     fop->msg_type = MSG_TYPE_OLD;   // old protocol, either original or relayed
 
-    bool time_sent = (ognrelay_base && (pkt->msg_type == MSG_TYPE_REL));
+    bool time_sent = (ognrelay_base && (pkt->msg_type == MSG_TYPE_REL || pkt->msg_type == MSG_TYPE_ORG));
           // relayed with timestamp from remote station
 
     /* decrypt packet */
@@ -509,28 +488,29 @@ Serial.printf("received non-relay pkt, msg_type=%X, addr=%06X\r\n", pkt->msg_typ
     }
     uint32_t *p = (uint32_t *) pkt;
     btea(p+1, -5, key);
-    
+
     /* check data integrity */
     if (time_sent) {
         /* compute checksum and reject packet if fails */
         uint16_t sentsum = ((uint16_t) pkt->ew[2] << 7) | (uint16_t) (pkt->ew[3] & 0x7F);
-        pkt->ew[2] = 0;
+        pkt->ew[2] = 0;   // for the checksum computation
         pkt->ew[3] = 0;
         uint16_t checksum=0;
         for (int ndx = 0; ndx < sizeof (legacy_packet_t); ndx++)
             checksum += (*(((unsigned char *) pkt) + ndx));
         if (checksum != sentsum) {
-Serial.println("bad checksum in relayed packet");
+                Serial.println("bad checksum in relayed packet");
                 return false;
         }
 
-        unsigned int bec_rssi = (unsigned int) pkt->ew[1];     /* sent from remote */
-        fop->bec  = (bec_rssi >> 6) & 0x03;
-        fop->rssi = (bec_rssi & 0x3F);
-        fop->rssi -= 101;
+        /* reception stats sent from remote */
+        fop->bec = pkt->bec;
+        fop->snr = pkt->snr;
     }
 
     // fully decode the packet
+
+    fop->aircraft_type = pkt->aircraft_type;
 
     uint16_t vs_u16 = pkt->vs;
     int16_t  vs_i16 = (int16_t) (vs_u16 | (vs_u16 & (1 << 9) ? 0xFC00U : 0));
@@ -578,25 +558,25 @@ Serial.println("bad checksum in relayed packet");
      || fabs(lon - this_aircraft->longitude) > 3.0)
         return false;
 
-    int32_t ns = (((int32_t) pkt->ns[0]) << pkt->smult);      /* quarter-meters per sec */
-    int32_t ew = (((int32_t) pkt->ew[0]) << pkt->smult);
-    float speed4 = sqrtf((float)(ew * ew + ns * ns));
+    float nsf = (float)(((int32_t) pkt->ns[0]) << pkt->smult);      /* quarter-meters per sec */
+    float ewf = (float)(((int32_t) pkt->ew[0]) << pkt->smult);
+    float speed4 = approxHypotenuse(nsf, ewf);
 
     float direction = 0;
     float turnrate = 0;
     if (speed4 > 0)
     {
-        direction = atan2f(ew, ns) * 180.0 / PI; /* -180 ... 180 */
-        ns = (((int32_t) pkt->ns[1]) << pkt->smult);
-        ew = (((int32_t) pkt->ew[1]) << pkt->smult);
-        turnrate = (atan2f(ew, ns) * 180.0 / PI) - direction;
+        direction = atan2_approx(nsf, ewf);
+        nsf = (float)(((int32_t) pkt->ns[1]) << pkt->smult);
+        ewf = (float)(((int32_t) pkt->ew[1]) << pkt->smult);
+        turnrate = atan2_approx(nsf, ewf) - direction;
         if (turnrate >  180.0)  turnrate -= 360.0;
         if (turnrate < -180.0)  turnrate += 360.0;
-        if (this_aircraft->aircraft_type == AIRCRAFT_TYPE_TOWPLANE)         // known 4-second intervals
+        if (fop->aircraft_type == AIRCRAFT_TYPE_TOWPLANE)         // known 4-second intervals
             turnrate *= 0.25;    // change was over 4 seconds
-        else if (this_aircraft->aircraft_type == AIRCRAFT_TYPE_DROPPLANE)   // unverified assumptions
+        else if (fop->aircraft_type == AIRCRAFT_TYPE_DROPPLANE)   // unverified assumptions
             turnrate *= 0.25;    // change was over 4 seconds
-        else if (this_aircraft->aircraft_type == AIRCRAFT_TYPE_POWERED)
+        else if (fop->aircraft_type == AIRCRAFT_TYPE_POWERED)
             turnrate *= 0.25;    // change was over 4 seconds
         else if (pkt->_unk2 != 1)    // typically gliders
             turnrate *= 0.333;   // change was over 3 seconds
@@ -615,7 +595,8 @@ Serial.println("bad checksum in relayed packet");
     int16_t alt = pkt->alt;  /* relative to WGS84 ellipsoid */
 
 
-    if (pkt->addr_type > 3) {        // probably air-relayed by SoftRF
+    // SoftRF air-relays in old protocol with third bit set in addr_type
+    if (pkt->addr_type > 3) {
         ++air_relayed_packets_recvd;
         if (!ognrelay_enable) {
             fop->relayed = true;
@@ -626,18 +607,17 @@ Serial.println("bad checksum in relayed packet");
     if (pkt->msg_type == MSG_TYPE_OLD && !fop->relayed)     // original in old protocol
         ++old_protocol_packets_recvd;
 
-    fop->protocol      = RF_PROTOCOL_LEGACY;
-    fop->addr_type     = pkt->addr_type;
-    fop->latitude      = lat;
-    fop->longitude     = lon;
-    fop->altitude      = (float) alt - geo_separ;
-    fop->speed         = speed4 * (1.0 / (4 * _GPS_MPS_PER_KNOT));
-    fop->course        = (direction >= 0.0 ? direction : direction + 360);
-    fop->vs            = ((float) vs10) * (_GPS_FEET_PER_METER * 6.0);
-    fop->turnrate      = turnrate;
-    fop->aircraft_type = pkt->aircraft_type;
-    fop->gpsA = 3;
-    fop->gpsB = 5;   // fake
+    fop->protocol   = RF_PROTOCOL_LEGACY;
+    fop->addr_type  = pkt->addr_type;
+    fop->latitude   = lat;
+    fop->longitude  = lon;
+    fop->altitude   = (float) alt - geo_separ;
+    fop->speed      = speed4 * (1.0 / (4 * _GPS_MPS_PER_KNOT));
+    fop->course     = (direction >= 0.0 ? direction : direction + 360);
+    fop->vs         = ((float) vs10) * (_GPS_FEET_PER_METER * 6.0);
+    fop->turnrate   = turnrate;
+    fop->gpsA       = pkt->gpsA;
+    fop->gpsB       = pkt->gpsB;
 
     /* set hour, minute, second for OGN reporting of this packet */
 
@@ -648,34 +628,34 @@ Serial.println("bad checksum in relayed packet");
     }
 
     if (ognrelay_enable) {
-      if (!ogn_gnsstime) {
+      //if (!ogn_gnsstime) {
         // >>> do some sanity checks here in case reverse_time is wrong
         //     and thus the decrypted data is random garbage
-        // - if we knew what is in the "gps" field could check that
-        if (pkt->stealth)   return false;
-        if (pkt->no_track)  return false;
+        //if (__)   return false;
+        //if (__)  return false;
         //if (pkt->airborne == 0)  return false;
-      }
+      //}
       /* packet will be relayed in Traffic.cpp using legacy_encode() below */
       return true;
     }
 
     if (ognrelay_base) {
 
-      if (!ogn_gnsstime && !ognrelay_time) {
+      //if (!ogn_gnsstime && !ognrelay_time) {
         // >>> do some sanity checks here in case NTP time is off by a second
         //     and thus the decrypted data is random garbage
-        // - if we knew what is in the "gps" field could check that
-        if (pkt->stealth)   return false;
-        if (pkt->no_track)  return false;
+        //if (__)   return false;
+        //if (__)   return false;
         //if (pkt->airborne == 0)  return false;
-      }
+      //}
 
       if (time_sent) {
 
-          fop->hour   = pkt->ns[1];   /* original H,M,S sent from remote */
-          fop->minute = pkt->ns[2];
-          fop->second = pkt->ns[3];
+          /* original H,M,S sent from remote */
+          uint32_t hms = ((uint32_t)(pkt->ns[2]) | ((uint32_t)(pkt->ns[3]) << 8));
+          fop->hour   = ((hms & 0x0F800) >> 11);
+          fop->minute = ((hms & 0x007E0) >> 5);
+          fop->second = ((hms & 0x0001F) << 1);
 
       } else {                      /* approximate adjustment for relay delay */
           int delay = (pkt->_unk1 == 0) ? 4 : 16;
@@ -714,11 +694,13 @@ size_t legacy_encode_data(void* legacy_pkt, ufo_t* fop)
     int16_t  alt = (int16_t) (fop->altitude + ogn_geoid_separation);
 
     float course = fop->course;
+    if (course > 180.0)  course -= 360.0;
     float speedf = fop->speed * _GPS_MPS_PER_KNOT;         /* m/s */
     float vsf    = fop->vs / (_GPS_FEET_PER_METER * 60.0); /* m/s */
 
     // scale by 4, clamp to max
-    uint16_t speed4 = (uint16_t) roundf(speedf * 4.0f);
+    float speed4f = roundf(speedf * 4.0f);
+    uint16_t speed4 = (uint16_t) speed4f;
     if (speed4 > 8 * 128 - 1)
         speed4 = 8 * 128 - 1;
 
@@ -729,24 +711,42 @@ size_t legacy_encode_data(void* legacy_pkt, ufo_t* fop)
     else if (vs10 < -8 * 512)
         vs10 = -8 * 512;
 
-    pkt->smult = 0;
+    int smult = 0;
     // first check horizontal speed
-    while ((pkt->smult < 3) && (speed4 > 128 - 1)) {
+    while ((smult < 3) && (speed4 > 128 - 1)) {
         speed4 >>= 1;
-        pkt->smult++;
+        smult++;
         vs10 >>= 1;
     }
     // now check vertical speed
-    while ((pkt->smult < 3) && ((vs10 > 512 - 1) || (vs10 < -512))) {
+    while ((smult < 3) && ((vs10 > 512 - 1) || (vs10 < -512))) {
         vs10 >>= 1;
-        pkt->smult++;
+        smult++;
         speed4 >>= 1;
     }
+    pkt->smult = smult;
 
-    uint8_t speed = speed4;
+    pkt->_unk1 = 0;
+    pkt->_unk2 = 0;
 
-    int8_t ns = 0;  // (int8_t) (speed * cosf(radians(course)));
-    int8_t ew = 0;  // (int8_t) (speed * sinf(radians(course)));
+    pkt->ns[0] = (int8_t) (((uint32_t)(speed4f * cos_approx(course))) >> smult);
+    pkt->ew[0] = (int8_t) (((uint32_t)(speed4f * sin_approx(course))) >> smult);
+    float delta_t;
+    if (fop->aircraft_type == AIRCRAFT_TYPE_TOWPLANE)
+        delta_t = 4.0;
+    else if (fop->aircraft_type == AIRCRAFT_TYPE_DROPPLANE)
+        delta_t = 4.0;
+    else if (fop->aircraft_type == AIRCRAFT_TYPE_POWERED)
+        delta_t = 4.0;
+    else if (fabs(fop->turnrate) > 10.0)
+        delta_t = 3.0;
+    else {
+        delta_t = 2.0;
+        pkt->_unk2 = 1;
+    }
+    course += delta_t * fop->turnrate;
+    pkt->ns[1] = (int8_t) (((uint32_t)(speed4f * cos_approx(course))) >> smult);
+    pkt->ew[1] = (int8_t) (((uint32_t)(speed4f * sin_approx(course))) >> smult);
 
     pkt->vs = vs10;
 
@@ -757,10 +757,13 @@ size_t legacy_encode_data(void* legacy_pkt, ufo_t* fop)
     pkt->stealth  = fop->stealth;
     pkt->no_track = fop->no_track;
 
-    pkt->gps = 323;
+    int gpsA = fop->gpsA;
+    if (gpsA > 63)  gpsA = 63;
+    int gpsB = fop->gpsB;
+    if (gpsB > 63)  gpsB = 63;
+    pkt->gpsA = gpsA;
+    pkt->gpsB = gpsB;
 
-    // pkt->lat = (uint32_t(lat * 1e7) >> 7) & 0x7FFFF;
-    // pkt->lon = (uint32_t(lon * 1e7) >> 7) & 0xFFFFF;
     if (lat < 0.0)
         pkt->lat = (uint32_t) (-(((int32_t) (-lat * 1e7) + 0x40) >> 7)) & 0x07FFFF;
     else
@@ -786,11 +789,6 @@ size_t legacy_encode_data(void* legacy_pkt, ufo_t* fop)
 
     pkt->airborne = fop->airborne;
 
-    pkt->_unk1 = 0;
-    pkt->_unk2 = 0;
-    pkt->_unk3 = 0;
-//    pkt->_unk4 = 0;
-
     // do not encrypt yet
 
     return sizeof(legacy_packet_t);
@@ -807,22 +805,21 @@ size_t legacy_encode(void* buffer, ufo_t* fop)
         // re-encode the data into the old protocol (even if arrived in new protocol)
         legacy_encode_data(buffer, fop);
 
-        pkt->ns[1] = fop->hour;
-        pkt->ns[2] = fop->minute;
-        pkt->ns[3] = fop->second;
+        uint32_t hms = ((fop->minute << 11) | (fop->minute << 5) | (fop->second >> 1));
+        pkt->ns[2] = (int8_t)(hms & 0xFF);
+        pkt->ns[3] = (int8_t)((hms>>8) & 0xFF);
 
-        int rssi = fop->rssi + 101;
-        if (rssi <  0)  rssi =  0;
-        if (rssi > 63)  rssi = 63;
-        int bec = fop->bec;
-        if (bec > 3)    bec = 3;
-        pkt->ew[1] = (bec << 6) | rssi;
+        int snr = fop->snr;
+        if (snr <= 0)   snr = 1;
+        if (snr > 127)  snr = 127;
+        pkt->snr = snr;
+        pkt->bec = fop->bec;
 
         pkt->msg_type = (fop->msg_type == MSG_TYPE_OLD? MSG_TYPE_ORG : MSG_TYPE_REL);
             /* mark as relayed packet with a timestamp */
 
         int ndx;
-        pkt->ew[2] = 0;
+        pkt->ew[2] = 0;   // for the checksum computation
         pkt->ew[3] = 0;
         uint16_t checksum=0;
         for (ndx = 0; ndx < sizeof (legacy_packet_t); ndx++)

@@ -274,8 +274,7 @@ void OGN_APRS_Export(void)
                 continue;
             }
 
-            // if ((Container[i].stealth && !ogn_istealthbit) || (Container[i].no_track && !ogn_itrackbit)) {
-            if (Container[i].no_track && !ogn_itrackbit) {
+            if (Container[i].no_track) {
                 Container[i].waiting = false;
                 Container[i].timereported = OurTime;
                 Serial.println(F("... skipping no-track packet"));
@@ -355,11 +354,8 @@ void OGN_APRS_Export(void)
             APRS_AIRC.snr = String((float)Container[i].snr, 1);
             
             if (Container[i].bec > 0) {
-                APRS_AIRC.bec = " ";
-                APRS_AIRC.bec += String(Container[i].bec);
-                APRS_AIRC.bec += "e";
-            } else {
-                APRS_AIRC.bec = "";
+                APRS_AIRC.bec = String(Container[i].bec);
+                APRS_AIRC.bec += "e ";
             }
 
 
@@ -444,16 +440,22 @@ void OGN_APRS_Export(void)
             AircraftPacket += "fpm ";
             AircraftPacket += APRS_AIRC.turnrate;
             AircraftPacket += "rot ";
-            AircraftPacket += APRS_AIRC.snr;
-            if (Container[i].relayed && !ogn_hiderelayed)
-              AircraftPacket += "dB relayed";
-            else
-              AircraftPacket += "dB";
-            AircraftPacket += APRS_AIRC.bec;
-            AircraftPacket += " gps";
-            AircraftPacket += String(Container[i].gpsA);
-            AircraftPacket += "x";
-            AircraftPacket += String(Container[i].gpsB);
+            if (Container[i].snr > 0) {
+                AircraftPacket += APRS_AIRC.snr;
+                if (Container[i].relayed && !ogn_hiderelayed)
+                  AircraftPacket += "dB relayed ";
+                else
+                  AircraftPacket += "dB ";
+            }
+            if (Container[i].bec > 0) {
+                AircraftPacket += APRS_AIRC.bec;
+            }
+            if (Container[i].gpsA > 0) {
+                AircraftPacket += "gps";
+                AircraftPacket += String(Container[i].gpsA);
+                AircraftPacket += "x";
+                AircraftPacket += String(Container[i].gpsB);
+            }
             AircraftPacket += "\r\n";
 
             //Serial.println("");
