@@ -5,7 +5,7 @@
 Besides the binary here, download the files in the "data" folder: config.json (template), index.html, style.css.
 
 
-## revision MB140
+## revision MB141
 
 ### Major improvements
 
