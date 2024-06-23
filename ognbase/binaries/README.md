@@ -5,6 +5,17 @@
 Besides the binary here, download the files in the "data" folder: config.json (template), index.html, style.css.
 
 
+## revision MB142
+
+### Major improvements
+
+Improved web interface to show more relevant status and statistics when using NTP time (requires new index.html & style.css)
+
+### Minor improvements
+
+Fixed bug that prevented use of "base sleep follows remote" when using NTP time
+
+
 ## revision MB141
 
 ### Major improvements

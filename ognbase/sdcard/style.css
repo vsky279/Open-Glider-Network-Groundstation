@@ -97,7 +97,7 @@ select {
      margin: 10px;
 }
 
-.power {
+.circle0 {
     border: 5px solid #0074D9;
     border-radius: 500%;
     display: table-cell;
@@ -106,7 +106,7 @@ select {
     width: 100px;
 }
 
-.rssi {
+.circle1 {
     border: 5px solid #0074D9;
     border-radius: 500%;
     display: table-cell;
@@ -115,7 +115,7 @@ select {
     width: 100px;
 }
 
-.hours {
+.circle2 {
     border: 5px solid #0074D9;
     border-radius: 500%;
     display: table-cell;
@@ -124,7 +124,7 @@ select {
     width: 100px;
 }
 
-.satfix {
+.circle3 {
     border: 5px solid #0074D9;
     border-radius: 500%;
     display: table-cell;
@@ -133,7 +133,7 @@ select {
     width: 100px;
 }
 
-.largest_range {
+.circle4 {
     border: 5px solid #0074D9;
     border-radius: 500%;
     display: table-cell;
@@ -142,7 +142,7 @@ select {
     width: 100px;
 }
 
-.timestamp {
+.circle5 {
     border: 5px solid #0074D9;
     border-radius: 500%;
     display: table-cell;

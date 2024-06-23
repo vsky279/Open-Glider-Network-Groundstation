@@ -38,7 +38,7 @@
 int MIN_SPEED = 0;
 
 int  aprs_registred   = 0;
-bool aprs_connected   = false;
+//bool aprs_connected   = false;
 bool wifi_reconnected = false;
 uint32_t wifi_outage  = 0;
 int  last_packet_time = 0; // seconds
@@ -188,14 +188,16 @@ int OGN_APRS_check_messages(void)
             Serial.print(RXbuffer);
         }
         int reg = OGN_APRS_check_reg(RXbuffer);
-        if (reg == 1)
+        if (reg == 1) {
             msg = "APRS login successful";
-        else if (reg == 0)
+            aprs_registred = 2;
+        } else if (reg == 0) {
             msg = "APRS login unsuccessful";
-        else if (reg == 2)
+        } else if (reg == 2) {
             msg = "APRS login invalid";
-        else
+        } else {
             msg = "";
+        }
         if (reg >= 0) {
           Serial.println(msg.c_str());
           //Serial.println("");
@@ -256,6 +258,9 @@ static const char* symbol[16] =
 
 void OGN_APRS_Export(void)
 {
+    if (aprs_registred < 1)
+        return;
+
     struct aprs_airc_packet APRS_AIRC;
 
 //    if (OurTime == 0)  /* no GNSS time available yet */
@@ -553,7 +558,7 @@ int OGN_APRS_Register(ufo_t* this_aircraft)
 
 bool OGN_APRS_Location(ufo_t* this_aircraft)
 {
-    if (aprs_registred != 1)
+    if (aprs_registred < 1)
         return false;
 
     struct  aprs_reg_packet APRS_REG;

@@ -513,7 +513,7 @@ ogn_protocol_2  = RF_PROTOCOL_OGNTP;
 #endif
     }
 
-    if (ogn_sleepmode==2 && (! ognrelay_base || ! ognrelay_time))
+    if (ogn_sleepmode==2 && (! ognrelay_base || (! ognrelay_time && ! ognreverse_time)))
         ogn_sleepmode = 0;
 
     if (obj.containsKey(F("fanetservice")))

@@ -3,7 +3,7 @@ Documentation for OGNbase
 
 By Moshe Braner
 
-This version last updated June 11 2024 to fit software version MB141
+This version last updated June 23 2024 to fit software version MB142
 
 
 HISTORY
@@ -12,7 +12,7 @@ FLARM, the traffic awareness and collision avoidance system which has been adopt
 
 The Open Glider Network (OGN) has encouraged the establishment of many ground stations, especially in Europe, that listen to signals from FLARM and other devices, and feed the data to servers on the internet.  Despite FLARM's low power, these stations can receive signals from tens of km away.
 
-The "Internet of Things" (IoT) community has prompted manufacturers to develop inexpensive low-power hardware that integrates significant computing power and communications capabilities including WiFi, Bluetooth, GNSS (such as GPS), and radios that operate in the unlicensed bands in the 400-1000 MHz range, in a variety of modulation schemes.
+The "Internet of Things" (IoT) community has prompted manufacturers to develop inexpensive low-power hardware that integrates significant computing power and communications capabilities including WiFi, Bluetooth, GNSS (such as GPS), and radios that operate in the unlicensed bands in the 400-1000 MHz range in a variety of modulation schemes.
 
 Linar Yusupov ( https://github.com/lyusupov/SoftRF ) developed SoftRF, which (among other things) sends, receives and interprets signals to and from aircraft in the same protocol as used by FLARM, and some other protocols.  SoftRF runs on several types of the IoT hardware devices.
 
@@ -25,9 +25,9 @@ Future development may include support for other radio protocols besides FLARM, 
 
 HARDWARE AND SOFTWARE PLATFORMS
 
-At this time OGNbase runs specifically on devices based on the ESP32 "system on a chip" CPU.  Namely three devices from the LilyGo (TTGO) company, the "T-Beam" (with a GNSS module), and the "T3S3" or the LORA32 "Paxcounter" (without GNSS).  These devices use so little power that the "remote relay" station can run on a solar panel about 20 cm (8 inches) across.  They can go into "sleep mode" at night to conserve power, and automatically wake up the next day.
+At this time OGNbase runs specifically on devices based on the ESP32 "system on a chip" CPU.  Namely three devices from the LilyGo (TTGO) company, the "T3S3" or the LORA32 "Paxcounter" (without GNSS) or the "T-Beam" (with a GNSS module).  These devices use so little power that the "remote relay" station can run on a solar panel about 20 cm (8 inches) across.  They can go into "sleep mode" at night to conserve power, and automatically wake up the next day.
 
-Software for the ESP32 is "embedded", i.e., runs on the bare hardware without an operating system, although it incorporates software libraries from the hardware manufacturers and from third parties.  The software is developed on other systems (e.g., Linux or Windows) and then copied ("flashed") into the flash memory of the IoT devices, via a USB cable, Wifi, or an SD card.  The size of this compiled firmware is less than 2 megabytes, as compared with about 4000 megabytes (4GB) for the "image" installed on a Raspberry Pi for a conventional OGN ground station (which includes the Linux operating system within the image).
+Software for the ESP32 is "embedded", i.e., runs on the bare hardware without an operating system, although it incorporates software libraries from the hardware manufacturers and from third parties.  The software is developed on other systems (e.g., Linux or Windows) and then copied ("flashed") into the flash memory of the IoT devices, via a USB cable, Wifi, or an SD card.  The size of this compiled firmware is about a megabyte, as compared with gigabytes for the "image" installed on a Raspberry Pi for a conventional OGN ground station (which includes the Linux operating system within the image).
 
 The SoftRF and OGNbase software is completely open-source, unlike the conventional OGN ground station software which includes some closed-source components.
 
@@ -44,13 +44,13 @@ HOW TO USE OGNBASE
 
 Hardware choices
 
-The LilyGo (TTGO) "T3S3" and "Paxcounter" do not have a GNSS module, but can be used in a relay setup, or using the time data from internet (NTP) servers.  The recommended current product is the T3S3.  It is available with either the sx1276 or sx1262 radio module - the latter is theoretically a better receiver.  Either the 915 or 868 MHz version will do, they are identical AFAIK other than the little antenna which will not be used anyway.
+The LilyGo (TTGO) "T3S3" and "Paxcounter" do not have a GNSS module, but can be used by getting the time data from internet (NTP) servers.  The recommended current product is the T3S3.  It is available with either the sx1276 or sx1262 radio module - the latter is theoretically a better receiver.  Either the 915 or 868 MHz version will do, they are identical AFAIK other than the little antenna which will not be used anyway.
 https://www.lilygo.cc/products/t3s3-v1-0?variant=42740446331061
 https://www.lilygo.cc/products/t3s3-v1-0?variant=42586879721653
 https://www.lilygo.cc/products/t3s3-v1-0?variant=42740446298293
 https://www.lilygo.cc/products/t3s3-v1-0?variant=42586879688885
 
-The LilyGo "T-Beam" includes a GNSS (GPS) module and can also be used for the SoftRF FLARM-compatible collision avoidance system.  It also has an integrated holder for an 18650 li-ion battery.  Be sure to get the model for the frequency used in your region, e.g., 915 MHz in North America and 868 MHz in Europe.  Only the plain (older) "T-Beam" is supported at this time, not the "T-Beam Supreme".
+The LilyGo "T-Beam" includes a GNSS (GPS) module and can also be used for the SoftRF FLARM-compatible collision avoidance system.  It also has an integrated holder for an 18650 li-ion battery.  Be sure to get the model for the frequency used in your region, e.g., 915 MHz in North America and 868 MHz in Europe.  Only the plain (older) "T-Beam" is supported by OGNbase at this time, not the "T-Beam Supreme".
 
 Note: to turn off the T-Beam, press and hold the button closest to the USB jack until the dim red LED turns off.
 
@@ -168,7 +168,7 @@ If it is late in the day when it goes to sleep ("evening"), or if the battery vo
 
 If "rxidle" is set to 0, the station stays awake all day (unless the battery charge is low), even if there is no traffic, but (if "mode" is > 0) sleeps at night, from "evening" until "morning".  If "wakeuptimer" is set to 0, then if and when the station goes to sleep, it always sleeps until the next "morning".  E.g., if rxidle=180 and wakeuptimer=0, the station will listen for traffic for 3 hours starting from "morning".  If no traffic, or once 3 hours have gone by with no further traffic, it will then sleep until the next "morning".
 
-If the base station does not sleep, while the remote station sleeps it will keep sending status messages to OGN every few minutes.  In a base station only, and only when it is receiving the time from the remote station (see relay mode section below), if sleep "mode" is set to 2 ("follow remote"), the base station will go to sleep a few minutes after the remote station sleeps, and wake up at about the same time as the remote station.  If the base station does sleep, it will not be sending status messages to OGN.  The last few status messages before sleeping will display the length of time the remote station is planning to sleep, and then the sleep intention of the base station. 
+In a base station only, and only when it is sending the time to, or receiving the time from, the remote station (see relay mode section below), if sleep "mode" is set to 2 ("follow remote"), the base station will go to sleep a few minutes after the remote station sleeps, and wake up at about the same time as the remote station.  If the base station does sleep, it will not be sending status messages to OGN.  The last few status messages before sleeping will display the length of time the remote station is planning to sleep, and then the sleep intention of the base station. 
 
 The "private" section allows selecting a port other than 80 for the web server to listen on.  This can allow remote access to the web interface via http://externalipaddress:portnumber.  (Need to also set up, in your router settings, public access through this port to the (static) IP address of the device.)  Choose a unique port number between 49152 and 65535.  For example:
 
@@ -222,7 +222,7 @@ The OGNbase settings visible in the status page can be changed there, and the "s
 
 If in relay mode, the "Remote Reboot" button sends a radio packet from the base station that tells the remote station to reboot.  The reboot only happens under some conditions: The remote station has been running for at least 10 minutes and has already turned off its WiFi server, and the packet arrived ungarbled and passed a security check based on the secret "relay key".  Not every click of the button actually sends such a packet.  It is safe to press this button a few times, just in case, since the remote station will not reboot again for 10 minutes.  Every time this button - or the "Refresh" button - is clicked, the statistics at the top of the status page refresh, if in time-relay mode the number of (remote) GNSS satellites received are displayed, which shows whether the remote station has finished rebooting and establishing communications.
 
-The statistics page, reachable via a button at the bottom of the status page, shows additional statistics, especially relevant to relay mode.  These include the number of unique aircraft seen (today or ever), and the number of radio packets currently received per minute.  The statistics get refreshed when following that link, when the statistics page is refreshed in your browser, or automatically every 23 seconds.  To get back to the status page, use your browser's "back" button.
+The statistics page, reachable via a button at the bottom of the status page, shows additional statistics, especially relevant to relay mode.  These include the number of unique aircraft seen (today or ever), and the number of radio packets currently received per minute.  The statistics get refreshed when following that link, when the statistics page is refreshed in your browser, or automatically every 23 seconds.  To get back to the status page, can use your browser's "back" button.
 
 Note that the base station can only report statistics from the remote station if time-relay is happening, since the statistics are sent from the remote station as part of the time-relay packets.  And the "today" and "ever" aircraft counts (and packet count) are reset if the device "sleeps", thus "ever" may actually be "today", or only part of today.  Check the "uptime" statistic.
 
@@ -233,12 +233,12 @@ OLED display
 
 The small display that is part of the T3S3 and Paxcounter hardware, and can optionally be soldered to the T-Beam hardware, shows some information about OGNbase operation.  It cycles between 3 or 4 pages.  And sometimes clears the display and shows just one line for a short time.  It shows the number of radio packets received, the wifi network connected to and the IP address, the OGNbase operational mode, the GNSS satellite reception status, current time, station location, and so forth.  The OLED is turned off after 10 minutes of operation.  Note: on the T-Beam now now has the choice of attaching the OLED display to pins 21,22 or to pins 2,13, the software automatically detects it.
 
-On the T3S3 board there is also a tiny green LED (besides the blue one which is always lit).  OGNbase will turn on the green LED once NTP time is available (in single-station mode) or once the two stations' time is synchronized (in two-station mode, in the base station only).
+On the T3S3 board there is also a tiny green LED (besides the blue one which is always lit).  In the base station only, OGNbase will turn on the green LED once NTP (or GNSS) time is available (in single-station mode) or once the two stations' time is synchronized (in two-station mode), and a connection to the OGN servers is established.  In other words, a glance at the green LED will confirm that the station operation is normal.
 
 
 Serial output
 
-The USB port of the device can be connected to a computer, and by running a suitable terminal program (e.g., "Termite") on the computer one can see additional messages from OGNbase.  That is mostly useful for debugging.  The messages OGNbase sends to the OGN APRS server are echoed there too.
+The USB port of the device can be connected to a computer, and by running a suitable terminal program (e.g., "Putty" or "Termite") on the computer one can see additional messages from OGNbase.  That is mostly useful for debugging.  The messages OGNbase sends to the OGN APRS server are echoed there too.
 
 
 Updating the OGNbase firmware
@@ -345,8 +345,8 @@ Basic ground station
 OGNbase receives FLARM signals as they arrive, and keeps a list of aircraft already heard from and waiting to be reported.  It only reports to OGN once every 5 seconds.  Since aircraft usually report more often than that, and to avoid sending too many reports to OGN at once, once an aircraft is reported, it is not reported again for some length of time - as many seconds as there are aircraft are being tracked (up to 30).
 
 The following aircraft are NOT reported to OGN:
+* those who have the no-track flag set
 * those who have been last heard from more than 60 seconds ago ("expired")
-* those who have the no-track flag set (the OGNbase setting to ignore the flag is now disabled)
 * those who are farther away from the station than the "range" setting
 * FLARM packets that look like GNSS noise or corrupted transmission - location shifted too far too fast
 
@@ -355,13 +355,13 @@ Why GNSS may (or may not) be necessary
 
 In the regions (USA, Canada and Australia) where there are many channels in the band, FLARM performs "frequency hopping" between the channels, based on the exact time to a fraction of a second.  In Europe there are only two channels but choosing between them is also based on the exact time.
 
-The frequency hopping used by FLARM is based on the current time to the second - and the moment when the second starts needs to be known within 100 milliseconds or so.  In addition to that, two frequency "slots" are used, in 400-ms time windows within the second.  The timing of radio packet transmission within these time windows is randomized to minimize interference.
-
 OGN uses a standard frequency hopping scheme for OGN trackers, which is similar to FLARM's, but at any given moment is on a different frequency from FLARM.  OGNbase uses the OGN frequencies for relayed traffic data.
+
+The frequency hopping used by FLARM is based on the current time to the second.  In addition to that, two frequency "slots" are used, in 400-ms time windows within the second.  Thus the moment when the second starts needs to be known to within 100 milliseconds or better.  The timing of radio packet transmission within these time windows is randomized to minimize interference.
 
 One way to get the exact time is via a GNSS (GPS) module.  OGNbase allows the remote relay station to send the time data to the base station, so that the latter does not need GNSS reception - which may be difficult to arrange in the same indoor location where internet access is available.
 
-Alternatively, more recently, the problem of how to get sub-second timing from NTP servers on the internet has been solved.  It is even possible to send the NTP time from the base station to the remote relay station, instead of it using GNSS.
+Alternatively, more recently, the problem of how to get sub-second timing from NTP servers on the ESP32 has been solved.  It is even possible to send the NTP time from the base station to the remote relay station, instead of it using GNSS.  Thus the simpler and cheaper T3S3 board can now be used in both the base and remote stations of OGNbase.
 
 
 Relay operation
@@ -370,13 +370,13 @@ The remote station in a relay operation receives FLARM signals as they arrive, a
 
 When the remote station is ready to relay the position of one aircraft, it chooses the one that has been waiting the longest since it was last reported.  Since at most only 30 aircraft are tracked, each will be relayed at least once every 30 seconds.
 
-To avoid competing with FLARM for the radio spectrum, OGNbase relays messages on a different frequency than FLARM transmits on.  That is of course not possible in regions where only one channel is available.  In regions with 2 channels (Europe), it uses the "other" channel, the one not used by FLARM at this moment.  That's if the exact time is known, since it is used to choose the channel.  Otherwise (without exact time) it only listens to FLARMs on channel 0 (where it should be able to hear half of the FLARM packets), and only relays on channel 1.  In regions with more than 2 channels (US, AU) the exact time is required, and it selects the channel using the OGNTP protocol, i.e., it uses the same frequency that OGN tracker devices would use, which is always different from that used by FLARM.  Since such trackers are quite uncommon (except in certain major contests) that should not be a problem.  And in any case an OGNbase remote station only transmits as many radio packets, in total, as a *single* FLARM or OGN tracker device.  Each aircraft's position is relayed much less often than it is transmitted by FLARMs.
+To avoid competing with FLARM for the radio spectrum, OGNbase relays messages on a different frequency than FLARM transmits on.  That is of course not possible in regions where only one channel is available.  In regions with 2 channels (Europe), it uses the "other" channel, the one not used by FLARM at this moment.  That's if the exact time is known, since it is used to choose the channel.  Otherwise (without exact time) it only listens to FLARMs on channel 0 (where it should be able to hear half of the FLARM packets), and only relays on channel 1.  In regions with more than 2 channels (US, AU) the exact time is required, and it selects the channel using the OGNTP protocol, i.e., it uses the same frequency that OGN tracker devices would use, which is always different from that used by FLARM.  Since such trackers are uncommon (except in certain international contests) that should not be a problem.  And in any case an OGNbase remote station only transmits as many radio packets, in total, as a *single* FLARM or OGN tracker device.  Each aircraft's position is relayed much less often than it is transmitted by FLARMs.
 
-Ideally the report to OGN will include the exact original time when the aircraft sent this position.  FLARM packets do not include a timestamp, they are supposed to be sent in "real time".  The packets relayed by OGN may be delayed by several seconds, or up to 30 seconds if there are many other aircraft reporting in the area.  Therefore OGNbase inserts into the packet the time the packet was originally received by the remote station.  the base station uses that timestamp for reporting to OGN.  This is only possible when the remote station has GNSS time data (or time sent from the base station).  If it does not, the remote station only sends one bit, signaling whether the packet was relayed more than 12 seconds after it was received.  The base station then computes an approximate timestamp: the time it received the relayed packet minus 4 seconds, or minus 16 seconds if the packet was marked as delayed.
+Ideally the report to OGN will include the exact original time when the aircraft sent this position.  FLARM packets do not include a timestamp, they are supposed to be sent in "real time".  The packets relayed by OGN may be delayed by several seconds, or up to 30 seconds if there are many other aircraft reporting in the area.  Therefore OGNbase inserts into the packet the time the packet was originally received by the remote station.  The base station uses that timestamp for reporting to OGN.  This is only possible when the remote station has the exact time data.  If it does not, the remote station only sends one bit, signaling whether the packet was relayed more than 12 seconds after it was received.  The base station then computes an approximate timestamp: the time it received the relayed packet minus 4 seconds, or minus 16 seconds if the packet was marked as delayed.
 
-The relayed radio packet is the same as the one originally received from FLARM, except for 4 bits in the first (un-encrypted) 32 bits, which are changed from 0000 (in standard FLARM taffic reports) to 1101 (0xD) or 1011 (0xB) to mark it as a relayed packet, with and without a timestamp, respectively.  The base station in such a relay operation ignores all radio packets that do not have that mark.
+The relayed radio packet is converted to the old (pre-2024) FLARM protocol, and 4 bits in the first (un-encrypted) 32 bit word are changed from 0000 (in the old protocol FLARM taffic reports) to 1101 (0xD) or 1011 (0xB) to mark it as a relayed packet, with and without a timestamp, respectively.  The base station in such a relay operation ignores all radio packets that do not have that mark.
 
-The choice of different frequencies from the FLARM frequencies should keep FLARMs from receiving the relayed packets and mistaking them for real traffic.  (It is real traffic, but shifted somewhat in time.)  This will not work well with only 2 channels, let alone 1.  The encrytion key used by FLARM depends on the current time.  Therefore, if the remote station has the exact time data, OGNbase de-crypts the packet, and later re-encrypts the packet for relay transmission, using a different key, based on the "relay key" from the configuration.  If the remote station does not have GNSS time, the base station sends it the NTP time, which is precise enough for decrypting the FLARM packets.  If the remote station cannot de-crypt the original packet, it relays the packet with the original encryption, but with a bit flipped to try and make FLARMs reject the packet due to wrong parity.  Moreover, the extra bits set in the first word make the packet look like some special non-traffic FLARM packets, except that the packet contents will look like garbage to a FLARM that tries to interpret them.  Perhaps in the future OGNbase will use a different message protocol, e.g., OGNTP protocol, or even FANET, for the relayed messages.
+The choice of different frequencies from the FLARM frequencies, along with a different protocol, should keep FLARMs from receiving the relayed packets and mistaking them for real traffic.  (It is real traffic, but shifted somewhat in time.)  Additionally, the encrytion key used by FLARM depends on the current time.  If the remote station has the exact time data, OGNbase de-crypts the packet, and later re-encrypts the packet for relay transmission, using a different key, based on the "relay key" from the configuration.  If the remote station does not have GNSS time, and is not receiving the NTP time from the base station, then the remote station cannot de-crypt the original FLARM packet.  It then relays the packet as-is with the original encryption, but on the non-FLARM frequency, and with some bits set in the first word to mark it as something other than a normal traffic packet.  The packet contents will also look like garbage to a FLARM (or standard OGN ground station) that tries to decrypt it, since the first word is used as part of the encryption key in the FLARM protocol.  Perhaps in the future OGNbase will use a different message protocol, e.g., OGNTP protocol, or even FANET, for the relayed messages.
 
 
 Time relay
@@ -385,7 +385,7 @@ It is easy to set up the remote station with GNSS reception since it is located 
 
 OGNbase includes the option to send the exact time from the remote station with GNSS to the base station without GNSS.  The data sent includes the current time to the second, and the milliseconds that have passed since the beginning of the current second.  There is a small delay (about 10 milliseconds) due to the process of sending and receiving the time-data packets, but the receiving device simply adds a small fixed amount to the received time, and that is accurate enough for the purpose.
 
-Alternatively, OGNbase in a 2-station setup can send the time data in "reverse", from the base station to the remote station.  This allows the base station (with internet access) to get the time from NTP, and send it to the remote station, which then does not need GNSS. Both stations can now use simpler hardware such as the "paxcounter".
+Alternatively, OGNbase in a 2-station setup can now send the time data in "reverse", from the base station to the remote station.  This allows the base station (with internet access) to get the time from NTP, and send it to the remote station, which then does not need GNSS. Both stations can now use simpler hardware such as the T3S3.
 
 When the stations start up, one station does not have the time data yet, and thus cannot use the usual frequency hopping.  Therefore, both stations communicate at first in channel 0.  Since these transmissions are only once in several seconds, an only until communications are established, it does not crowd that channel.
 
@@ -393,16 +393,16 @@ The time-data packets include a data check based on the sent time hashed with th
 
 The remote station does not assume that the base station has received the time data until the base station replies with an acknowledgment packet - and that packet too has a data integrity check.
 
-Once the base station gets the time from the remote station, it can keep its own clock running accurately enough for a while without further input.  The remote station tries to send new time data packets every 10 seconds.  Some will not be sent or not be received.  If it hears no acknowledgment from the base station for 185 seconds, it returns to the original state of communicating on channel 0.  And so does the base station if it receives no new time data for that long.
+Once the base station gets the time from the remote station, it can keep its own clock running accurately enough for a while without further input.  The time-source station tries to send new time data packets every 10 seconds.  Some will not be sent or not be received.  If it hears no acknowledgment from the time-receiving station for 185 seconds, it returns to the original state of communicating on channel 0.  And so does the time-receiving station if it receives no new time data for that long.
 
 Time packets are distinguished from traffic reports by a specific "aircraft ID", and by a few other bits in the first (unencrypted) word of the FLARM-protocol radio packet set to a specific value (0xC), different from FLARM (old protocol) traffic packets (where those bits are all zeros) and from relayed traffic packets (where they hold one of two other values, as mentioned above).  Time packets are also validated using a hash based on the "relay key" known to both the remote and base stations.
 
-Be patient, it may take a minute or even several for the time-relay to be established.  During that time traffic packets are not relayed.  Once time-synch is achieved, the base station will display the correct UTC time on the OLED display, and report on its web page the number of GNSS satellites received by the remote station.
+Be patient, it may take a minute or even several for the time-relay to be established.  During that time traffic packets are not relayed.  Once time-synch is achieved, the base station will display the correct UTC time on the OLED display, and turn on its green LED (it it has also established communications with the OGN servers).
 
 
 Status messages sent to OGN
 
-You can monitor the operation of your station remotely via the internet.  Every few minutes the base station sends a "status" message to the OGN servers.  These messages are passed to clients that request them.  For example, if you use gliderradar.com, zoom in enough, select your station, and click on "raw packets", you can see the recent status (and position) messages from that station.  You can bookmark the final URL, for example:  https://www.gliderradar.com/views/raw.php?id=3342&imperialUnits=1
+You can monitor the operation of your station remotely via the internet.  Every few minutes the base station sends a "status" message to the OGN servers.  These messages are passed to clients that request them.  For example, if you use gliderradar.com, select your station, click on "raw packets", and you can see the recent status (and position) messages from your station.  You can bookmark the final URL.
 
 The status messages from OGNbase include the following information:  For example:
 K2B9>OGNSXR,TCPIP*,qAC,GLIDERN2:>235055h vMB103-ESP32-OGNbase 3.7V 0/min 0/0Acfts[1h] 8sat time_synched 120_m_r_uptime
@@ -411,11 +411,11 @@ Where the fields are:
    OGNSXR               identifies the source as OGNbase
    GLIDERN2             name of OGN server handling this message
    235055h              time stamp
-   vMB103-ESP32-OGNbase software version and type of hardware
+   vMB123-ESP32-OGNbase software version and type of hardware
    3.7V                 battery voltage (in remote relay station if used)
    0/min                traffic packets received in the last minute
    0/0Acfts[1h]         number of unique aircraft heard from in the last hour
-   8sat                 number of GNSS satellites received (in remote relay station)
+   8sat                 number of GNSS satellites received (in remote relay station usign GNSS)
    time_synched         the base station is receiving GNSS time from the remote relay station
    120_m_r_uptime       the remote relay station has been "up" for (approximately) 120 minutes
 Data fields may also include:
@@ -427,7 +427,7 @@ Data fields may also include:
 
 Radio packets relayed by SoftRF
 
-SoftRF (from version MB09x) optionally relays radio packets from landed (or far or low) aircraft.  To avoid recursive relaying, it marks the packet by changing the address (ID) type, to values not otherwise used by FLARM.  OGNbase restores the original address types when it reports the relayed traffic to OGN, but changes the reporting station name to "relayed" so as not to affect the station range stats.  SoftRF also changes packets originally from airborne (not landed) devices to make their relayed copies invisible to FLARM devices.  OGNbase interprets these packets and reports them similarly to relayed packets from landed aircraft.
+SoftRF (from version MB09x) optionally relays radio packets from landed (or far or low) aircraft.  To avoid recursive relaying, it marks the packet by changing the address (ID) type, to values not otherwise used by FLARM.  OGNbase restores the original address types when it reports the relayed traffic to OGN, but optionally changes the reporting station name to "relayed" so as not to affect the station range stats.
 
 Noise measurement
 

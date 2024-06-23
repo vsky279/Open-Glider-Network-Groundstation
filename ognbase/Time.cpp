@@ -21,6 +21,7 @@
 #include "SoC.h"
 #include "GNSS.h"
 #include "Time.h"
+#include "APRS.h"
 #include "RF.h"
 #include "Log.h"
 #include "OLED.h"
@@ -158,7 +159,6 @@ Serial.printf("send_time: ref_time_ms %d << now %d ??\r\n", ref_time_ms, now_ms)
       if (volts < 0)  volts = 0;
       if (volts > 15) volts = 15;
       p[2] |= ((volts & 0x0F) << 28);
-      // pkt->addr_type = (((total_delays/(ack_packets_recvd+1)) >> 2) & 0x07);  /* 3 bits: avg roundtrip ms / 4 */
       if (uptime < 60) {
           pkt->addr_type = (uptime/10) & 0x07;
           pkt->_unk1 = 0;
@@ -728,7 +728,7 @@ void Time_loop()
 {
     Time_update();
 
-    if (OurTime < 1000000)
+    if (OurTime < 1000000)     // not UTC time (seconds since 1970)
         return;
 
 /*
@@ -748,18 +748,24 @@ void Time_loop()
       int oldmin = ThisAircraft.minute;
 #if defined(TBEAM)
       if (ogn_gnsstime && isValidGNSStime()) {
-        ThisAircraft.hour = gnss.time.hour();
-        ThisAircraft.minute = gnss.time.minute();
         ThisAircraft.second = gnss.time.second();
+        if (ThisAircraft.second == 0)
+            ThisAircraft.minute = gnss.time.minute();
+        if (ThisAircraft.minute == 0)
+            ThisAircraft.hour = gnss.time.hour();
       } else {
-        ThisAircraft.hour = hour(OurTime);
-        ThisAircraft.minute = minute(OurTime);
         ThisAircraft.second = second(OurTime);
+        if (ThisAircraft.second == 0)
+            ThisAircraft.minute = minute(OurTime);
+        if (ThisAircraft.minute == 0)
+            ThisAircraft.hour = hour(OurTime);
       }
 #else
-      ThisAircraft.hour = hour(OurTime);
-      ThisAircraft.minute = minute(OurTime);
       ThisAircraft.second = second(OurTime);
+      if (ThisAircraft.second == 0)
+          ThisAircraft.minute = minute(OurTime);
+      if (ThisAircraft.minute == 0)
+          ThisAircraft.hour = hour(OurTime);
 #endif
 
       if (last_hour == 0)
@@ -768,6 +774,11 @@ void Time_loop()
           last_hour = OurTime;
 
       if (oldmin != ThisAircraft.minute) {
+
+          /* restart the device when uptime is more than 47 days */
+          if (millis() > (47 * 24 * 3600 * 1000UL))
+              SoC->reset();
+
           /* minute changed, gather per-minute traffic stats */
           ++uptime;                        /* minutes */ 
 //          if (! isValidGNSStime())
@@ -799,9 +810,9 @@ void Time_loop()
 #if defined(T3S3) || defined(TTGO)
       if (! ognrelay_enable) {
         if (ognrelay_time || ognreverse_time)
-            green_LED(time_synched);
+            green_LED(time_synched && (aprs_registred == 2));
         else
-            green_LED(NTP_synched);
+            green_LED(NTP_synched && (aprs_registred == 2));
       }
 #endif
 

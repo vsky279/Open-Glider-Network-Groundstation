@@ -115,4 +115,6 @@ static int OGN_APRS_check_reg(char*);
 
 int OGN_APRS_check_messages();
 
+extern int aprs_registred;
+
 #endif /* OGNHELPER_H */

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
- <meta name="OGNbase-Version" content="MB106">
+ <meta name="OGNbase-Version" content="MB107">
  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
  <title>OGN Groundstation</title>
  <link rel="icon" href="data:,">
@@ -13,12 +13,12 @@
   };
   ws.onmessage = function(evt) {
     var daten = evt.data.split("_")
-    document.getElementById("power").innerHTML  = daten[0];
-    document.getElementById("rssi").innerHTML  = daten[1];
-    document.getElementById("hours").innerHTML  = daten[2];
-    document.getElementById("satfix").innerHTML  = daten[3];
-    document.getElementById("timestamp").innerHTML  = daten[4];
-    document.getElementById("largest_range").innerHTML  = daten[5];
+    document.getElementById("circle0").innerHTML  = daten[0];
+    document.getElementById("circle1").innerHTML  = daten[1];
+    document.getElementById("circle2").innerHTML  = daten[2];
+    document.getElementById("circle3").innerHTML  = daten[3];
+    document.getElementById("circle4").innerHTML  = daten[4];
+    document.getElementById("circle5").innerHTML  = daten[5];
   };
  </script>
 </head>
@@ -28,64 +28,64 @@
 <h4>Mode: %s</h4>
 <table cellspacing="4" align="center" cellpadding="5">
 <class="circle-container">
- <td>
-  <div class="power">
-    <div class="circle__content">
-      <p id = "power">connecting</p>
-    </div>
-    <div class="circle__lower-text">
-        GNSS
-    </div>
-  </div>
- </td>
- <td>
-  <div class="rssi">
-    <div class="circle__content">
-      <p id = "rssi">connecting</p>
-    </div>
-    <div class="circle__lower-text">
-        acft(1h)
-    </div>
-  </div>
- </td>
- <td>
-  <div class="hours">
-    <div class="circle__content">
-      <p id = "hours">connecting</p>
-    </div>
-    <div class="circle__lower-text">
-        uptime
-    </div>
-  </div>
-</td>
 <td>
- <div class="satfix">
+ <div class="circle0">
   <div class="circle__content">
-    <p id = "satfix">connecting</p>
+    <p id = "circle0">connecting</p>
   </div>
   <div class="circle__lower-text">
-      rx pkts
+      VOLTS
   </div>
  </div>
 </td>
 <td>
- <div class="timestamp">
-     <div class="circle__content">
-       <p id = "timestamp">connecting</p>
-     </div>
-     <div class="circle__lower-text">
-         pkts/min
-     </div>
+ <div class="circle1">
+  <div class="circle__content">
+    <p id = "circle1">connecting</p>
+  </div>
+  <div class="circle__lower-text">
+      TIME
+  </div>
  </div>
 </td>
 <td>
- <div class="largest_range">
-     <div class="circle__content">
-       <p id = "largest_range">connecting</p>
-     </div>
-     <div class="circle__lower-text">
-         # tracked
-     </div>
+ <div class="circle2">
+  <div class="circle__content">
+    <p id = "circle2">connecting</p>
+  </div>
+  <div class="circle__lower-text">
+      OGN
+  </div>
+ </div>
+</td>
+<td>
+ <div class="circle3">
+  <div class="circle__content">
+    <p id = "circle3">connecting</p>
+  </div>
+  <div class="circle__lower-text">
+      reports
+  </div>
+ </div>
+</td>
+<td>
+ <div class="circle4">
+  <div class="circle__content">
+    <p id = "circle4">connecting</p>
+  </div>
+  <div class="circle__lower-text">
+      # today
+  </div>
+ </div>
+</td>
+<td>
+ <div class="circle5">
+  <div class="circle__content">
+    <p id = "circle5">connecting</p>
+  </div>
+  <div class="circle__lower-text">
+      # now
+  </div>
  </div>
 </td>
 </table>
@@ -161,22 +161,6 @@
 <td><INPUT type='number' name='aprs_debug_port' value='%s' size="8" ></td>
 </td>
 </tr>
-<!-- make these settings unobtanium:
-<tr>
-<td>ignore Track bit (no effect)</td>
-<td><select id="ogn_no_track" name="ogn_ignore_track">
- <option %s value="1">%s</option>
- <option %s value="0">%s</option>
-</select>
-</td>
-<td>ignore Stealth bit</td>
-<td><select id="ogn_stealth" name="ogn_ignore_stealth">
- <option %s value="1">%s</option>
- <option %s value="0">%s</option>
-</select>
-</td>
-</tr>
--->
 <tr>
  <td>Wifi SSID</td>
  <td><INPUT type='text' name='ogn_ssid' maxlength='45' value='%s' size="8" ></td>

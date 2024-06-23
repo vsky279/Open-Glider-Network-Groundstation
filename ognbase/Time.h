@@ -25,6 +25,7 @@ extern uint16_t have_reverse_time;
 extern bool reverse_time_sync;
 
 extern bool time_synched;
+extern bool NTP_synched;
 extern uint32_t traffic_packets_recvd;
 extern uint32_t old_protocol_packets_recvd;
 extern uint32_t air_relayed_packets_recvd;

@@ -29,6 +29,7 @@
 #include "Log.h"
 #include "config.h"
 #include "Traffic.h"
+#include "APRS.h"
 
 #include <string>
 
@@ -104,7 +105,6 @@ static const char stats_templ[] PROGMEM =
  <p>&nbsp; &nbsp; &nbsp;\r\n ID: %06X</p>\
  <p>&nbsp;\r\n Corrupt packets: %d</p>\
  <p>&nbsp;\r\n Other packets: %d</p>\
- <p>&nbsp;\r\n Time-sync restarts: %d</p>\
  <br><p>\r\nRemote Station Stats:</p>\
  <p>&nbsp;\r\n Uptime: %d minutes</p>\
  <p>&nbsp;\r\n Free RAM: %d bytes</p>\
@@ -115,12 +115,13 @@ static const char stats_templ[] PROGMEM =
  <p>&nbsp; &nbsp; &nbsp;\r\n  in old protocol: %d</p>\
  <p>&nbsp; &nbsp; &nbsp;\r\n  air-relayed: %d</p>\
  <p>&nbsp; &nbsp; &nbsp;\r\n  pct relayed to base: %d</p>\
- <p>&nbsp;\r\n Time packets sent: %d</p>\
- <p>&nbsp; &nbsp; &nbsp;\r\n  pct acknowledged: %d</p>\
- <p>&nbsp;\r\n Time-sync restarts: %d</p>\
  <p>&nbsp;\r\n Corrupt packets: %d</p>\
  <p>&nbsp;\r\n Other packets: %d</p>\
  <p>&nbsp;\r\n Battery voltage: %.1f</p>\
+ <br><p>\r\nTime-Relay Stats:</p>\
+ <p>&nbsp;\r\n Time packets sent: %d</p>\
+ <p>&nbsp; &nbsp; &nbsp;\r\n  pct acknowledged: %d</p>\
+ <p>&nbsp;\r\n Time-sync restarts: %d</p>\
  </html>";
                                   
 void onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data, size_t len)
@@ -168,8 +169,7 @@ void handleUpload(AsyncWebServerRequest* request)
   bool listfiles = true;
   char *filelist = (char *) malloc(FILELSTSIZ);
   if (! filelist) {
-      filelist = "(cannot allocate memory for file list)";
-      Serial.println(filelist);
+      Serial.println("cannot allocate memory for file list");
       listfiles = false;
   }
   const char *msg;
@@ -222,9 +222,11 @@ void handleUpload(AsyncWebServerRequest* request)
     file.close();
     root.close();
   }
-  snprintf(upload_html, UPLHTMSIZE, upload_templ, msg, index_msg, filelist);
+  snprintf(upload_html, UPLHTMSIZE, upload_templ, msg, index_msg,
+       (listfiles? filelist : "(cannot allocate memory for file list)"));
   request->send(200, "text/html", upload_html);
-  free(filelist);
+  if (listfiles)
+      free(filelist);
   free(upload_html);
 }
 
@@ -390,19 +392,22 @@ void update_stats()
         (uint32_t) farthest_ID,
         (uint32_t) bad_packets_recvd,
         other_packets_recvd,
-        (uint32_t) sync_restarts,
         remote_uptime, zero, zero, zero,
         remote_traffic,
         (uint32_t) packets_per_minute,
         zero, zero,
         (uint32_t) remote_pctrel,
-        (uint32_t) remote_timesent,
-        (uint32_t) remote_ack,
-        (uint32_t) remote_restarts,
         (uint32_t) remote_bad,
         (uint32_t) remote_other,
-        remote_voltage);
-  } else if (ognrelay_base) {
+        remote_voltage,
+        (uint32_t) remote_timesent,
+        (uint32_t) remote_ack,
+        (uint32_t) remote_restarts);
+  } else if (ognrelay_base && ognreverse_time) {
+     if (time_synched)
+        ognopmode = "Base station sending time, remote synched";
+     else
+        ognopmode = "Base station trying to send time to remote";
      snprintf(stats_html, STATS_SIZE, stats_templ,
         ognopmode,
         uptime, ESP.getFreeHeap(),
@@ -421,19 +426,28 @@ void update_stats()
         (uint32_t) farthest_ID,
         (uint32_t) bad_packets_recvd,
         other_packets_recvd,
-        zero, zero, zero, zero, zero,
+        remote_uptime, zero, zero, zero,
         remote_traffic,
         (uint32_t) packets_per_minute,
         zero, zero,
         (uint32_t) remote_pctrel,
-        zero, zero, zero, zero, zero,
-        remote_voltage);
+        (uint32_t) remote_bad,
+        (uint32_t) remote_other,
+        remote_voltage,
+        (uint32_t) time_packets_sent,
+        (uint32_t) (time_packets_sent? ((100*ack_packets_recvd) / time_packets_sent) : 0),
+        (uint32_t) sync_restarts);
   } else if (ognrelay_enable) {
      if (ognreverse_time) {
          if (time_synched)
              ognopmode = "Remote station, got time from base";
          else
              ognopmode = "Remote station awaiting time from base";
+     } else if (ognrelay_time) {
+         if (time_synched)
+             ognopmode = "Remote station sending time, base synched";
+         else
+             ognopmode = "Remote station trying to send time to base";
      }
      snprintf(stats_html, STATS_SIZE, stats_templ,
         ognopmode,
@@ -442,7 +456,7 @@ void update_stats()
         zero, zero,
         (float) 0, (float) 0,
         zero, zero,
-        zero, zero, zero,
+        zero, zero,
         uptime, ESP.getFreeHeap(),
         packets_failed_crc,
         packets_corrected,
@@ -452,13 +466,13 @@ void update_stats()
         air_relayed_packets_recvd,
         (uint32_t) ((100 * traffic_packets_relayed)
                       / (traffic_packets_recvd+1)),
-        (uint32_t) time_packets_sent,
-        ((uint32_t) (100 * (ack_packets_recvd+1)) / (time_packets_sent+1)),
-        (uint32_t) sync_restarts,
         (uint32_t) bad_packets_recvd,
         (uint32_t) other_packets_recvd,
-        (float) Battery_voltage());
-  } else {  /* single standalone station */
+        (float) Battery_voltage(),
+        (uint32_t) time_packets_sent,
+        (uint32_t) (time_packets_sent? ((100*ack_packets_recvd) / time_packets_sent) : 0),
+        (uint32_t) sync_restarts);
+  } else {  // single standalone station, or base with no time relay
      snprintf(stats_html, STATS_SIZE, stats_templ,
         ognopmode,
         uptime, ESP.getFreeHeap(),
@@ -478,9 +492,10 @@ void update_stats()
         (uint32_t) farthest_ID,
         (uint32_t) bad_packets_recvd,
         other_packets_recvd,
-        zero, zero, zero, zero, zero, zero, zero,
-        zero, zero, zero, zero, zero, zero, zero, zero,
-        (float) Battery_voltage());
+        zero, zero, zero, zero, zero, zero,
+        zero, zero, zero, zero, zero,
+        (float) 0,
+        zero, zero, zero);
   }
   stats_html[STATS_SIZE] = '\0';
 Serial.print("stats_html size: ");  Serial.println(strlen(stats_html));
@@ -768,12 +783,6 @@ void Web_setup(ufo_t* this_aircraft)
              (ogn_debug == false ? "selected" : ""),
              String(ogn_debugport),
 
-             (ogn_itrackbit == true ? "selected" : ""), "True",
-             (ogn_itrackbit == false ? "selected" : ""), "False",
-
-             (ogn_istealthbit == true ? "selected" : ""), "True",
-             (ogn_istealthbit == false ? "selected" : ""), "False",
-
              //ogn_ssid[0].c_str(),
              WiFi.SSID().c_str(),
 
@@ -981,12 +990,6 @@ void Web_setup(ufo_t* this_aircraft)
         if (request->hasParam("ogn_nmea"))
             settings->nmea_out = request->getParam("ogn_nmea")->value().toInt();
 
-//        if (request->hasParam("ogn_no_track_bit"))
-//            settings->no_track = request->getParam("ogn_no_track_bit")->value().toInt();
-//
-//        if (request->hasParam("ogn_stealth_bit"))
-//            settings->stealth = request->getParam("ogn_stealth_bit")->value().toInt();
-
         if (request->hasParam("ogn_aprs_debug"))
             ogn_debug= request->getParam("ogn_aprs_debug")->value().toInt();
 
@@ -1013,12 +1016,6 @@ void Web_setup(ufo_t* this_aircraft)
                 ogn_wpass[ssid_num] = request->getParam("ogn_wifi_password")->value().c_str();
             }
         }
-
-//        if (request->hasParam("ogn_ignore_track"))
-//            ogn_itrackbit= request->getParam("ogn_ignore_track")->value().toInt();
-//
-//        if (request->hasParam("ogn_ignore_stealth"))
-//            ogn_istealthbit= request->getParam("ogn_ignore_stealth")->value().toInt();
 
         if (request->hasParam("ogn_deep_sleep"))
             ogn_sleepmode = request->getParam("ogn_deep_sleep")->value().toInt();
@@ -1126,32 +1123,33 @@ void Web_loop(void)
     {
         String values;
 
-#if defined(TBEAM)
-        values = (ognrelay_base && ognrelay_time) ? remote_sats : gnss.satellites.value();
-#else
-        values = remote_sats;   // was: power  <<< can put something more useful here
-#endif
+        values = (remote_voltage > 0 ? remote_voltage : Battery_voltage());
         values += "_";
-        if (ognrelay_base)
-            values += numseen_1hr;     // was: RF_last_rssi
+        bool yesno = false;
+        if (ognrelay_time || ognreverse_time)
+            yesno = time_synched;
+        else if (ogn_gnsstime)
+            yesno = isValidGNSStime();
+        else
+            yesno = NTP_synched;
+        if (yesno)
+            values += "OK";
         else
             values += "--";
         values += "_";
-        uint16_t reported_uptime =
-            (ognrelay_base && (ognrelay_time || ognreverse_time) && time_synched) ? remote_uptime : uptime;
-        if (reported_uptime < 60) {
-            values += reported_uptime;
-            values += "m";
-        } else {
-            values += reported_uptime/60;
-            values += "h";
-        }
+        if (aprs_registred == 2)
+            values += "OK";
+        else
+            values += "--";
         values += "_";
-        values += traffic_packets_recvd;    // was satfix
+        if (ognrelay_enable)
+            values += traffic_packets_relayed;
+        else
+            values += traffic_packets_reported;
         values += "_";
-        values += packets_per_minute;   // was: timestamp
+        values += numseen_today;
         values += "_";
-        values += numtracked;  // was: largest_range
+        values += numtracked;
         globalClient->text(values);
     }
 
