@@ -215,6 +215,18 @@ void print_wakeup_reason(){
   }
 }
 */
+/* definition to expand macro then apply to pragma message */
+#define VALUE_TO_STRING(x) #x
+#define VALUE(x) VALUE_TO_STRING(x)
+#define VAR_NAME_VALUE(var) #var "="  VALUE(var)
+
+#pragma message(VAR_NAME_VALUE(CONFIG_IDF_TARGET_ESP32))
+#pragma message(VAR_NAME_VALUE(CONFIG_IDF_TARGET_ESP32S3))
+#pragma message(VAR_NAME_VALUE(ESP32))
+#pragma message(VAR_NAME_VALUE(TBEAM))
+#pragma message(VAR_NAME_VALUE(TTGO))
+#pragma message(VAR_NAME_VALUE(T3S3))
+#pragma message(VAR_NAME_VALUE(DEFAULT_SOFTRF_MODEL))
 
 void setup()
 {

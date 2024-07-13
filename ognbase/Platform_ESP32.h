@@ -33,7 +33,8 @@
 /* For OGNbase allow tracking more objects - they get prioritized */
 #define MAX_TRACKING_OBJECTS    30
 
-#define DEFAULT_SOFTRF_MODEL    SOFTRF_MODEL_STANDALONE
+// #define DEFAULT_SOFTRF_MODEL    SOFTRF_MODEL_STANDALONE
+#define DEFAULT_SOFTRF_MODEL    SOFTRF_MODEL_PRIME_MK2
 
 #define SerialOutput            Serial
 #define SoftwareSerial          HardwareSerial
