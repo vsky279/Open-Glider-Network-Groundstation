@@ -202,19 +202,18 @@ typedef struct time_relay_packet
     unsigned int addr_type : 3;
     unsigned int _unk1 : 1;
     // unsigned int magic:8;
-    /********************/
+    /******* p[1] *******/
     uint32_t epoch : 32;
-    /********************/
+    /******* p[2] *******/
     unsigned int offset : 12;
     unsigned int satellites : 4;
     unsigned int uptime : 6;
     unsigned int other_packets : 6;
     unsigned int voltage : 4;
-    /********************/
-    unsigned int p3 : 16;                // available
-    unsigned int traffic_packets : 9;
+    /******* p[3] *******/
+    unsigned int traffic_packets : 25;
     unsigned int pct_relayed : 7;
-    /********************/
+    /******* p[4] *******/
     unsigned int time_packets : 16;
     unsigned int pct_acked : 5;
     unsigned int bad_packets : 6;

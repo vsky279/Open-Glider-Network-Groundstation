@@ -44,7 +44,8 @@ uint32_t ref_time_ms = 0;      /* assumed local millis() at last PPS */
 
 #define TIME_TO_TRYSYNC 2700
 #define TIME_TO_ACKSYNC 10300
-#define TIME_TO_RE_SYNC 291000    // when to start over communicating with remote station
+//#define TIME_TO_RE_SYNC 291000    // when to start over communicating with remote station
+#define TIME_TO_RE_SYNC 191000    // when to start over communicating with remote station
 #define ADJ_FOR_FLARM_RECEPTION 0       /* 40-50 seems to receive FLARM packets better? */
 #define ADJ_FOR_TRANSMISSION_DELAY 12   // half avg round seems to be 8, but 12 gives smaller time diff?
 #define TIME_TO_GNSS_TIME 151000    // how often to check GNSS
@@ -528,9 +529,10 @@ void Timesync_restart()
     when_sync_sent = 0;
     when_to_switch = 0;
     remote_uptime = 0;
-    // sleep_when = 0;
-    // sleep_length = 0;
-    // remote_sleep_length = 0;
+    // uncommented the next 3 lines
+    sleep_when = 0;
+    sleep_length = 0;
+    remote_sleep_length = 0;
     ++sync_restarts;
 }
 
