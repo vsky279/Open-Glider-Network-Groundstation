@@ -5,6 +5,17 @@
 Besides the binary here, download the files in the "data" folder: config.json (template), index.html, style.css.
 
 
+## revision MB144
+
+### Major improvements
+
+Cleaned up and improved the 2-station mode code
+
+### Minor improvements
+
+* Improved the station status reporting to OGN
+
+
 ## revision MB142
 
 ### Major improvements

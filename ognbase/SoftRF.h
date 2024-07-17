@@ -31,9 +31,20 @@
 #include <raspi/raspi.h>
 #endif /* RASPBERRY_PI */
 
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+#if defined(TBEAM) || defined(TTGO)
+#error ESP32S3 target but TBEAM or TTGO in build_opt.h
+#endif
+#endif
+#if defined(CONFIG_IDF_TARGET_ESP32)
+#if defined(T3S3)
+#error ESP32 target but T3S3 in build_opt.h
+#endif
+#endif
+
 #include "version.h"
 
-#define SOFTRF_FIRMWARE_VERSION "MB142"   // _VERSION
+#define SOFTRF_FIRMWARE_VERSION "MB144"   // _VERSION
 #define SOFTRF_IDENT            "OGNB-"
 #define OGNBASE_HTML_VERSION    "MB107"
 

@@ -121,6 +121,7 @@ static const char stats_templ[] PROGMEM =
  <br><p>\r\nTime-Relay Stats:</p>\
  <p>&nbsp;\r\n Time packets sent: %d</p>\
  <p>&nbsp; &nbsp; &nbsp;\r\n  pct acknowledged: %d</p>\
+ <p>&nbsp;\r\n Time packets received: %d</p>\
  <p>&nbsp;\r\n Time-sync restarts: %d</p>\
  </html>";
                                   
@@ -402,6 +403,7 @@ void update_stats()
         remote_voltage,
         (uint32_t) remote_timesent,
         (uint32_t) remote_ack,
+        zero,
         (uint32_t) remote_restarts);
   } else if (ognrelay_base && ognreverse_time) {
      if (time_synched)
@@ -434,8 +436,9 @@ void update_stats()
         (uint32_t) remote_bad,
         (uint32_t) remote_other,
         remote_voltage,
-        (uint32_t) time_packets_sent,
+        (uint32_t) time_packets_sent,    // we also have remote_timerecvd but don't report it
         (uint32_t) (time_packets_sent? ((100*ack_packets_recvd) / time_packets_sent) : 0),
+        zero,
         (uint32_t) sync_restarts);
   } else if (ognrelay_enable) {
      if (ognreverse_time) {
@@ -469,8 +472,9 @@ void update_stats()
         (uint32_t) bad_packets_recvd,
         (uint32_t) other_packets_recvd,
         (float) Battery_voltage(),
-        (uint32_t) time_packets_sent,
-        (uint32_t) (time_packets_sent? ((100*ack_packets_recvd) / time_packets_sent) : 0),
+        (ognrelay_time? (uint32_t) time_packets_sent : zero),
+        (ognrelay_time? (uint32_t) (time_packets_sent? ((100*ack_packets_recvd) / time_packets_sent) : 0) : zero),
+        (ognreverse_time ? (uint32_t) time_packets_recvd : zero),
         (uint32_t) sync_restarts);
   } else {  // single standalone station, or base with no time relay
      snprintf(stats_html, STATS_SIZE, stats_templ,
@@ -494,8 +498,8 @@ void update_stats()
         other_packets_recvd,
         zero, zero, zero, zero, zero, zero,
         zero, zero, zero, zero, zero,
-        (float) 0,
-        zero, zero, zero);
+        (float) Battery_voltage(),
+        zero, zero, zero, zero);
   }
   stats_html[STATS_SIZE] = '\0';
 Serial.print("stats_html size: ");  Serial.println(strlen(stats_html));
@@ -515,6 +519,25 @@ void update_noise()
         int data = noise_data[i];
         noise_count[i] = 0;
         noise_data[i] = 0;
+        snprintf(p, n, "%d,%d,%d\r\n", i, count, data);
+        int m = strlen(p);
+        p += m;
+        n -= m;
+    }
+    noise_text[NOISE_SIZE] = '\0';
+//Serial.println(noise_text);
+}
+
+void update_rnoise()
+{
+    char *p = noise_text;
+    int n = NOISE_SIZE;
+    int nchans = (ogn_band==RF_BAND_US? 65 : ogn_band==RF_BAND_AU? 24 : ogn_band==RF_BAND_EU? 2 : 1);
+    for (int i=0; i<nchans; i++) {
+        int count = remote_noise_count[i];
+        int data = remote_noise_data[i];
+        remote_noise_count[i] = 0;
+        remote_noise_data[i] = 0;
         snprintf(p, n, "%d,%d,%d\r\n", i, count, data);
         int m = strlen(p);
         p += m;
@@ -582,7 +605,7 @@ void mini_server()
     Web_start();
 }
 
-int ssid_num = -1;
+int ssid_num = 0;
 
 void Web_setup(ufo_t* this_aircraft)
 {
@@ -819,10 +842,14 @@ void Web_setup(ufo_t* this_aircraft)
              "hidekey", "hidekey"
              );
 
-    ssid_num = -1;
+    ssid_num = 0;
     for (int sn=0; sn<5; sn++) {
-       if (WiFi.SSID() == ogn_ssid[sn])
+       if (WiFi.SSID() == ogn_ssid[sn]) {
            ssid_num = sn;   // using the SSID from this slot
+Serial.print("using SSID #");
+Serial.println(ssid_num);
+          // if new SSID entered later, overwrite this same slot
+       }
     }
 
     yield();
@@ -907,6 +934,12 @@ void Web_setup(ufo_t* this_aircraft)
         request->send(200, "text/plain", String(noise_text));
     });
 
+    wserver->on("/remote_noise", HTTP_GET, [](AsyncWebServerRequest* request){
+        update_rnoise();
+        Serial.println(F("requesting remote noise page..."));
+        request->send(200, "text/plain", String(noise_text));
+    });
+
     wserver->on("/refresh", HTTP_GET, [](AsyncWebServerRequest* request){
         /* refresh the stats at the top of the status page in 2 sec */
         ExportTimeWebRefresh = millis()/1000 - 21;
@@ -929,7 +962,9 @@ void Web_setup(ufo_t* this_aircraft)
           // for now just some hints:
           remote_sats = 0;            /* hints that remote is restarting */
           remote_uptime = 0;
-          uptime = 0;
+          //uptime = 0;
+          // - but none of the above is shown on the status page any more!
+          remote_voltage = 0;
           ExportTimeWebRefresh = 0;   /* force a refresh of the stats at the top of the status page */
         }
         request->redirect("/");
@@ -1004,17 +1039,11 @@ void Web_setup(ufo_t* this_aircraft)
 
         yield();
 
-        if (request->hasParam("ogn_ssid")) {
-            if (ssid_num >= 0) {
-               // new SSID introduced, overwrite same slot
+        if (request->hasParam("ogn_ssid"))
                ogn_ssid[ssid_num] = request->getParam("ogn_ssid")->value().c_str();
-            }
-        }
         if (request->hasParam("ogn_wifi_password")){
-            if (ssid_num >= 0) {
               if (request->getParam("ogn_wifi_password")->value() != "hidepass")
                 ogn_wpass[ssid_num] = request->getParam("ogn_wifi_password")->value().c_str();
-            }
         }
 
         if (request->hasParam("ogn_deep_sleep"))
@@ -1049,11 +1078,14 @@ void Web_setup(ufo_t* this_aircraft)
             ognrelay_enable = request->getParam("relay_enable")->value().toInt();
         if (request->hasParam("base_enable"))
             ognrelay_base = request->getParam("base_enable")->value().toInt();
-        if (ognrelay_base)  ognrelay_enable = 0;
+        if (ognrelay_base)
+            ognrelay_enable = 0;
         if (request->hasParam("relay_time"))
             ognrelay_time = request->getParam("relay_time")->value().toInt();
         if (request->hasParam("reverse_time"))
             ognreverse_time = request->getParam("reverse_time")->value().toInt();
+        if (ognreverse_time)
+            ognrelay_time = 0;
         if (request->hasParam("gnss_time"))
             ogn_gnsstime = request->getParam("gnss_time")->value().toInt();
 
@@ -1066,7 +1098,7 @@ void Web_setup(ufo_t* this_aircraft)
         if (request->hasParam("webserver_port")) {
             if (request->getParam("webserver_port")->value() != "hidekey") {
               unsigned int port = request->getParam("webserver_port")->value().toInt();
-              if (port >= 49152 && port <= 65535)
+              if (port==80 || (port >= 49152 && port <= 65535))
                   webserver_port = port;
             }
         }
@@ -1137,7 +1169,7 @@ void Web_loop(void)
         else
             values += "--";
         values += "_";
-        if (aprs_registred == 2)
+        if (aprs_registred >= 1)
             values += "OK";
         else
             values += "--";
@@ -1147,7 +1179,10 @@ void Web_loop(void)
         else
             values += traffic_packets_reported;
         values += "_";
-        values += numseen_today;
+        if (ognrelay_enable)
+            values += "--";
+        else
+            values += numseen_today;
         values += "_";
         values += numtracked;
         globalClient->text(values);

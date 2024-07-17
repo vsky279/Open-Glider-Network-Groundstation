@@ -163,7 +163,7 @@ void WiFi_setup()
             }
         }
         // Check connection
-        for (int n = 0; n < 20; n++) { /* retry */
+        for (int n = 0; n < 10; n++) { /* retry */
             if (wifiMulti->run() == WL_CONNECTED) {
                 // ... print IP Address
                 Serial.print("Connect "); Serial.print(WiFi.SSID());

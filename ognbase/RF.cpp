@@ -53,7 +53,12 @@ uint32_t packets_corrected = 0;
 int32_t noise_data[65];
 uint16_t noise_count[65];
 
+int32_t remote_noise_data[65];
+uint16_t remote_noise_count[65];
+
 int8_t RF_last_rssi = 0;
+int8_t RF_last_rx_chan = 0;
+int8_t RF_last_idle_rssi = -100;
 int8_t avg_idle_rssi = -100;    // running average used for SNR calc
 int8_t RF_last_snr  = 0;
 int8_t RF_last_bec  = 0;
@@ -140,6 +145,8 @@ byte RF_setup(void)
     for (int i=0; i<65; i++) {
         noise_count[i] = 0;
         noise_data[i] = 0;
+        remote_noise_count[i] = 0;
+        remote_noise_data[i] = 0;
     }
 
     if (rf_chip == NULL)
@@ -239,106 +246,97 @@ void RF_loop()
      * More correct than original SoftRF code, and uses less CPU time.
      */
 
+    bool non_sync = (OurTime < 1000000 || ((time_master || time_client) && !time_synched));
+
     /* OurTime & ref_time_ms were updated in Time_loop() */
 
     uint32_t now_ms = millis();
-
-    if (now_ms < RF_OK_until) {
-      /* channels already computed */
-      return;
+    uint32_t ms_since_pps;
+    if (now_ms > ref_time_ms)
+        ms_since_pps = now_ms - ref_time_ms;
+    else
+        ms_since_pps = 0;
+    if (ms_since_pps >= 1000) {
+      ++OurTime;
+      ref_time_ms += 1000;
+      ms_since_pps -= 1000;
+    }
+    time_t prev_RF_time = RF_time;
+    RF_time = OurTime;
+    if (! non_sync && ms_since_pps < 300 && ogn_band <= RF_BAND_AU) {
+        /* channel does not change at PPS rollover in middle of slot 1 */
+        --RF_time;
     }
 
-    RF_time = OurTime;   // may be adjusted later
+    if (now_ms < RF_OK_until) {
+        if (non_sync || RF_time == prev_RF_time) {
+            /* channels already computed */
+            return;
+        }
+        // else go ahead and recompute
+//Serial.printf("recomputing slots at ms_since_pps = %d\r\n", ms_since_pps);
+//Serial.printf("RF_time %d != prev_RF_time %d, ms_since_pps %d, now_ms %d, RF_OK_until %d\r\n",
+//RF_time, prev_RF_time, ms_since_pps, now_ms, RF_OK_until);
+    }
 
     /* if only one channel is allowed... */
+    /* also until time is synched use channel 0 to communicate between relay ends  */
 
-    if (ogn_band > RF_BAND_AU) {
+    if (non_sync || ogn_band > RF_BAND_AU) {
       rxchan = 0;
       txchan = 0;
       /* transmit only once per second */
-      RF_OK_until = now_ms + 1000;
-      TxTimeMarker = now_ms + SoC->random(0, 995);
-      TxEndMarker  = now_ms + 995;
-      return;
+      RF_OK_until  = ref_time_ms + 1000;
+      TxTimeMarker = ref_time_ms + SoC->random(0, 995);
+      TxEndMarker  = ref_time_ms + 995;
+        return;
     }
 
     /* Only 2 channels in Europe, listening to only one of them is good enough */
     /* Thus if no exact time, use channel 0 for receiving FLARM, channel 1 for relay */
+    /* (FLARM packets will be relayed as-is, without decrypting, since no time) */
 
     if (ogn_band == RF_BAND_EU && ognrelay_enable
               && !ogn_gnsstime && !ognreverse_time) {    // remote without exact time
         txchan = 1;
         rxchan = 0;
-        RF_OK_until = now_ms + 1000;
-        TxTimeMarker = now_ms + SoC->random(0, 995);
-        TxEndMarker  = now_ms + 995;
-        return;
-    }
-
-    /* until time is synched use channel 0 to communicate between relay ends  */
-
-    if (OurTime < 1000000 || ((time_master || time_client) && !time_synched)) {
-        txchan = 0;
-        rxchan = 0;
-        RF_OK_until = now_ms + 1000;
-        TxTimeMarker = now_ms + SoC->random(0, 995);
-        TxEndMarker  = now_ms + 995;
+        RF_OK_until  = ref_time_ms + 1000;
+        TxTimeMarker = ref_time_ms + SoC->random(0, 995);
+        TxEndMarker  = ref_time_ms + 995;
         return;
     }
 
     /* the actual time slots computation for regions with more than one channel */
 
-    int ms_since_pps = now_ms - ref_time_ms;
-
-    if (ms_since_pps < 0) {   /* should not happen */
-//Serial.printf("ref_time_ms %d > now %d ??\r\n", ref_time_ms, now_ms);
-      --OurTime;
-      ref_time_ms -= 1000;
-      return;
-    }
-
-    if (ms_since_pps >= 1300) {   /* should not happen */
-//Serial.printf("ref_time_ms %d << now %d ??\r\n", ref_time_ms, now_ms);
-      ++OurTime;
-      ref_time_ms += 1000;
-      return;
-    }
-
-    RF_time = OurTime;
-    uint32_t slot_base_ms = ref_time_ms;
-    if (ms_since_pps < 300) {  /* does not happen often, since normally RF_OK_until 300 */
-      /* channel does _NOT_ change at PPS rollover in middle of slot 1 */
-      /* - therefore change reference second to the previous one: */
-      --RF_time;
-      slot_base_ms -= 1000;
-      ms_since_pps += 1000;
-    }
-
     if (ms_since_pps >= 300 && ms_since_pps < 800) {
 
       current_slot = 0;
-      RF_OK_until = slot_base_ms + 800;
-      TxTimeMarker = slot_base_ms + 400 + SoC->random(0, 395);
-      TxEndMarker  = slot_base_ms + 795;
+      RF_OK_until  = ref_time_ms + 800;
+      TxEndMarker  = ref_time_ms + 795;
+      TxTimeMarker = ref_time_ms + 400 + SoC->random(0, 395);
+//      if (TxTimeMarker < now_ms)  // can only happen if setting channel after beginning of time slot
+//          TxTimeMarker = TxEndMarker;   // skip transmitting for remainder of this time slot
 
-    } else if (ms_since_pps >= 800 && ms_since_pps < 1300) {
+    } else if (ms_since_pps >= 800) {
 
       current_slot = 1;
-      /* channel does _NOT_ change at PPS rollover in middle of slot 1 */
-      RF_OK_until = slot_base_ms + 1300;
-      TxTimeMarker = slot_base_ms + 800 + SoC->random(0, 395);
-      TxEndMarker  = slot_base_ms + 1195;
+      RF_OK_until  = ref_time_ms + 1300;
+      TxEndMarker  = ref_time_ms + 1195;
+      TxTimeMarker = ref_time_ms + 800 + SoC->random(0, 395);
+//      if (TxTimeMarker < now_ms)
+//          TxTimeMarker = TxEndMarker;
 
-    } else { /* shouldn't happen */
+    } else {  // if (ms_since_pps < 300) - should rarely happen since OK_until 1300
 
-      current_slot = 0;
-      RF_OK_until = ref_time_ms + 1400;
-      TxTimeMarker = RF_OK_until;  /* do not transmit for now */
+      current_slot = 1;
+      /* channel does not change at PPS rollover in middle of slot 1 */
+      RF_OK_until  = ref_time_ms + 300;
+      TxTimeMarker = RF_OK_until;         // do not transmit until next slot
       TxEndMarker  = RF_OK_until;
 
     }
 
-    /* Use OGN channel for relay */
+    /* Use OGN channel for relay from remote to base */
 
     if (ognrelay_enable) {
       rxchan = RF_FreqPlan.getChannel(RF_time, current_slot, 0);
@@ -366,8 +364,8 @@ size_t RF_Encode(ufo_t* fop)
     size_t size = 0;
     if (RF_ready && protocol_encode) {
 
-        if (settings->txpower == RF_TX_POWER_OFF)
-            return size;
+        //if (settings->txpower == RF_TX_POWER_OFF)
+        //    return size;
 
         uint32_t now_ms = millis();
         if (RF_TX_ready()) {
@@ -384,10 +382,14 @@ bool RF_Transmit(size_t size, bool wait)
     if (ognrelay_enable==false && ognrelay_base==false) {
         // should not be transmitting
         Serial.println(">>> Single-Station Transmitting?");
+        return false;
     }
 
-    if (settings->txpower == RF_TX_POWER_OFF)
-        return true;
+    //if (size == 0)
+    //    return false;
+
+    //if (settings->txpower == RF_TX_POWER_OFF)
+    //    return true;
 
     if (RF_ready && rf_chip && (size > 0)) {
 
@@ -410,15 +412,6 @@ bool RF_Transmit(size_t size, bool wait)
             RF_tx_size = 0;
             TxTimeMarker = TxEndMarker;  /* do not transmit again until next slot */
             /* do not set next transmit time here - it is done in RF_loop()       */
-            /* exception: when remote relay is not using GNSS time - in that case */
-            /*   in Europe try and transmit on ch1 when FLARMs are not using ch1  */
-            /*   - assume this transmission is soon after a reception on ch0      */
-            if (ogn_band == RF_BAND_EU && ognrelay_enable && !ogn_gnsstime && !ognreverse_time) {
-                RF_OK_until = now_ms + 1000;
-                TxTimeMarker = now_ms + SoC->random(800, 995);
-                TxEndMarker  = now_ms + 995;
-            }
-
             delay(10);  // now hopefully transmission is really done
             rf_chip->channel(rxchan);
 
@@ -847,7 +840,9 @@ static void get_idle_rssi()
         }
         avg_idle_rssi = ((3*avg_idle_rssi + last_rssi) >> 2);   // running average
     }
-    last_rssi = rssi;     // used for sample & averaging next time
+    RF_last_idle_rssi = last_rssi;     // used for sending from remote to base
+    RF_last_rx_chan = rxchan;
+    last_rssi = rssi;             // used for sample & averaging next time
 }
 
 static bool sx12xx_receive()

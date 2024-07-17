@@ -190,7 +190,7 @@ int OGN_APRS_check_messages(void)
         int reg = OGN_APRS_check_reg(RXbuffer);
         if (reg == 1) {
             msg = "APRS login successful";
-            aprs_registred = 2;
+            aprs_registred = 1;
         } else if (reg == 0) {
             msg = "APRS login unsuccessful";
         } else if (reg == 2) {
@@ -208,7 +208,7 @@ int OGN_APRS_check_messages(void)
 
     if (seconds() - last_packet_time > 60)
     {
-        msg = "no packet since > 60 seconds...reconnecting";
+        msg = "no APRS packet since > 60 seconds...reconnecting";
         Serial.println(msg.c_str());
         Logger_send_udp(&msg);
         SoC->WiFi_disconnect_TCP();
@@ -696,57 +696,65 @@ bool OGN_APRS_Status(ufo_t* this_aircraft, bool first_time, String resetReason)
         StatusPacket += String(numvisible) + "/" + String(numseen_1hr) + "Acfts[1h]";
     }
 
-#if 1  // OGNbase specific fields
+    // OGNbase specific fields
+
     StatusPacket += " ";
-    if (ognreverse_time) {
-        if (time_synched)
-            StatusPacket += "time_synched ";
-        else
-            StatusPacket += "time_not_synched ";
-    } else if (ognrelay_time) {
-        if (time_synched) {
-            StatusPacket += String(remote_sats);
-            StatusPacket += "sat time_synched ";
-        } else {
-            StatusPacket += "time_not_synched ";
-        }
-#if defined(TBEAM)
-    } else if (ogn_gnsstime) {
-        StatusPacket += String(gnss.satellites.value());
-        StatusPacket += "sat ";
-#endif
-    }
+    static uint32_t prev_uptime   = 0x7FFFFFFF;
+    static uint32_t prev_r_uptime = 0x7FFFFFFF;
     if (first_time) {
         // StatusPacket += "reset_reason_";
         StatusPacket += resetReason;
-        StatusPacket += "\r\n";
     } else if (wifi_outage && millis() > wifi_outage + 360000) {
-         //snprintf (buf, sizeof(buf), "%d_m_WiFi_outage_ended\r\n",
-         //          (millis() - wifi_outage) / 60000);
-         StatusPacket += ((millis() - wifi_outage) / 60000);
-         StatusPacket += "_m_WiFi_outage_ended\r\n";
+        //snprintf (buf, sizeof(buf), "%d_m_WiFi_outage_ended",
+        //          (millis() - wifi_outage) / 60000);
+        StatusPacket += ((millis() - wifi_outage) / 60000);
+        StatusPacket += "_m_WiFi_outage_ended";
     } else if (wifi_reconnected) {
-        StatusPacket += "wifi_reconnected\r\n";
-    } else if ((ognrelay_time || ognreverse_time) && time_synched) {
-        if (remote_sleep_length == 0) {
+        StatusPacket += "wifi_reconnected";
+    } else if ((ognrelay_time || ognreverse_time) && remote_sleep_length != 0) {
+        StatusPacket += String(remote_sleep_length);
+        StatusPacket += "_m_r_sleep";
+        remote_sleep_length = 0;   // will be reset by remote if not asleep yet
+    } else if (sleep_length != 0) {
+        StatusPacket += String(sleep_length/60);
+        StatusPacket += "_m_sleep";
+    } else if ((ognrelay_time || ognreverse_time) && !time_synched) {
+        StatusPacket += "time_not_synched";
+    } else if ((ognrelay_time || ognreverse_time) && remote_uptime != prev_r_uptime) {
+        if (remote_uptime < 360) {
             StatusPacket += String(remote_uptime);
-            StatusPacket += "_m_r_uptime\r\n";
+            StatusPacket += "_m_r_uptime";
+        } else if (remote_uptime < (4*24*60)) {
+            StatusPacket += String(remote_uptime/60);
+            StatusPacket += "_h_r_uptime";
         } else {
-            StatusPacket += String(remote_sleep_length);
-            StatusPacket += "_m_r_sleep\r\n";
+            StatusPacket += String(remote_uptime/(24*60));
+            StatusPacket += "_d_r_uptime";
         }
-    } else {
-        if (sleep_length == 0) {
+        prev_r_uptime = remote_uptime;
+    } else if (uptime < 25 || uptime > prev_uptime + 10) {
+        if (uptime < 360) {
             StatusPacket += String(uptime);
-            StatusPacket += "_m_uptime\r\n";
+            StatusPacket += "_m_uptime";
+        } else if (uptime < (4*24*60)) {
+            StatusPacket += String(uptime/60);
+            StatusPacket += "_h_uptime";
         } else {
-            StatusPacket += String(sleep_length/60);
-            StatusPacket += "_m_sleep\r\n";
+            StatusPacket += String(uptime/(24*60));
+            StatusPacket += "_d_uptime";
         }
-    }
-#else
-    StatusPacket += "\r\n";
+        prev_uptime = uptime;
+    } else if (ognrelay_time) {
+        StatusPacket += String(remote_sats);
+        StatusPacket += "sat";
+#if defined(TBEAM)
+    } else if (ogn_gnsstime) {
+        StatusPacket += String(gnss.satellites.value());
+        StatusPacket += "sat";
 #endif
+    }
+
+    StatusPacket += "\r\n";
     //Serial.println("");
     Serial.print(StatusPacket.c_str());
     //Serial.println("");

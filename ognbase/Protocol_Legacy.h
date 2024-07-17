@@ -152,8 +152,8 @@ typedef struct legacy_packet
     unsigned int alt : 13;
     /********************/
     unsigned int lon : 20;
-    unsigned int snr : 7;
-    unsigned int bec : 3;
+    unsigned int snr : 7;    // used to send SNR & BEC when relaying from remote to base,
+    unsigned int bec : 3;    // overlays some other info in the original old-protocol packet
     unsigned int smult : 2;
     /********************/
     int8_t ns[4];
@@ -194,11 +194,47 @@ typedef struct new_packet
     byte lastbyte;
 } __attribute__((packed)) new_packet_t;
 
+typedef struct time_relay_packet
+{
+    /********************/
+    unsigned int addr : 24;
+    unsigned int msg_type : 4;
+    unsigned int addr_type : 3;
+    unsigned int _unk1 : 1;
+    // unsigned int magic:8;
+    /********************/
+    uint32_t epoch : 32;
+    /********************/
+    unsigned int offset : 12;
+    unsigned int satellites : 4;
+    unsigned int uptime : 6;
+    unsigned int other_packets : 6;
+    unsigned int voltage : 4;
+    /********************/
+    unsigned int p3 : 16;                // available
+    unsigned int traffic_packets : 9;
+    unsigned int pct_relayed : 7;
+    /********************/
+    unsigned int time_packets : 16;
+    unsigned int pct_acked : 5;
+    unsigned int bad_packets : 6;
+    unsigned int restarts : 3;
+    bool when_to_sleep : 1;
+    bool when_to_switch : 1;
+    /********************/
+    uint32_t timehash : 32;
+    /********************/
+} __attribute__((packed)) time_relay_packet_t;
+
+
 bool legacy_decode(void *, ufo_t *, ufo_t *);
 bool latest_decode(void *, ufo_t *, ufo_t *);
 
 size_t legacy_encode(void *, ufo_t *);
 size_t relay_encode(void *, ufo_t *);
+
+unsigned int enscale( int value, unsigned int mbits, unsigned int ebits, unsigned int sbits);
+int descale( unsigned int value, unsigned int mbits, unsigned int ebits, unsigned int sbits);
 
 extern const rf_proto_desc_t legacy_proto_desc;
 

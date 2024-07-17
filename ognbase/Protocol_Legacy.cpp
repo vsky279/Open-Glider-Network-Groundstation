@@ -228,6 +228,34 @@ char *bytes2Hex(byte *buffer, size_t size)
   return hexbuf;
 }
 
+// pack integer value into a pseudo-floating format
+unsigned int enscale( int value, unsigned int mbits, unsigned int ebits, unsigned int sbits)
+{
+    unsigned int offset = (1 << mbits);
+    unsigned int signbit = (offset << ebits);
+    unsigned int negative = 0;
+    if (value < 0) {
+        if (sbits == 0)      // underflow
+            return 0;        // clamp to minimum
+        value = -value;
+        negative = signbit;
+    }
+    if (value < offset)
+        return (negative | (unsigned int)value);  // just for efficiency
+    unsigned int exp = 0;
+    unsigned int mantissa = offset + (unsigned int)value;
+    unsigned int mlimit = offset + offset - 1;
+    unsigned int elimit = signbit - 1;
+    while (mantissa > mlimit) {
+        mantissa >>= 1;
+        exp += offset;
+        if (exp > elimit)                 // overflow
+            return (negative | elimit);   // clamp to maximum
+    }
+    mantissa -= offset;
+    return (negative | exp | mantissa);    
+}
+
 // unpack integer value from a pseudo-floating format
 int descale( unsigned int value, unsigned int mbits, unsigned int ebits, unsigned int sbits)
 {
@@ -287,22 +315,25 @@ bool latest_decode(void* buffer, ufo_t* this_aircraft, ufo_t* fop)
     // so far it seems that the last byte of the packet is always 0 if decrypted correctly
     // do not insist on exact timebits if relayed in original encryption
     // note: normal relaying (with time stamp) is re-encoded in the old protocol
-    if (pkt->lastbyte != 0 || pkt->needs3 != 3) {
-        Serial.println("rejecting bad decrypt");
-        return false;
-    }
     unsigned int timebits = pkt->timebits;
     unsigned int localbits = (timestamp & 0x0F);
-    bool time_error = true;
+    bool time_error = (localbits != timebits);
     // allow being off-by-one (but not at the rollover)
-    if (localbits == timebits)
-        time_error = false;
-    else if (localbits + 1 == timebits)
+    if (localbits + 1 == timebits)
         time_error = false;
     else if (localbits == timebits + 1)
         time_error = false;
     if (time_error) {
-        Serial.println("decryption time error");
+        if (localbits == 0) {
+            Serial.printf("decrypt time err - local rolled over early %d %d\r\n", localbits, timebits);
+        // } else if (timebits == 0) {   // meaningless, timebits was not decrypted correctly
+        } else {
+            Serial.printf("decrypt time error > 1  - not at roll over %d %d\r\n", localbits, timebits);
+        }
+        return false;
+    }
+    if (pkt->lastbyte != 0 || pkt->needs3 != 3) {
+        Serial.println("rejecting bad decrypt with OK timebits");
         return false;
     }
 
@@ -489,23 +520,17 @@ Serial.printf("received non-relay pkt, msg_type=%X, addr=%06X\r\n", pkt->msg_typ
     uint32_t *p = (uint32_t *) pkt;
     btea(p+1, -5, key);
 
-    /* check data integrity */
     if (time_sent) {
-        /* compute checksum and reject packet if fails */
-        uint16_t sentsum = ((uint16_t) pkt->ew[2] << 7) | (uint16_t) (pkt->ew[3] & 0x7F);
-        pkt->ew[2] = 0;   // for the checksum computation
-        pkt->ew[3] = 0;
-        uint16_t checksum=0;
-        for (int ndx = 0; ndx < sizeof (legacy_packet_t); ndx++)
-            checksum += (*(((unsigned char *) pkt) + ndx));
-        if (checksum != sentsum) {
-                Serial.println("bad checksum in relayed packet");
-                return false;
-        }
+        // there is no need for the checksum since already checked CRC
 
         /* reception stats sent from remote */
         fop->bec = pkt->bec;
         fop->snr = pkt->snr;
+
+        /* background noise sample sent from remote */
+        int8_t rxchan = pkt->ew[2];
+        remote_noise_data[rxchan] += pkt->ew[3];
+        ++remote_noise_count[rxchan];
     }
 
     // fully decode the packet
@@ -805,7 +830,7 @@ size_t legacy_encode(void* buffer, ufo_t* fop)
         // re-encode the data into the old protocol (even if arrived in new protocol)
         legacy_encode_data(buffer, fop);
 
-        uint32_t hms = ((fop->minute << 11) | (fop->minute << 5) | (fop->second >> 1));
+        uint32_t hms = ((fop->hour << 11) | (fop->minute << 5) | (fop->second >> 1));
         pkt->ns[2] = (int8_t)(hms & 0xFF);
         pkt->ns[3] = (int8_t)((hms>>8) & 0xFF);
 
@@ -815,17 +840,12 @@ size_t legacy_encode(void* buffer, ufo_t* fop)
         pkt->snr = snr;
         pkt->bec = fop->bec;
 
+        /* background noise sample sent from remote */
+        pkt->ew[2] = RF_last_rx_chan;
+        pkt->ew[3] = RF_last_idle_rssi;
+
         pkt->msg_type = (fop->msg_type == MSG_TYPE_OLD? MSG_TYPE_ORG : MSG_TYPE_REL);
             /* mark as relayed packet with a timestamp */
-
-        int ndx;
-        pkt->ew[2] = 0;   // for the checksum computation
-        pkt->ew[3] = 0;
-        uint16_t checksum=0;
-        for (ndx = 0; ndx < sizeof (legacy_packet_t); ndx++)
-            checksum += (*(((unsigned char *) pkt) + ndx));
-        pkt->ew[2] = (checksum & 0x3F80) >> 7;
-        pkt->ew[3] = checksum & 0x007F;
 
         /* re-encrypt with relay key */
         uint32_t key[4];

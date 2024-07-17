@@ -149,7 +149,7 @@
 #define TimeToSleep() (seconds() >= ExportTimeSleep + ogn_rxidle)
 
 //testing
-#define TIME_TO_DIS_WIFI  666
+#define TIME_TO_DIS_WIFI  333
 #define TimeToDisWifi() (seconds() >= ExportTimeDisWifi + TIME_TO_DIS_WIFI)
 
 //testing
@@ -181,6 +181,7 @@ RTC_DATA_ATTR uint32_t deep_sleep_counter = 0;
 
 bool ever_synched = false;
 
+unsigned long setup_done_ms = 0;
 unsigned long LEDTimeMarker = 0;
 unsigned long ExportTimeMarker = 0;
 
@@ -507,11 +508,14 @@ void ground()
     }
 
   if(!position_is_set){
+    delay(1000);
     Serial.println(F("still no position..."));
     OLED_write("no position data", 0, 18, true);
-    delay(600);
-    OLED_write("waiting for GPS fix", 0, 18, true);
-    delay(600);
+    if (ogn_gnsstime) {
+        delay(600);
+        OLED_write("waiting for GPS fix", 0, 18, true);
+    }
+    delay(1000);
     OLED_info();
   }
 
@@ -520,6 +524,7 @@ void ground()
 #else
 
   if(!position_is_set){
+    delay(1000);
     Serial.println(F(">>> no position data found"));
     OLED_write("no position data found", 0, 18, true);
     delay(1000);
@@ -540,18 +545,16 @@ void ground()
     if (ogn_timezone > 12)  ogn_timezone -= 24;   // -11...12
 
     groundstation = true;
+    setup_done_ms = millis();
 
-    Serial.println("good morning, startup esp32 groundstation");
+    Serial.print("good morning, startup esp32 groundstation at ms=");
+    Serial.println(millis());
 
     msg = "good morning, startup esp32 groundstation ";
     msg += "version ";
     msg += String(_VERSION);
     msg += " after ";
     msg += String(SoC->getResetInfo());
-    Logger_send_udp(&msg);
-
-    msg = "current time ";
-    msg += OurTime;  // now();
     Logger_send_udp(&msg);
 
     ExportTimeSleep = seconds();
@@ -589,11 +592,22 @@ void ground()
     LogDate();  // once
 
     if (TimeToRegisterOGN() || ground_registred == 0) {  
-      if (OurTime != 0 && ThisAircraft.second != 0 && position_is_set && WiFi.getMode() == WIFI_STA) {
+      bool time_ok;
+      if (ognrelay_time || ognreverse_time)
+          time_ok = time_synched;
+      else
+          time_ok = NTP_synched;
+      if (OurTime > 1000000 && ThisAircraft.second != 0
+             && groundstation && millis() > setup_done_ms + 30000
+             && position_is_set && time_ok && WiFi.getMode() == WIFI_STA) {
         Serial.println(F("Registering OGN..."));
         OLED_write("Registering OGN...", 0, 18, true);
         ground_registred = OGN_APRS_Register(&ThisAircraft);
         if (ground_registred == 1)  OLED_write("Registered OGN OK", 0, 27, false);
+        msg = "current UTC time ";
+        msg += OurTime;
+        Logger_send_udp(&msg);
+        Serial.println(msg.c_str());
         ExportTimeRegisterOGN = seconds();
         if (SoC->getFreeHeap() < 30000) {
             Serial.print(F("Free heap size: "));
@@ -614,10 +628,10 @@ void ground()
     }
   
     if(ground_registred == -2) {
-      if (ExportTimeReRegister != 0)     // <<<
-          os_runstep();
-//Serial.println("check wifi...");
+      if (ExportTimeReRegister != 0)
+          os_runstep();               // <<<  what does this do?
       if (TimeToReRegisterOGN()) {
+Serial.println("ground_registred == -2,  check wifi...");
           if (OGN_APRS_check_Wifi()) {
               ground_registred = 0;
               ExportTimeReRegister = 0;
@@ -647,7 +661,6 @@ void ground()
         OGN_APRS_Export();
         //Serial.println("... APRS_Export returned");
       }
-      // OLED_info(position_is_set);
       if (! OLED_blank)
         OLED_info();
       ExportTimeOGN = seconds();
@@ -701,12 +714,12 @@ void ground()
       }
     }
 
-    if(TimeToCheckKeepAliveOGN() && ground_registred == 1){
-      //Serial.println("check APRS msgs...");
-      ground_registred = OGN_APRS_check_messages();
-      //Serial.println("... APRS_check_messages returned");
-      ExportTimeCheckKeepAliveOGN = seconds();
-      MONIT_send_trap();
+    if(TimeToCheckKeepAliveOGN() && ground_registred >= 1){
+        Serial.println("check APRS msgs...");
+        ground_registred = OGN_APRS_check_messages();
+        //Serial.println("... APRS_check_messages returned");
+        ExportTimeCheckKeepAliveOGN = seconds();
+        MONIT_send_trap();
     }
 
     yield();
@@ -746,7 +759,6 @@ void ground()
 
   /* use export time marker for OLED display cycling in remote station */
   if (TimeToExportOGN() && ognrelay_enable) {
-    // OLED_info(position_is_set);
     if (! OLED_blank)
       OLED_info();
     ExportTimeOGN = seconds();
@@ -780,26 +792,27 @@ void ground()
     UpdateTrafficTimeMarker = millis();
   }
 
-  if (TimeToDisWifi() && ognrelay_enable) {
-
 //Serial.println("disable things check...");
+
+  if (TimeToDisWifi() && ognrelay_enable) {
 
     if (ExportTimeDisWifi == 0) {
 
-      ExportTimeDisWifi = seconds();
+      ExportTimeDisWifi = seconds();  // wait another 333 seconds after the first 333
 
     } else if (WiFi.getMode() == WIFI_AP) {
 
 #ifdef TBEAM
       turn_LED_off();   /* turn off bright blue LED to save power and signal end of WiFi */
 #endif
-      OLED_disable();
-      if (settings->nmea_p)
-          StdOut.println(F("$PSRFS,WIFI_OFF"));
-      Serial.println(F("[ino] shutting down WiFI & LED..."));
+      //if (settings->nmea_p)
+      //    StdOut.println(F("$PSRFS,WIFI_OFF"));
+      Serial.println(F("[ino] shutting down WiFI..."));
       DebugLogWrite("ino shut down wifi");
       Web_fini();
       WiFi_fini();
+      // on TTGO & T3S3 the green LED will be turned off in Time_loop()
+      //OLED_disable();
     }
   }
 
@@ -827,18 +840,20 @@ void ground()
 void
 sleep_check()
 {
-    if (ognrelay_time) {
-        if (! time_synched && ! ever_synched)
-            ExportTimeSleep = seconds();      /* don't sleep until a while after time-sync */
+    static uint32_t check_when = 0;
+    if (millis() < check_when)
+        return;
+    check_when = millis() + 29876;
+
+    if (ognrelay_time || ognreverse_time) {
+        bool never_synched = ! ever_synched;
         if (time_synched)
             ever_synched = true;
+        if (! time_synched && never_synched) {
+            ExportTimeSleep = seconds();      /* don't sleep until a while after time-sync */
+            return;
+        }
     }
-
-//static uint32_t oldsecs = 0;
-//if (seconds() > oldsecs+30) {
-//oldsecs = seconds();
-//Serial.printf("ExportTimeSleep=%d, seconds=%d\r\n", ExportTimeSleep, seconds());
-//}
 
     /* if clock is valid, tie wakeup time to clock time */
     int localtime = 0;
@@ -855,12 +870,16 @@ sleep_check()
 
     bool low_bat = false;
     static uint32_t low_bat_time = 0;
+    static bool low_bat_sleep = false;
 //#if defined(TBEAM)
-    if (Battery_voltage() < 3.65 && Battery_voltage() > 2.0) {
+    float volts = Battery_voltage();
+    if (volts < 3.65 && volts > 2.0) {
         low_bat = true;
         if (low_bat_time == 0) {
             Serial.println(F("local battery voltage < 3.65"));
             low_bat_time = millis();
+        } else if (millis() > low_bat_time + 30000) {
+            low_bat_sleep = true;
         }
 //        bool gnss_ready = true;
 //        if (ogn_gnsstime)
@@ -870,15 +889,15 @@ sleep_check()
     }
 //#endif
 
-    bool will_sleep = false;
+    static bool will_sleep = false;   // once set, stays set between calls
 
-    if (ognrelay_base && ognrelay_time && ogn_sleepmode == 2) {
+    if (ognrelay_base && (ognrelay_time || ognreverse_time) && ogn_sleepmode == 2) {
 
         /* base follows remote */
         if (remote_sleep_length > 0) {
             will_sleep = true;
             sleep_length = 60 * remote_sleep_length;
-Serial.printf("follow remote_sleep_length=%d\r\n", remote_sleep_length);
+//Serial.printf("follow remote_sleep_length=%d\r\n", remote_sleep_length);
         }
 
     } else {
@@ -893,10 +912,11 @@ Serial.printf("follow remote_sleep_length=%d\r\n", remote_sleep_length);
     }
 
     /* sleep if battery is low, and has been low */
-    if (low_bat && millis() > low_bat_time + 15000)
+    if (low_bat_sleep)
         will_sleep = true;
 
-    if ((! will_sleep) && (! low_bat_time)) {  // expect some voltage fluctuations
+    //if ((! will_sleep) && (! low_bat_sleep)) {  // expect some voltage fluctuations
+    if (! will_sleep) {
         sleep_length = 0;
         sleep_when = 0;
         return;
@@ -949,14 +969,14 @@ localtime, ThisAircraft.minute, seconds_into_hour);
           if (ogn_rxidle % 1800 == 0)
               sleep_length -= 180;
 
-    Serial.printf("sleephours=%d, sleep_length=%d\r\n", sleephours, sleep_length);
+Serial.printf("sleephours=%d, sleep_length=%d\r\n", sleephours, sleep_length);
         }
 
     }
 
     /* delay sleep long enough to report intention to OGN */
     int min_delay = 2*APRS_STATUS_REC + 42;
-    if (ognrelay_base && ognrelay_time)
+    if (ognrelay_base && (ognrelay_time || ognreverse_time))
         min_delay *= 2;
     int sleep_delay = (millis() - sleep_when) / 1000;
     if (sleep_delay < min_delay)

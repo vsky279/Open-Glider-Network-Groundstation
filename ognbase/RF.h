@@ -146,7 +146,13 @@ extern int8_t RF_last_rssi;
 extern int8_t RF_last_snr;
 extern int8_t RF_last_bec;
 
+extern int8_t RF_last_rx_chan;
+extern int8_t RF_last_idle_rssi;
+
 extern int32_t noise_data[65];
 extern uint16_t noise_count[65];
+
+extern int32_t remote_noise_data[65];
+extern uint16_t remote_noise_count[65];
 
 #endif /* RFHELPER_H */

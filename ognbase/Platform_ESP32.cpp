@@ -1215,7 +1215,8 @@ static float ESP32_Battery_voltage()
 
     case PMU_NONE:
     default:
-      voltage = (float) read_voltage();
+      voltage = (float) read_voltage();        // <<< this now causes WDT reset on S3?
+      //voltage = 1950;
 
       /* T-Beam v02-v07 and T3 V2.1.6 have voltage divider 100k/100k on board */
       if (hw_info.model == SOFTRF_MODEL_PRIME_MK2   ||

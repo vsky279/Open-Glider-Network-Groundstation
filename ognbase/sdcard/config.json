@@ -42,7 +42,8 @@
    },
    "radio":{
       "band":2,
-      "bec":true
+      "bec":true,
+      "noise":0
    },
    "aprs":{
       "callsign":"MyCallSign",
@@ -73,7 +74,7 @@
       "webport":80
    },
    "oled":{
-      "disable":0
+      "disable":900
    },
    "ognrelay":{
       "enable":0,

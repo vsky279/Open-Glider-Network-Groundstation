@@ -565,6 +565,13 @@ ogn_protocol_2  = RF_PROTOCOL_OGNTP;
     time_master = (ognrelay_enable && ognrelay_time) || (ognrelay_base && ognreverse_time);
     time_client = (ognrelay_base && ognrelay_time) || (ognrelay_enable && ognreverse_time);
 
+if (time_master)
+Serial.println("Time master!");
+if (time_client)
+Serial.println("Time client!");
+if (time_master && time_client)
+Serial.println(">>>>> both Time client and Time Master! <<<<<");
+
     if (config_done == 0)
         config_done = 1;
     return true;

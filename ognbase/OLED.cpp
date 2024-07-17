@@ -252,8 +252,10 @@ void OLED_info()
             } else {
                 if (ognrelay_base & ognrelay_time)
                   snprintf(buf, sizeof(buf), "R-GNSS: %d", remote_sats);
-                else
+                else if (ogn_gnsstime)
                   snprintf(buf, sizeof(buf), "GNSS: %d", gnss.satellites.value());
+                else
+                  snprintf(buf, sizeof(buf), "GNSS not used");
                 display.drawString(0, 54, buf);
                 Serial.println(buf);
             }
@@ -297,15 +299,15 @@ void OLED_info()
             //Serial.println(buf);
 
             //bool ignore_stealth;
-            disp_value = ogn_istealthbit;
-            snprintf(buf, sizeof(buf), "IStealth: %d", disp_value);
-            display.drawString(0, 36, buf);
+            //disp_value = ogn_istealthbit;
+            //snprintf(buf, sizeof(buf), "IStealth: %d", disp_value);
+            //display.drawString(0, 36, buf);
             //Serial.println(buf);
 
             //bool ignore_no_track;
-            disp_value = ogn_itrackbit;
-            snprintf(buf, sizeof(buf), "ITrack: %d", disp_value);
-            display.drawString(0, 45, buf);
+            //disp_value = ogn_itrackbit;
+            //snprintf(buf, sizeof(buf), "ITrack: %d", disp_value);
+            //display.drawString(0, 45, buf);
             //Serial.println(buf);
 
             //zabbix_en
